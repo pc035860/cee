@@ -48,7 +48,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func applyScrollSensitivity() {
-        scrollView.overscrollThreshold = settings.scrollSensitivity.overscrollThreshold
+        scrollView.trackpadOverscrollThreshold = settings.trackpadSensitivity.trackpadThreshold
+        scrollView.wheelOverscrollThreshold = settings.wheelSensitivity.wheelThreshold
     }
 
     private func updateScalingQuality() {
@@ -306,22 +307,42 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
     }
 
-    // MARK: - Scroll Sensitivity (@objc)
+    // MARK: - Trackpad Sensitivity (@objc)
 
-    @objc func setScrollLow(_ sender: Any? = nil) {
-        settings.scrollSensitivity = .low
+    @objc func setTrackpadLow(_ sender: Any? = nil) {
+        settings.trackpadSensitivity = .low
         settings.save()
         applyScrollSensitivity()
     }
 
-    @objc func setScrollMedium(_ sender: Any? = nil) {
-        settings.scrollSensitivity = .medium
+    @objc func setTrackpadMedium(_ sender: Any? = nil) {
+        settings.trackpadSensitivity = .medium
         settings.save()
         applyScrollSensitivity()
     }
 
-    @objc func setScrollHigh(_ sender: Any? = nil) {
-        settings.scrollSensitivity = .high
+    @objc func setTrackpadHigh(_ sender: Any? = nil) {
+        settings.trackpadSensitivity = .high
+        settings.save()
+        applyScrollSensitivity()
+    }
+
+    // MARK: - Wheel Sensitivity (@objc)
+
+    @objc func setWheelLow(_ sender: Any? = nil) {
+        settings.wheelSensitivity = .low
+        settings.save()
+        applyScrollSensitivity()
+    }
+
+    @objc func setWheelMedium(_ sender: Any? = nil) {
+        settings.wheelSensitivity = .medium
+        settings.save()
+        applyScrollSensitivity()
+    }
+
+    @objc func setWheelHigh(_ sender: Any? = nil) {
+        settings.wheelSensitivity = .high
         settings.save()
         applyScrollSensitivity()
     }
@@ -352,12 +373,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.scalingQuality == .high ? .on : .off; return true
         case #selector(toggleShowPixels(_:)):
             menuItem.state = settings.showPixelsWhenZoomingIn ? .on : .off; return true
-        case #selector(setScrollLow(_:)):
-            menuItem.state = settings.scrollSensitivity == .low ? .on : .off; return true
-        case #selector(setScrollMedium(_:)):
-            menuItem.state = settings.scrollSensitivity == .medium ? .on : .off; return true
-        case #selector(setScrollHigh(_:)):
-            menuItem.state = settings.scrollSensitivity == .high ? .on : .off; return true
+        case #selector(setTrackpadLow(_:)):
+            menuItem.state = settings.trackpadSensitivity == .low ? .on : .off; return true
+        case #selector(setTrackpadMedium(_:)):
+            menuItem.state = settings.trackpadSensitivity == .medium ? .on : .off; return true
+        case #selector(setTrackpadHigh(_:)):
+            menuItem.state = settings.trackpadSensitivity == .high ? .on : .off; return true
+        case #selector(setWheelLow(_:)):
+            menuItem.state = settings.wheelSensitivity == .low ? .on : .off; return true
+        case #selector(setWheelMedium(_:)):
+            menuItem.state = settings.wheelSensitivity == .medium ? .on : .off; return true
+        case #selector(setWheelHigh(_:)):
+            menuItem.state = settings.wheelSensitivity == .high ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):

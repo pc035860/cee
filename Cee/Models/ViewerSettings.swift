@@ -21,15 +21,24 @@ struct ViewerSettings: Codable {
     enum ScrollSensitivity: String, Codable {
         case low, medium, high
 
-        var overscrollThreshold: CGFloat {
+        var trackpadThreshold: CGFloat {
             switch self {
             case .low:    return 200
             case .medium: return 130
             case .high:   return 60
             }
         }
+
+        var wheelThreshold: CGFloat {
+            switch self {
+            case .low:    return 40
+            case .medium: return 20
+            case .high:   return 10
+            }
+        }
     }
-    var scrollSensitivity: ScrollSensitivity = .medium
+    var trackpadSensitivity: ScrollSensitivity = .medium
+    var wheelSensitivity: ScrollSensitivity = .medium
 
     // MARK: - Window
     var resizeWindowAutomatically: Bool = false

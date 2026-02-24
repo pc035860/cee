@@ -19,7 +19,8 @@ protocol ImageScrollViewDelegate: AnyObject {
 
 class ImageScrollView: NSScrollView {
     weak var scrollDelegate: ImageScrollViewDelegate?
-    var overscrollThreshold: CGFloat = 130  // default medium; VC updates from settings
+    var trackpadOverscrollThreshold: CGFloat = 130  // VC updates from settings
+    var wheelOverscrollThreshold: CGFloat = 20      // VC updates from settings
 
     private var isAtBottom = false
     private var isAtTop = false
@@ -129,14 +130,14 @@ class ImageScrollView: NSScrollView {
 
             if gestureBeganAtBottom && wasAtBottom && intentDown {
                 overscrollAccumulator += abs(delta)
-                if overscrollAccumulator >= overscrollThreshold {
+                if overscrollAccumulator >= trackpadOverscrollThreshold {
                     pageTurnedThisGesture = true
                     pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
                     scrollDelegate?.scrollViewDidReachBottom(self)
                 }
             } else if gestureBeganAtTop && wasAtTop && intentUp {
                 overscrollAccumulator += abs(delta)
-                if overscrollAccumulator >= overscrollThreshold {
+                if overscrollAccumulator >= trackpadOverscrollThreshold {
                     pageTurnedThisGesture = true
                     pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
                     scrollDelegate?.scrollViewDidReachTop(self)
@@ -145,13 +146,23 @@ class ImageScrollView: NSScrollView {
                 overscrollAccumulator = 0
             }
         } else {
-            // 滑鼠滾輪：每個 tick 獨立，在邊緣時觸發
+            // 滑鼠滾輪：累積門檻，達標才觸發（lock 1 秒防連續觸發）
             if wasAtBottom && intentDown {
-                pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
-                scrollDelegate?.scrollViewDidReachBottom(self)
+                overscrollAccumulator += abs(delta)
+                if overscrollAccumulator >= wheelOverscrollThreshold {
+                    overscrollAccumulator = 0
+                    pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+                    scrollDelegate?.scrollViewDidReachBottom(self)
+                }
             } else if wasAtTop && intentUp {
-                pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
-                scrollDelegate?.scrollViewDidReachTop(self)
+                overscrollAccumulator += abs(delta)
+                if overscrollAccumulator >= wheelOverscrollThreshold {
+                    overscrollAccumulator = 0
+                    pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+                    scrollDelegate?.scrollViewDidReachTop(self)
+                }
+            } else {
+                overscrollAccumulator = 0
             }
         }
     }

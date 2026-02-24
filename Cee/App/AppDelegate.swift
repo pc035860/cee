@@ -103,14 +103,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scalingMenuItem.submenu = scalingMenu
         viewMenu.addItem(scalingMenuItem)
 
-        // Scroll Sensitivity submenu
-        let scrollMenuItem = NSMenuItem(title: "Scroll Sensitivity", action: nil, keyEquivalent: "")
-        let scrollMenu = NSMenu(title: "Scroll Sensitivity")
-        scrollMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setScrollLow(_:)),    key: ""))
-        scrollMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setScrollMedium(_:)), key: ""))
-        scrollMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setScrollHigh(_:)),   key: ""))
-        scrollMenuItem.submenu = scrollMenu
-        viewMenu.addItem(scrollMenuItem)
+        // Trackpad Sensitivity submenu
+        let trackpadMenuItem = NSMenuItem(title: "Trackpad Sensitivity", action: nil, keyEquivalent: "")
+        let trackpadMenu = NSMenu(title: "Trackpad Sensitivity")
+        trackpadMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setTrackpadLow(_:)),    key: ""))
+        trackpadMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setTrackpadMedium(_:)), key: ""))
+        trackpadMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setTrackpadHigh(_:)),   key: ""))
+        trackpadMenuItem.submenu = trackpadMenu
+        viewMenu.addItem(trackpadMenuItem)
+
+        // Wheel Sensitivity submenu
+        let wheelMenuItem = NSMenuItem(title: "Wheel Sensitivity", action: nil, keyEquivalent: "")
+        let wheelMenu = NSMenu(title: "Wheel Sensitivity")
+        wheelMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setWheelLow(_:)),    key: ""))
+        wheelMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setWheelMedium(_:)), key: ""))
+        wheelMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setWheelHigh(_:)),   key: ""))
+        wheelMenuItem.submenu = wheelMenu
+        viewMenu.addItem(wheelMenuItem)
 
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Resize Window Automatically", action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
