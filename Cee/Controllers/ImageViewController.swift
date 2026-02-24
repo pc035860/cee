@@ -215,7 +215,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {
-        // Full implementation in Phase 4
         view.window?.toggleFullScreen(nil)
     }
 
@@ -295,6 +294,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
+        case #selector(ImageViewController.toggleFullScreen(_:)):
+            let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
+            menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"
+            return true
         default:
             return true
         }

@@ -20,8 +20,8 @@ struct ViewerSettings: Codable {
     // MARK: - Window
     var resizeWindowAutomatically: Bool = false
     var floatOnTop: Bool = false
-    var lastWindowWidth: CGFloat = Constants.defaultWindowWidth
-    var lastWindowHeight: CGFloat = Constants.defaultWindowHeight
+    var lastWindowWidth: CGFloat? = nil   // nil = 未曾儲存，首次啟動使用螢幕 80%
+    var lastWindowHeight: CGFloat? = nil  // nil = 未曾儲存，首次啟動使用螢幕 80%
 
     // MARK: - Persistence
     private static let key = "CeeViewerSettings"

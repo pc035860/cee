@@ -107,7 +107,12 @@ class ImageScrollView: NSScrollView {
         case 119: scrollDelegate?.scrollViewRequestLastImage(self)      // End
         case 121: scrollDelegate?.scrollViewRequestNextImage(self)      // PageDown
         case 116: scrollDelegate?.scrollViewRequestPreviousImage(self)  // PageUp
-        case 53:  break                                                  // Esc — Phase 4
+        case 53:  // Esc — 退出全螢幕（僅在全螢幕模式下有效）
+            if window?.styleMask.contains(.fullScreen) == true {
+                window?.toggleFullScreen(nil)
+            } else {
+                super.keyDown(with: event)
+            }
         default:  super.keyDown(with: event)
         }
     }
