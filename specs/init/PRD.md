@@ -74,8 +74,13 @@
 
 - **FR-007**：縮放後圖片超出 Viewport 時，可在視窗內捲動瀏覽
 - **FR-008**：捲動到底後，繼續往下捲動觸發切換到下一張圖片
-  - 需有合理的 debounce / threshold，避免誤觸
-- **FR-009**：捲動到頂後，繼續往上捲動觸發切換到上一張圖片
+  - Trackpad：手勢必須從邊緣開始，累積 overscroll 超過門檻才觸發，每手勢最多切一張
+  - 滑鼠滾輪：累積 overscroll 超過門檻才觸發（門檻比 trackpad 低）
+  - 切圖後鎖定 1 秒，抑制殘餘動量造成的連續翻頁
+- **FR-009**：捲動到頂後，繼續往上捲動觸發切換到上一張圖片（同 FR-008 機制）
+- **FR-008a**：Scroll Sensitivity 設定（View Menu）
+  - Trackpad Sensitivity 子選單：Low / Medium / High，控制 trackpad overscroll 門檻
+  - Wheel Sensitivity 子選單：Low / Medium / High，控制滑鼠滾輪 overscroll 門檻
 - **FR-010**：切換到下一張後，自動回到圖片頂部
 - **FR-011**：切換到上一張後，自動跳到圖片底部（方便倒著看）
 
@@ -182,4 +187,4 @@
 
 - 是否需要支援動態 GIF 播放？（MVP 先只顯示第一幀）
 - 是否需要記住上次瀏覽的位置（下次開啟同資料夾時繼續）？
-- 捲動到底翻頁的 threshold 和 debounce 時間需實測調整
+- ~~捲動到底翻頁的 threshold 和 debounce 時間需實測調整~~ → ✅ 已解決：透過 ScrollSensitivity 設定（Trackpad/Wheel 分離門檻 + momentum lock）

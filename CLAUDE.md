@@ -45,12 +45,23 @@ specs/init/         Phase specs (phase-1..6) + SPEC.md
 - **NSImage coordinate system** — `NSImage.draw(in:)` handles the macOS bottom-left origin automatically. Only manual-flip needed when drawing a raw `CGImage` via `cgContext.draw(_:in:)`.
 - **Protocol + @MainActor** — delegate protocols called from NSScrollView subclasses must be marked `@MainActor` to avoid Swift 6 "crosses into main actor-isolated code" errors when the conforming type (e.g. NSViewController) is implicitly `@MainActor`.
 - **Scroll geometry clamp** — for “scroll to top” in NSScrollView, use `docHeight - clipHeight` (clamped to `>= 0`), not raw `docHeight`.
+- **NSScrollView unflipped coordinates — isAtTop/isAtBottom are counter-intuitive.** In macOS's default (non-flipped) coordinate system, the visual top corresponds to high Y values (`clipBounds.maxY >= docFrame.height`), and visual bottom to low Y values (`clipBounds.minY <= 0`). Easy to swap.
 
 ## Window Sizing Gotchas
 
 **Window restoration can produce unusable tiny windows.** On macOS, restored/saved state can reopen with near-zero content size. Enforce minimum content size, reject tiny persisted sizes, and run a post-show sanity check.
 
 **Treat “title updates but image area looks empty” as a layout-size issue first.** Verify window/content/clip sizes before blaming decode logic.
+
+## Scroll & Page-Turn Gotchas
+
+**Trackpad vs mouse wheel need completely separate handling.** Trackpad events have a phase lifecycle (`.began`/`.changed`/`.ended`); mouse wheel events have no phase. Detect via `event.phase != [] || event.momentumPhase != []`. They need independent sensitivity thresholds (trackpad ~130pt, wheel ~20pt).
+
+**Trackpad page-turn: require edge-start + accumulate + once-per-gesture.** Record whether the gesture began at an edge (`event.phase == .began`); only allow page turn if it started at edge, accumulated overscroll exceeds threshold, and at most one turn per gesture. Without edge-start check, mid-scroll momentum triggers false page turns.
+
+**Momentum lock after page turn.** After triggering a page turn, suppress all scroll events for ~1s (`CACurrentMediaTime()` + duration). On trackpad, a new `.began` phase immediately unlocks. Without this, residual momentum scrolls the new image and can trigger a second page turn.
+
+**Use `scrollerStyle = .overlay`** so scrollbars overlay content instead of consuming width, matching modern macOS behavior.
 
 ## AppKit Menu Gotchas
 
@@ -93,3 +104,9 @@ NSScrollView internally intercepts arrow keys, Space, PageUp/PageDown and does N
 | 4 — Window Behavior | ✅ done | Resize-to-fit, float on top, window size memory |
 | 5 — Polish | ✅ done | Error handling, edge cases, perf validation |
 | 6 — E2E Testing | ✅ done | XCUITest smoke suite passing, xcodegen UITests target |
+
+## Zoom & Fit Behavior
+
+- **`alwaysFitOnOpen` takes precedence over `isManualZoom`** in `applyFitting`. Check fit flag first.
+- **Zoom actions (`zoomIn`/`zoomOut`/`actualSize`) must call `resizeWindowToFitZoomedImage`** after applying magnification so the window tracks the new content size.
+- **`toggleAlwaysFit` clears `isManualZoom`** and immediately applies fitting. `toggleResizeAutomatically` immediately resizes if enabled.
