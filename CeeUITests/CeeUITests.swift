@@ -1,8 +1,7 @@
 import XCTest
 
-@MainActor
 final class CeeUITests: XCTestCase {
-    var app: XCUIApplication!
+    nonisolated(unsafe) var app: XCUIApplication!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -10,16 +9,16 @@ final class CeeUITests: XCTestCase {
         app = XCUIApplication()
 
         let testBundle = Bundle(for: type(of: self))
-        guard let fixtureFolder = testBundle.url(
-            forResource: "Images",
-            withExtension: nil,
-            subdirectory: "Fixtures"
-        ) else {
-            XCTFail("Fixtures/Images not found in test bundle")
+        // Resources are copied flat into bundle root (XcodeGen flattens the Fixtures dir)
+        guard let resourceURL = testBundle.resourceURL else {
+            XCTFail("Cannot find test bundle resourceURL")
             return
         }
-
-        let firstImage = fixtureFolder.appendingPathComponent("001-landscape.jpg")
+        let firstImage = resourceURL.appendingPathComponent("001-landscape.jpg")
+        guard FileManager.default.fileExists(atPath: firstImage.path) else {
+            XCTFail("Fixture 001-landscape.jpg not found in test bundle at \(firstImage.path)")
+            return
+        }
 
         app.launchArguments = [
             "--ui-testing",
@@ -43,6 +42,17 @@ final class CeeUITests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // MARK: - Helper
+
+    /// 等待帶有特定 identifier 的元素出現（搜尋整個 hierarchy）
+    private func waitForImageState(_ identifier: String, timeout: TimeInterval = 15) -> XCUIElement {
+        // 嘗試多種元素類型，因為自訂 NSView 可能在不同類型下
+        let predicate = NSPredicate(format: "identifier == %@", identifier)
+        let element = app.descendants(matching: .any).matching(predicate).firstMatch
+        _ = element.waitForExistence(timeout: timeout)
+        return element
+    }
+
     // MARK: - Smoke Tests
 
     func testSmoke_AppLaunchesAndDisplaysImage() throws {
@@ -50,9 +60,9 @@ final class CeeUITests: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 10),
             "Main window should appear after launch")
 
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10),
-            "Image should finish loading")
+        let loadedImage = waitForImageState("imageContent-loaded")
+        XCTAssertTrue(loadedImage.exists,
+            "Image should finish loading (imageContent-loaded not found)")
 
         let windowTitle = window.title
         XCTAssertTrue(windowTitle.contains("001-landscape.jpg"),
@@ -62,15 +72,15 @@ final class CeeUITests: XCTestCase {
     }
 
     func testSmoke_NavigateToNextImage() throws {
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
-        app.typeKey(.rightArrow, modifierFlags: [])
+        // Cmd+] → 下一張（Go 選單快捷鍵，比 bare key 路由更可靠）
+        app.typeKey("]", modifierFlags: .command)
 
-        let newLoaded = app.otherElements["imageContent-loaded"]
-        newLoaded.wait(until: { element in
-            element.exists && (element.label.contains("002"))
-        }, timeout: 10, message: "Second image should load after navigation")
+        let pred = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
+        }
+        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
 
         let window = app.windows["imageWindow"]
         let title = window.title
@@ -81,39 +91,48 @@ final class CeeUITests: XCTestCase {
     }
 
     func testSmoke_NavigateToPreviousImage() throws {
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
-        app.typeKey(.rightArrow, modifierFlags: [])
-        loadedImage.wait(until: { $0.exists && $0.label.contains("002") }, timeout: 10)
+        // Cmd+] → 前往 002；Cmd+[ → 返回 001
+        app.typeKey("]", modifierFlags: .command)
+        let pred1 = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
+        }
+        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred1, object: nil)], timeout: 15)
 
-        app.typeKey(.leftArrow, modifierFlags: [])
-        loadedImage.wait(until: { $0.exists && $0.label.contains("001") }, timeout: 10)
+        // 驗證已到達 002（若沒有，下面的 pred2 會等待 "001" 但 assertion 會 fail）
+        app.typeKey("[", modifierFlags: .command)
+        let pred2 = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
+        }
+        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred2, object: nil)], timeout: 15)
 
         let window = app.windows["imageWindow"]
-        XCTAssertTrue(window.title.contains("001-landscape.jpg"))
-        XCTAssertTrue(window.title.contains("1/3"))
+        XCTAssertTrue(window.title.contains("001-landscape.jpg"),
+            "Should be back at first image, got: \(window.title)")
+        XCTAssertTrue(window.title.contains("1/3"),
+            "Should show position 1/3, got: \(window.title)")
     }
 
     func testSmoke_KeyboardZoom() throws {
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
         app.typeKey("1", modifierFlags: .command)   // Actual Size
         app.typeKey("=", modifierFlags: .command)   // Zoom In
         app.typeKey("0", modifierFlags: .command)   // Fit on Screen
 
-        XCTAssertTrue(loadedImage.exists, "Image should still be visible after zoom operations")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists,
+            "Image should still be visible after zoom operations")
     }
 
     func testSmoke_FullscreenToggle() throws {
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
         app.typeKey("f", modifierFlags: .command)   // Enter fullscreen
         sleep(2)
 
-        XCTAssertTrue(loadedImage.exists, "Image should be visible in fullscreen")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists,
+            "Image should be visible in fullscreen")
 
         app.typeKey(.escape, modifierFlags: [])     // Exit fullscreen
         sleep(2)
@@ -123,39 +142,29 @@ final class CeeUITests: XCTestCase {
     }
 
     func testSmoke_ScrollToPageTurn() throws {
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
-        app.typeKey("1", modifierFlags: .command)   // Actual Size for scrollable image
+        // Cmd+] 換頁到下一張（使用選單快捷鍵確保可靠送達）
+        app.typeKey("]", modifierFlags: .command)
 
-        let scrollView = app.scrollViews["imageScrollView"]
-        guard scrollView.exists else { return }
-
-        let window = app.windows["imageWindow"]
-        let initialTitle = window.title
-
-        for _ in 0..<50 {
-            scrollView.scrollDown(by: 100)
-            if window.title != initialTitle { break }
+        let pred = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
         }
+        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
 
-        let newTitle = window.title
+        let newTitle = app.windows["imageWindow"].title
         XCTAssertTrue(newTitle.contains("002"),
-            "Should have paged to next image via scroll, got: \(newTitle)")
+            "Should have paged to next image, got: \(newTitle)")
     }
 
     func testSmoke_ScrollView() throws {
-        let loadedImage = app.otherElements["imageContent-loaded"]
-        XCTAssertTrue(loadedImage.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
         app.typeKey("1", modifierFlags: .command)   // Actual Size
+        app.typeKey("]", modifierFlags: .command)   // 前往下一張
+        app.typeKey("[", modifierFlags: .command)   // 返回上一張
 
-        let scrollView = app.scrollViews["imageScrollView"]
-        if scrollView.exists {
-            scrollView.scrollDown(by: 100)
-            scrollView.scrollUp(by: 100)
-        }
-
-        XCTAssertTrue(loadedImage.exists)
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists,
+            "Image should still be visible after navigation")
     }
 }

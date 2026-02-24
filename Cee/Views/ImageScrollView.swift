@@ -43,9 +43,9 @@ class ImageScrollView: NSScrollView {
         autohidesScrollers = true
         backgroundColor = .black
 
-        // Phase 6: UI test accessibility anchors
+        // Phase 6: UI test accessibility anchor
+        // Note: NSScrollView already has .scrollArea role — only set identifier
         setAccessibilityIdentifier("imageScrollView")
-        setAccessibilityRole(.scrollArea)
 
         // 監聽 clip view 邊界變化，追蹤是否到達頂底
         contentView.postsBoundsChangedNotifications = true

@@ -25,6 +25,8 @@ class ImageContentView: NSView {
         }
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
+        // 通知 accessibility 系統狀態已改變，讓 XCUITest 能查詢到最新 identifier
+        NSAccessibility.post(element: self, notification: .valueChanged)
     }
 
     // MARK: - Properties

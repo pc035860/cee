@@ -115,8 +115,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(goMenuItem)
         let goMenu = NSMenu(title: "Go")
         goMenuItem.submenu = goMenu
-        goMenu.addItem(makeItem("Next Image",     action: #selector(ImageViewController.goToNextImage),     key: ""))
-        goMenu.addItem(makeItem("Previous Image", action: #selector(ImageViewController.goToPreviousImage), key: ""))
+        goMenu.addItem(makeItem("Next Image",     action: #selector(ImageViewController.goToNextImage),     key: "]"))
+        goMenu.addItem(makeItem("Previous Image", action: #selector(ImageViewController.goToPreviousImage), key: "["))
         goMenu.addItem(makeItem("First Image",    action: #selector(ImageViewController.goToFirstImage),    key: ""))
         goMenu.addItem(makeItem("Last Image",     action: #selector(ImageViewController.goToLastImage),     key: ""))
 
