@@ -62,18 +62,32 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Image Loading
 
     private func loadCurrentImage() {
+        // Phase 5: 空資料夾處理
+        guard !folder.images.isEmpty else {
+            contentView.image = nil
+            contentView.isError = true
+            return
+        }
+
         guard let item = folder.currentImage else { return }
         let requestID = UUID()
         currentLoadRequestID = requestID
+        contentView.isError = false  // 清除上次錯誤狀態
 
         Task {
-            guard let image = await loader.loadImage(at: item.url) else { return }
+            guard let image = await loader.loadImage(at: item.url) else {
+                // Phase 5: 載入失敗（檔案缺失 / 格式不支援）
+                guard currentLoadRequestID == requestID else { return }
+                contentView.image = nil
+                contentView.isError = true
+                return
+            }
             guard currentLoadRequestID == requestID else { return }
 
+            contentView.isError = false
             contentView.image = image
             applyFitting(for: image.size)
 
-            // Phase 4: resizeWindowAutomatically handled here
             if settings.resizeWindowAutomatically {
                 (view.window?.windowController as? ImageWindowController)?
                     .resizeToFitImage(image.size)

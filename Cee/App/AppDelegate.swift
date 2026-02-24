@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Programmatic Menu (Full, Phase 3)
 
+    @MainActor
     private func setupMenuBar() {
         let mainMenu = NSMenu()
 
