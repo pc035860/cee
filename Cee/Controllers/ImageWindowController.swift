@@ -45,6 +45,18 @@ class ImageWindowController: NSWindowController {
         )
     }
 
+    /// Phase 4: resize window to fit image (stub — full impl in Phase 4)
+    func resizeToFitImage(_ size: NSSize) {
+        guard let window, let screen = window.screen else { return }
+        let maxSize = screen.visibleFrame.size
+        let targetSize = NSSize(
+            width: min(size.width, maxSize.width),
+            height: min(size.height, maxSize.height)
+        )
+        window.setContentSize(targetSize)
+        window.center()
+    }
+
     func updateTitle(folder: ImageFolder) {
         guard let item = folder.currentImage else {
             window?.title = "Cee"
