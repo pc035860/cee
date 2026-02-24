@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 class ImageViewController: NSViewController, NSMenuItemValidation {
     private var folder: ImageFolder
     private let loader = ImageLoader()
@@ -7,6 +8,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var contentView: ImageContentView!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
+    private enum InitialScrollPosition { case preserve, top, bottom }
 
     init(folder: ImageFolder) {
         self.folder = folder
@@ -26,7 +28,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     override func viewDidAppear() {
         super.viewDidAppear()
         applySettings()
-        loadCurrentImage()
+        loadCurrentImage(initialScroll: .top)
         view.window?.makeFirstResponder(scrollView)
     }
 
@@ -34,7 +36,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     func loadFolder(_ newFolder: ImageFolder) {
         self.folder = newFolder
         if settings.alwaysFitOnOpen { settings.isManualZoom = false }
-        loadCurrentImage()
+        loadCurrentImage(initialScroll: .top)
         view.window?.makeFirstResponder(scrollView)
     }
 
@@ -61,7 +63,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Image Loading
 
-    private func loadCurrentImage() {
+    private func loadCurrentImage(initialScroll: InitialScrollPosition = .preserve) {
         // Phase 5: 空資料夾處理
         guard !folder.images.isEmpty else {
             contentView.image = nil
@@ -88,6 +90,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             contentView.loadingState = .loaded
             contentView.setAccessibilityLabel(item.fileName)  // Phase 6: for test assertions
             applyFitting(for: image.size)
+            applyInitialScrollPosition(initialScroll)
 
             if settings.resizeWindowAutomatically {
                 (view.window?.windowController as? ImageWindowController)?
@@ -103,6 +106,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func applyFitting(for imageSize: NSSize) {
         guard imageSize.width > 0, imageSize.height > 0 else { return }
+        // documentView frame 必須設定為圖片原始尺寸，magnification 才有東西可縮放
+        contentView.frame = NSRect(origin: .zero, size: imageSize)
         let viewportSize = scrollView.bounds.size
         guard viewportSize.width > 0, viewportSize.height > 0 else {
             scrollView.magnification = 1.0
@@ -122,35 +127,42 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
     }
 
+    private func applyInitialScrollPosition(_ position: InitialScrollPosition) {
+        switch position {
+        case .preserve:
+            return
+        case .top:
+            scrollView.scrollToTop()
+        case .bottom:
+            scrollView.scrollToBottom()
+        }
+    }
+
     // MARK: - Navigation
 
     @objc func goToNextImage() {
         guard folder.goNext() else { return }
-        loadCurrentImage()
-        scrollView.scrollToTop()
+        loadCurrentImage(initialScroll: .top)
         updateWindowTitle()
     }
 
     @objc func goToPreviousImage() {
         guard folder.goPrevious() else { return }
-        loadCurrentImage()
-        scrollView.scrollToBottom()
+        loadCurrentImage(initialScroll: .bottom)
         updateWindowTitle()
     }
 
     @objc func goToFirstImage() {
         guard !folder.images.isEmpty else { return }
         folder.currentIndex = 0
-        loadCurrentImage()
-        scrollView.scrollToTop()
+        loadCurrentImage(initialScroll: .top)
         updateWindowTitle()
     }
 
     @objc func goToLastImage() {
         guard !folder.images.isEmpty else { return }
         folder.currentIndex = folder.images.count - 1
-        loadCurrentImage()
-        scrollView.scrollToTop()
+        loadCurrentImage(initialScroll: .top)
         updateWindowTitle()
     }
 

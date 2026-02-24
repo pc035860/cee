@@ -72,6 +72,21 @@ final class CeeUITests: XCTestCase {
             "Window title should show total count of 3, got: \(windowTitle)")
     }
 
+    func testWindowHasUsableSizeAfterLaunch() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+            "Main window should appear after launch")
+
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists,
+            "Image should finish loading before window size assertion")
+
+        let size = window.frame.size
+        XCTAssertGreaterThan(size.width, 300,
+            "Window width should be > 300pt to avoid unusable 1pt state, got: \(size.width)")
+        XCTAssertGreaterThan(size.height, 200,
+            "Window height should be > 200pt to avoid titlebar-only state, got: \(size.height)")
+    }
+
     func testSmoke_NavigateToNextImage() throws {
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
@@ -163,6 +178,31 @@ final class CeeUITests: XCTestCase {
         let newTitle = app.windows["imageWindow"].title
         XCTAssertTrue(newTitle.contains("002"),
             "Should have paged to next image, got: \(newTitle)")
+    }
+
+    func testImageRendersWithNonZeroSize() throws {
+        // 等待圖片載入完成
+        let imageEl = waitForImageState("imageContent-loaded")
+        let result = XCTWaiter().wait(
+            for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "identifier == %@", "imageContent-loaded"),
+                object: imageEl
+            )],
+            timeout: 15
+        )
+        XCTAssertEqual(result, .completed, "Image did not reach loaded state in time")
+
+        // 核心驗證：frame 必須有實際尺寸
+        // frame.size == .zero 代表 contentView.frame 未被設定（bug 存在）
+        let size = imageEl.frame.size
+        XCTAssertGreaterThan(size.width,  10,
+            "Image rendered width should be > 10pt (got \(size.width)); contentView.frame may be .zero")
+        XCTAssertGreaterThan(size.height, 10,
+            "Image rendered height should be > 10pt (got \(size.height)); contentView.frame may be .zero")
+
+        // 長寬比語意驗證：fixture 001-landscape.jpg 是 800×600（橫向），fit 後寬應大於高
+        XCTAssertGreaterThan(size.width, size.height,
+            "Landscape fixture (800×600) should render wider than tall, got \(size)")
     }
 
     // Note: scroll view zoom + navigation is exercised via keyboard shortcuts.

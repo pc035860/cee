@@ -31,7 +31,7 @@ class ImageContentView: NSView {
 
     // MARK: - Properties
 
-    var image: NSImage? { didSet { needsDisplay = true; invalidateIntrinsicContentSize() } }
+    var image: NSImage? { didSet { needsDisplay = true } }
     var interpolation: NSImageInterpolation = .default { didSet { needsDisplay = true } }
     var showPixels: Bool = false { didSet { needsDisplay = true } }
 

@@ -41,6 +41,7 @@ class ImageScrollView: NSScrollView {
         hasVerticalScroller = true
         hasHorizontalScroller = true
         autohidesScrollers = true
+        drawsBackground = true
         backgroundColor = .black
 
         // Phase 6: UI test accessibility anchor
@@ -139,7 +140,8 @@ class ImageScrollView: NSScrollView {
     /// 切換圖片後回到頂部（macOS 座標系：maxY = 頂部）
     func scrollToTop() {
         guard let docView = documentView else { return }
-        let topPoint = NSPoint(x: 0, y: docView.frame.height)
+        let maxY = max(docView.frame.height - contentView.bounds.height, 0)
+        let topPoint = NSPoint(x: 0, y: maxY)
         contentView.scroll(to: topPoint)
         reflectScrolledClipView(contentView)
     }

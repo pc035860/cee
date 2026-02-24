@@ -29,6 +29,11 @@ class ImageWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
+        window.minSize = NSSize(
+            width: Constants.minWindowContentWidth,
+            height: Constants.minWindowContentHeight
+        )
+        window.isRestorable = false
         window.contentViewController = viewController
         window.center()
         window.setAccessibilityIdentifier("imageWindow")  // Phase 6: UI test anchor
@@ -36,6 +41,7 @@ class ImageWindowController: NSWindowController {
         let controller = ImageWindowController(window: window)
         shared = controller  // 靜態持有，防止 ARC 釋放
         controller.showWindow(nil)
+        controller.ensureUsableWindowSize()
         controller.setupResizeObserver()
         controller.updateTitle(folder: folder)
     }
@@ -43,7 +49,10 @@ class ImageWindowController: NSWindowController {
     /// 從 ViewerSettings 讀取儲存的視窗大小；若未儲存則用螢幕可見區域 80%
     private static func savedOrDefaultWindowSize() -> NSSize {
         let settings = ViewerSettings.load()
-        if let w = settings.lastWindowWidth, let h = settings.lastWindowHeight, w > 0, h > 0 {
+        if let w = settings.lastWindowWidth,
+           let h = settings.lastWindowHeight,
+           w >= Constants.minWindowContentWidth,
+           h >= Constants.minWindowContentHeight {
             return NSSize(width: w, height: h)
         }
         return defaultWindowSize()
@@ -88,6 +97,10 @@ class ImageWindowController: NSWindowController {
 
         resizeSaveTask?.cancel()
         let size = window.contentView?.bounds.size ?? window.frame.size
+        guard size.width >= Constants.minWindowContentWidth,
+              size.height >= Constants.minWindowContentHeight else {
+            return
+        }
         let task = DispatchWorkItem {
             var settings = ViewerSettings.load()
             settings.lastWindowWidth = size.width
@@ -96,6 +109,17 @@ class ImageWindowController: NSWindowController {
         }
         resizeSaveTask = task
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: task)
+    }
+
+    private func ensureUsableWindowSize() {
+        guard let window else { return }
+        DispatchQueue.main.async {
+            let size = window.contentView?.bounds.size ?? window.frame.size
+            guard size.width < Constants.minWindowContentWidth ||
+                  size.height < Constants.minWindowContentHeight else { return }
+            window.setContentSize(Self.defaultWindowSize())
+            window.center()
+        }
     }
 
     // MARK: - Resize to Fit Image

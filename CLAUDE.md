@@ -8,7 +8,8 @@ Replaces XEE. Core flow: Finder right-click → Open With → folder browse → 
 ```bash
 xcodegen generate          # regenerate .xcodeproj after project.yml changes
 xcodebuild -project Cee.xcodeproj -scheme Cee -configuration Debug build
-./scripts/test-e2e.sh      # run all 7 XCUITest smoke tests
+./scripts/test-e2e.sh      # run full XCUITest suite
+xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,arch=arm64' -only-testing:CeeUITests/CeeUITests/testSmoke_AppLaunchesAndDisplaysImage
 ```
 
 ## Project Structure
@@ -34,6 +35,7 @@ specs/init/         Phase specs (phase-1..6) + SPEC.md
 - **Entry point** — `main.swift` (not `@main`/`@NSApplicationMain`). AppDelegate is a plain class.
 - **Single window reuse** — `ImageWindowController.shared` (private static) prevents ARC release and reuses the window when a second image is opened from Finder.
 - **project.yml** — source of truth for Xcode project. Re-run `xcodegen generate` after any structural change (new files, targets, settings). `.xcodeproj` is gitignored.
+- **MainActor-first UI updates** — AppKit state changes from async loading paths must stay on main actor (prefer `@MainActor` on controller-level UI coordinators).
 
 ## Swift 6 Gotchas
 
@@ -42,6 +44,13 @@ specs/init/         Phase specs (phase-1..6) + SPEC.md
 - **`setMagnification(_:centeredAt:)`** — parameter label is `centeredAt:`, not `centeredAtPoint:` (renamed in recent SDK).
 - **NSImage coordinate system** — `NSImage.draw(in:)` handles the macOS bottom-left origin automatically. Only manual-flip needed when drawing a raw `CGImage` via `cgContext.draw(_:in:)`.
 - **Protocol + @MainActor** — delegate protocols called from NSScrollView subclasses must be marked `@MainActor` to avoid Swift 6 "crosses into main actor-isolated code" errors when the conforming type (e.g. NSViewController) is implicitly `@MainActor`.
+- **Scroll geometry clamp** — for “scroll to top” in NSScrollView, use `docHeight - clipHeight` (clamped to `>= 0`), not raw `docHeight`.
+
+## Window Sizing Gotchas
+
+**Window restoration can produce unusable tiny windows.** On macOS, restored/saved state can reopen with near-zero content size. Enforce minimum content size, reject tiny persisted sizes, and run a post-show sanity check.
+
+**Treat “title updates but image area looks empty” as a layout-size issue first.** Verify window/content/clip sizes before blaming decode logic.
 
 ## AppKit Menu Gotchas
 
@@ -83,4 +92,4 @@ NSScrollView internally intercepts arrow keys, Space, PageUp/PageDown and does N
 | 3 — Menu + Settings | ✅ done | Full NSMenu, ViewerSettings (Codable struct, UserDefaults) |
 | 4 — Window Behavior | ✅ done | Resize-to-fit, float on top, window size memory |
 | 5 — Polish | ✅ done | Error handling, edge cases, perf validation |
-| 6 — E2E Testing | ✅ done | XCUITest smoke suite (7/7 passing), xcodegen UITests target |
+| 6 — E2E Testing | ✅ done | XCUITest smoke suite passing, xcodegen UITests target |
