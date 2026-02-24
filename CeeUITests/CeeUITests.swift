@@ -1,10 +1,11 @@
 import XCTest
 
+@MainActor
 final class CeeUITests: XCTestCase {
-    nonisolated(unsafe) var app: XCUIApplication!
+    var app: XCUIApplication!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    override func setUp() async throws {
+        try await super.setUp()
         continueAfterFailure = false
         app = XCUIApplication()
 
@@ -32,14 +33,14 @@ final class CeeUITests: XCTestCase {
         app.launch()
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.lifetime = .deleteOnSuccess
         add(attachment)
 
         app.terminate()
-        try super.tearDownWithError()
+        try await super.tearDown()
     }
 
     // MARK: - Helper
@@ -80,7 +81,8 @@ final class CeeUITests: XCTestCase {
         let pred = NSPredicate { _, _ in
             self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
         }
-        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
+        let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
+        XCTAssertEqual(result, .completed, "Navigation to next image timed out")
 
         let window = app.windows["imageWindow"]
         let title = window.title
@@ -98,14 +100,16 @@ final class CeeUITests: XCTestCase {
         let pred1 = NSPredicate { _, _ in
             self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
         }
-        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred1, object: nil)], timeout: 15)
+        let result1 = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred1, object: nil)], timeout: 15)
+        XCTAssertEqual(result1, .completed, "Navigation to image 002 timed out")
 
         // 驗證已到達 002（若沒有，下面的 pred2 會等待 "001" 但 assertion 會 fail）
         app.typeKey("[", modifierFlags: .command)
         let pred2 = NSPredicate { _, _ in
             self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
         }
-        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred2, object: nil)], timeout: 15)
+        let result2 = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred2, object: nil)], timeout: 15)
+        XCTAssertEqual(result2, .completed, "Navigation back to image 001 timed out")
 
         let window = app.windows["imageWindow"]
         XCTAssertTrue(window.title.contains("001-landscape.jpg"),
@@ -141,30 +145,49 @@ final class CeeUITests: XCTestCase {
         XCTAssertTrue(window.exists, "Window should exist after exiting fullscreen")
     }
 
-    func testSmoke_ScrollToPageTurn() throws {
+    // Note: scroll-wheel-triggered page turn cannot be reliably tested via XCUITest on macOS
+    // because NSScrollView accessibility frame is {1,0} (hit point error). This test verifies
+    // the page-turn outcome using the equivalent keyboard shortcut (Cmd+]).
+    func testSmoke_PageTurnViaKeyboard() throws {
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
-        // Cmd+] 換頁到下一張（使用選單快捷鍵確保可靠送達）
+        // Cmd+] 換頁到下一張（等同於捲動到底後觸發的換頁行為）
         app.typeKey("]", modifierFlags: .command)
 
         let pred = NSPredicate { _, _ in
             self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
         }
-        XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
+        let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
+        XCTAssertEqual(result, .completed, "Page turn to next image timed out")
 
         let newTitle = app.windows["imageWindow"].title
         XCTAssertTrue(newTitle.contains("002"),
             "Should have paged to next image, got: \(newTitle)")
     }
 
-    func testSmoke_ScrollView() throws {
+    // Note: scroll view zoom + navigation is exercised via keyboard shortcuts.
+    // Direct scroll wheel simulation is not feasible in XCUITest macOS due to accessibility
+    // frame issue (hit point {1,0}) on NSScrollView.
+    func testSmoke_KeyboardNavigationCycle() throws {
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
         app.typeKey("1", modifierFlags: .command)   // Actual Size
+
         app.typeKey("]", modifierFlags: .command)   // 前往下一張
+        let predNext = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
+        }
+        let resultNext = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predNext, object: nil)], timeout: 15)
+        XCTAssertEqual(resultNext, .completed, "Navigation to next image timed out")
+
         app.typeKey("[", modifierFlags: .command)   // 返回上一張
+        let predPrev = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
+        }
+        let resultPrev = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predPrev, object: nil)], timeout: 15)
+        XCTAssertEqual(resultPrev, .completed, "Navigation back to first image timed out")
 
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists,
-            "Image should still be visible after navigation")
+            "Image should still be visible after navigation cycle")
     }
 }
