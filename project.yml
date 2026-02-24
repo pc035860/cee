@@ -1,0 +1,53 @@
+name: Cee
+options:
+  bundleIdPrefix: com.local
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "6"
+    ARCHS: arm64
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  Cee:
+    type: application
+    platform: macOS
+    sources:
+      - Cee
+    settings:
+      base:
+        INFOPLIST_FILE: Cee/App/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.cee
+        PRODUCT_NAME: Cee
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_ALLOWED: false
+
+  CeeUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - CeeUITests
+    resources:
+      - CeeUITests/Fixtures
+    dependencies:
+      - target: Cee
+    settings:
+      base:
+        INFOPLIST_FILE: CeeUITests/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.CeeUITests
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        AD_HOC_CODE_SIGNING_ALLOWED: YES
+
+schemes:
+  Cee:
+    build:
+      targets:
+        Cee: all
+        CeeUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CeeUITests

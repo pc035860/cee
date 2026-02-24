@@ -1,1 +1,7 @@
 specs/handover/*
+*.xcodeproj/
+build/
+DerivedData/
+.DS_Store
+*.o
+*.d
