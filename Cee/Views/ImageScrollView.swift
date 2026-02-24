@@ -68,9 +68,11 @@ class ImageScrollView: NSScrollView {
         guard let docView = documentView else { return }
         let clipBounds = contentView.bounds
         let docFrame = docView.frame
-        // macOS 座標系：原點左下角
-        isAtBottom = clipBounds.maxY >= docFrame.height - edgeThreshold
-        isAtTop = clipBounds.minY <= edgeThreshold
+        // macOS 非翻轉座標系：原點左下角，Y 軸向上
+        // 視覺頂部 = 高 Y 值（maxY 靠近 docFrame.height）
+        // 視覺底部 = 低 Y 值（minY 靠近 0）
+        isAtTop = clipBounds.maxY >= docFrame.height - edgeThreshold
+        isAtBottom = clipBounds.minY <= edgeThreshold
     }
 
     // MARK: - Scroll Wheel (Edge → Page Turn)

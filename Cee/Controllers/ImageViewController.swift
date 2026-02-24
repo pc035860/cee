@@ -35,7 +35,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     /// 視窗重用時載入新資料夾
     func loadFolder(_ newFolder: ImageFolder) {
         self.folder = newFolder
-        if settings.alwaysFitOnOpen { settings.isManualZoom = false }
         loadCurrentImage(initialScroll: .top)
         view.window?.makeFirstResponder(scrollView)
     }
@@ -114,15 +113,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return
         }
 
-        if settings.isManualZoom {
-            scrollView.magnification = settings.magnification
-        } else if settings.alwaysFitOnOpen {
+        if settings.alwaysFitOnOpen {
             let fitted = FittingCalculator.calculate(
                 imageSize: imageSize,
                 viewportSize: viewportSize,
                 options: settings.fittingOptions
             )
             scrollView.magnification = fitted.width / imageSize.width
+        } else if settings.isManualZoom {
+            scrollView.magnification = settings.magnification
         }
         updateScalingQuality()
     }
@@ -190,6 +189,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
+        resizeWindowToFitZoomedImage(magnification: scrollView.magnification)
     }
 
     @objc func zoomOut(_ sender: Any? = nil) {
@@ -199,6 +199,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
+        resizeWindowToFitZoomedImage(magnification: scrollView.magnification)
     }
 
     @objc func fitOnScreen(_ sender: Any? = nil) {
@@ -215,13 +216,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.magnification = 1.0
         settings.save()
         updateScalingQuality()
+        resizeWindowToFitZoomedImage(magnification: 1.0)
     }
 
     // MARK: - Toggle Actions (@objc for menu routing)
 
     @objc func toggleAlwaysFit(_ sender: Any? = nil) {
         settings.alwaysFitOnOpen.toggle()
+        if settings.alwaysFitOnOpen {
+            settings.isManualZoom = false
+        }
         settings.save()
+        if let imageSize = contentView.image?.size { applyFitting(for: imageSize) }
     }
 
     @objc func toggleShowPixels(_ sender: Any? = nil) {
@@ -233,6 +239,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func toggleResizeAutomatically(_ sender: Any? = nil) {
         settings.resizeWindowAutomatically.toggle()
         settings.save()
+        if settings.resizeWindowAutomatically, let imageSize = contentView.image?.size {
+            (view.window?.windowController as? ImageWindowController)?
+                .resizeToFitImage(imageSize)
+        }
     }
 
     @objc func toggleFloatOnTop(_ sender: Any? = nil) {
@@ -330,6 +340,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
+    // MARK: - Window Resize for Zoom
+
+    private func resizeWindowToFitZoomedImage(magnification: CGFloat) {
+        guard let imageSize = contentView.image?.size else { return }
+        let displayedSize = NSSize(
+            width: imageSize.width * magnification,
+            height: imageSize.height * magnification
+        )
+        (view.window?.windowController as? ImageWindowController)?
+            .resizeToFitImage(displayedSize, center: false)
+    }
+
     // MARK: - Window Title Update
 
     func updateWindowTitle() {
@@ -349,6 +371,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         settings.magnification = magnification
         settings.save()
         updateScalingQuality()
+        resizeWindowToFitZoomedImage(magnification: magnification)
     }
 
     func scrollViewRequestNextImage(_ scrollView: ImageScrollView) { goToNextImage() }

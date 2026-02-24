@@ -124,7 +124,7 @@ class ImageWindowController: NSWindowController {
 
     // MARK: - Resize to Fit Image
 
-    func resizeToFitImage(_ size: NSSize) {
+    func resizeToFitImage(_ size: NSSize, center: Bool = true) {
         guard let window, let screen = window.screen else { return }
         let maxSize = screen.visibleFrame.size
         let targetSize = NSSize(
@@ -132,7 +132,7 @@ class ImageWindowController: NSWindowController {
             height: min(size.height, maxSize.height)
         )
         window.setContentSize(targetSize)
-        window.center()
+        if center { window.center() }
     }
 
     // MARK: - Window Title
