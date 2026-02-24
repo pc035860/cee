@@ -103,6 +103,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scalingMenuItem.submenu = scalingMenu
         viewMenu.addItem(scalingMenuItem)
 
+        // Scroll Sensitivity submenu
+        let scrollMenuItem = NSMenuItem(title: "Scroll Sensitivity", action: nil, keyEquivalent: "")
+        let scrollMenu = NSMenu(title: "Scroll Sensitivity")
+        scrollMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setScrollLow(_:)),    key: ""))
+        scrollMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setScrollMedium(_:)), key: ""))
+        scrollMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setScrollHigh(_:)),   key: ""))
+        scrollMenuItem.submenu = scrollMenu
+        viewMenu.addItem(scrollMenuItem)
+
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Resize Window Automatically", action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
         viewMenu.addItem(makeItem("Enter Full Screen",           action: #selector(ImageViewController.toggleFullScreen(_:)),          key: "f"))

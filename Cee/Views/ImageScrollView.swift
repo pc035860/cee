@@ -19,10 +19,21 @@ protocol ImageScrollViewDelegate: AnyObject {
 
 class ImageScrollView: NSScrollView {
     weak var scrollDelegate: ImageScrollViewDelegate?
+    var overscrollThreshold: CGFloat = 130  // default medium; VC updates from settings
 
     private var isAtBottom = false
     private var isAtTop = false
     private let edgeThreshold: CGFloat = Constants.scrollEdgeThreshold
+
+    // Trackpad gesture state: 只有從邊緣開始的新手勢才能觸發切圖
+    private var gestureBeganAtTop = false
+    private var gestureBeganAtBottom = false
+    private var pageTurnedThisGesture = false
+    private var overscrollAccumulator: CGFloat = 0
+
+    // 切圖後鎖死動量：抑制 scroll 事件直到冷卻結束
+    private var pageTurnLockUntil: TimeInterval = 0
+    private let pageTurnLockDuration: TimeInterval = 1.0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -38,6 +49,7 @@ class ImageScrollView: NSScrollView {
         allowsMagnification = true
         minMagnification = Constants.minMagnification
         maxMagnification = Constants.maxMagnification
+        scrollerStyle = .overlay
         hasVerticalScroller = true
         hasHorizontalScroller = true
         autohidesScrollers = true
@@ -78,6 +90,25 @@ class ImageScrollView: NSScrollView {
     // MARK: - Scroll Wheel (Edge → Page Turn)
 
     override func scrollWheel(with event: NSEvent) {
+        // 判斷是 trackpad（有 phase 生命週期）還是滑鼠滾輪（無 phase）
+        let isTrackpad = event.phase != [] || event.momentumPhase != []
+
+        // 切圖後鎖死：新手勢可以解鎖，否則吃掉事件不讓新圖被滑動
+        if event.phase == .began {
+            pageTurnLockUntil = 0  // 新手勢立即解鎖
+        }
+        if CACurrentMediaTime() < pageTurnLockUntil {
+            return  // 鎖死期間，不呼叫 super，完全抑制動量
+        }
+
+        // Trackpad 手勢開始：記錄當下是否在邊緣
+        if event.phase == .began {
+            gestureBeganAtTop = isAtTop
+            gestureBeganAtBottom = isAtBottom
+            pageTurnedThisGesture = false
+            overscrollAccumulator = 0
+        }
+
         let wasAtBottom = isAtBottom
         let wasAtTop = isAtTop
 
@@ -92,11 +123,36 @@ class ImageScrollView: NSScrollView {
         let intentDown = isNatural ? (delta < 0) : (delta > 0)
         let intentUp   = isNatural ? (delta > 0) : (delta < 0)
 
-        if wasAtBottom && intentDown {
-            scrollDelegate?.scrollViewDidReachBottom(self)
-        }
-        if wasAtTop && intentUp {
-            scrollDelegate?.scrollViewDidReachTop(self)
+        if isTrackpad {
+            // Trackpad：必須從邊緣開始的手勢，累積門檻，每手勢最多切一張
+            if pageTurnedThisGesture { return }
+
+            if gestureBeganAtBottom && wasAtBottom && intentDown {
+                overscrollAccumulator += abs(delta)
+                if overscrollAccumulator >= overscrollThreshold {
+                    pageTurnedThisGesture = true
+                    pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+                    scrollDelegate?.scrollViewDidReachBottom(self)
+                }
+            } else if gestureBeganAtTop && wasAtTop && intentUp {
+                overscrollAccumulator += abs(delta)
+                if overscrollAccumulator >= overscrollThreshold {
+                    pageTurnedThisGesture = true
+                    pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+                    scrollDelegate?.scrollViewDidReachTop(self)
+                }
+            } else {
+                overscrollAccumulator = 0
+            }
+        } else {
+            // 滑鼠滾輪：每個 tick 獨立，在邊緣時觸發
+            if wasAtBottom && intentDown {
+                pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+                scrollDelegate?.scrollViewDidReachBottom(self)
+            } else if wasAtTop && intentUp {
+                pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+                scrollDelegate?.scrollViewDidReachTop(self)
+            }
         }
     }
 

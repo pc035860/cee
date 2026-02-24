@@ -17,6 +17,20 @@ struct ViewerSettings: Codable {
     var scalingQuality: ScalingQuality = .medium
     var showPixelsWhenZoomingIn: Bool = true  // Nearest Neighbor when mag > 1.0
 
+    // MARK: - Scroll Sensitivity
+    enum ScrollSensitivity: String, Codable {
+        case low, medium, high
+
+        var overscrollThreshold: CGFloat {
+            switch self {
+            case .low:    return 200
+            case .medium: return 130
+            case .high:   return 60
+            }
+        }
+    }
+    var scrollSensitivity: ScrollSensitivity = .medium
+
     // MARK: - Window
     var resizeWindowAutomatically: Bool = false
     var floatOnTop: Bool = false

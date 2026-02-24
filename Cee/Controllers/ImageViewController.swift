@@ -43,7 +43,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func applySettings() {
         updateScalingQuality()
+        applyScrollSensitivity()
         if settings.floatOnTop { view.window?.level = .floating }
+    }
+
+    private func applyScrollSensitivity() {
+        scrollView.overscrollThreshold = settings.scrollSensitivity.overscrollThreshold
     }
 
     private func updateScalingQuality() {
@@ -301,6 +306,26 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
     }
 
+    // MARK: - Scroll Sensitivity (@objc)
+
+    @objc func setScrollLow(_ sender: Any? = nil) {
+        settings.scrollSensitivity = .low
+        settings.save()
+        applyScrollSensitivity()
+    }
+
+    @objc func setScrollMedium(_ sender: Any? = nil) {
+        settings.scrollSensitivity = .medium
+        settings.save()
+        applyScrollSensitivity()
+    }
+
+    @objc func setScrollHigh(_ sender: Any? = nil) {
+        settings.scrollSensitivity = .high
+        settings.save()
+        applyScrollSensitivity()
+    }
+
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -327,6 +352,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.scalingQuality == .high ? .on : .off; return true
         case #selector(toggleShowPixels(_:)):
             menuItem.state = settings.showPixelsWhenZoomingIn ? .on : .off; return true
+        case #selector(setScrollLow(_:)):
+            menuItem.state = settings.scrollSensitivity == .low ? .on : .off; return true
+        case #selector(setScrollMedium(_:)):
+            menuItem.state = settings.scrollSensitivity == .medium ? .on : .off; return true
+        case #selector(setScrollHigh(_:)):
+            menuItem.state = settings.scrollSensitivity == .high ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):
