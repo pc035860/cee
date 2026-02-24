@@ -1,20 +1,47 @@
 import AppKit
 
 class ImageContentView: NSView {
+
+    // MARK: - Phase 6: Loading State (replaces isError from Phase 5)
+
+    enum LoadingState { case idle, loading, loaded, error }
+
+    var loadingState: LoadingState = .idle {
+        didSet { updateAccessibilityState() }
+    }
+
+    /// Backward-compatible bridge for Phase 5 callers
+    var isError: Bool {
+        get { loadingState == .error }
+        set { loadingState = newValue ? .error : .idle }
+    }
+
+    private func updateAccessibilityState() {
+        switch loadingState {
+        case .idle:    setAccessibilityIdentifier("imageContent-idle")
+        case .loading: setAccessibilityIdentifier("imageContent-loading")
+        case .loaded:  setAccessibilityIdentifier("imageContent-loaded")
+        case .error:   setAccessibilityIdentifier("imageContent-error")
+        }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.image)
+    }
+
+    // MARK: - Properties
+
     var image: NSImage? { didSet { needsDisplay = true; invalidateIntrinsicContentSize() } }
     var interpolation: NSImageInterpolation = .default { didSet { needsDisplay = true } }
     var showPixels: Bool = false { didSet { needsDisplay = true } }
-
-    /// Phase 5: 圖片載入失敗時顯示 placeholder
-    var isError: Bool = false { didSet { needsDisplay = true } }
 
     override var intrinsicContentSize: NSSize {
         image?.size ?? .zero
     }
 
+    // MARK: - Drawing
+
     override func draw(_ dirtyRect: NSRect) {
-        // Phase 5: 錯誤 placeholder（檔案缺失 / 格式不支援 / 空資料夾）
-        if image == nil && isError {
+        // Error placeholder（檔案缺失 / 格式不支援 / 空資料夾）
+        if image == nil && loadingState == .error {
             drawErrorPlaceholder(in: bounds)
             return
         }
@@ -43,11 +70,9 @@ class ImageContentView: NSView {
     // MARK: - Error Placeholder
 
     private func drawErrorPlaceholder(in rect: NSRect) {
-        // 深灰色背景
         NSColor(white: 0.15, alpha: 1.0).setFill()
         NSBezierPath.fill(rect)
 
-        // 居中灰色文字
         let text = "Cannot display image"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 14, weight: .regular),

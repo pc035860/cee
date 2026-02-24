@@ -5,6 +5,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
+
+        #if DEBUG
+        if TestMode.isUITesting {
+            if TestMode.shouldDisableAnimations {
+                NSAnimationContext.current.duration = 0
+            }
+            if TestMode.shouldResetState {
+                UserDefaults.standard.removeObject(forKey: "CeeViewerSettings")
+            }
+            if let fixtureURL = TestMode.testFixturePath {
+                ImageWindowController.open(with: fixtureURL)
+                return
+            }
+        }
+        #endif
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

@@ -65,27 +65,28 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // Phase 5: 空資料夾處理
         guard !folder.images.isEmpty else {
             contentView.image = nil
-            contentView.isError = true
+            contentView.loadingState = .error
             return
         }
 
         guard let item = folder.currentImage else { return }
         let requestID = UUID()
         currentLoadRequestID = requestID
-        contentView.isError = false  // 清除上次錯誤狀態
+        contentView.loadingState = .loading  // Phase 6: accessibility state tracking
 
         Task {
             guard let image = await loader.loadImage(at: item.url) else {
                 // Phase 5: 載入失敗（檔案缺失 / 格式不支援）
                 guard currentLoadRequestID == requestID else { return }
                 contentView.image = nil
-                contentView.isError = true
+                contentView.loadingState = .error
                 return
             }
             guard currentLoadRequestID == requestID else { return }
 
-            contentView.isError = false
             contentView.image = image
+            contentView.loadingState = .loaded
+            contentView.setAccessibilityLabel(item.fileName)  // Phase 6: for test assertions
             applyFitting(for: image.size)
 
             if settings.resizeWindowAutomatically {

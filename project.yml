@@ -21,3 +21,32 @@ targets:
         PRODUCT_NAME: Cee
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: false
+
+  CeeUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - CeeUITests
+    resources:
+      - CeeUITests/Fixtures
+    dependencies:
+      - target: Cee
+    settings:
+      base:
+        INFOPLIST_FILE: CeeUITests/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.CeeUITests
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_ALLOWED: false
+
+schemes:
+  Cee:
+    build:
+      targets:
+        Cee: all
+        CeeUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CeeUITests

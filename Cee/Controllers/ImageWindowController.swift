@@ -31,6 +31,7 @@ class ImageWindowController: NSWindowController {
         )
         window.contentViewController = viewController
         window.center()
+        window.setAccessibilityIdentifier("imageWindow")  // Phase 6: UI test anchor
 
         let controller = ImageWindowController(window: window)
         shared = controller  // 靜態持有，防止 ARC 釋放
