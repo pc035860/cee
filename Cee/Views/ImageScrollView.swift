@@ -6,7 +6,11 @@ import AppKit
 protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewDidReachBottom(_ scrollView: ImageScrollView)
     func scrollViewDidReachTop(_ scrollView: ImageScrollView)
-    func scrollViewMagnificationDidChange(_ scrollView: ImageScrollView, magnification: CGFloat)
+    func scrollViewMagnificationDidChange(
+        _ scrollView: ImageScrollView,
+        magnification: CGFloat,
+        gesturePhase: NSEvent.Phase
+    )
     // Phase 2: keyboard navigation callbacks
     func scrollViewRequestNextImage(_ scrollView: ImageScrollView)
     func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView)
@@ -193,15 +197,19 @@ class ImageScrollView: NSScrollView {
 
     // MARK: - Pinch Zoom
 
-    /// 以游標位置為中心的 Pinch Zoom
+    /// 以 viewport 中心為中心的 Pinch Zoom
     override func magnify(with event: NSEvent) {
-        let point = contentView.convert(event.locationInWindow, from: nil)
+        let point = NSPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
         let newMag = magnification + event.magnification
         setMagnification(
             max(minMagnification, min(maxMagnification, newMag)),
             centeredAt: point
         )
-        scrollDelegate?.scrollViewMagnificationDidChange(self, magnification: magnification)
+        scrollDelegate?.scrollViewMagnificationDidChange(
+            self,
+            magnification: magnification,
+            gesturePhase: event.phase
+        )
     }
 
     // MARK: - Scroll Helpers

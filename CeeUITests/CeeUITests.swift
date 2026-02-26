@@ -54,6 +54,55 @@ final class CeeUITests: XCTestCase {
         return element
     }
 
+    private func waitForStableLayout(_ seconds: TimeInterval = 0.35) {
+        usleep(useconds_t(seconds * 1_000_000))
+    }
+
+    private func assertImageOverlapsViewport(
+        in window: XCUIElement,
+        minimumVisibleOverlap: CGFloat = 24,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let image = waitForImageState("imageContent-loaded")
+        XCTAssertTrue(image.exists, "imageContent-loaded should exist", file: file, line: line)
+
+        let imageFrame = image.frame
+        let windowFrame = window.frame
+        XCTAssertGreaterThan(imageFrame.width, 10, "Image width should be visible", file: file, line: line)
+        XCTAssertGreaterThan(imageFrame.height, 10, "Image height should be visible", file: file, line: line)
+        let overlap = imageFrame.intersection(windowFrame)
+        XCTAssertGreaterThan(overlap.width, minimumVisibleOverlap,
+                             "Image should remain visible horizontally after zoom/fullscreen operations",
+                             file: file, line: line)
+        XCTAssertGreaterThan(overlap.height, minimumVisibleOverlap,
+                             "Image should remain visible vertically after zoom/fullscreen operations",
+                             file: file, line: line)
+    }
+
+    private func assertWindowCenterStable(
+        from before: CGRect,
+        to after: CGRect,
+        tolerance: CGFloat = 3.0,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertLessThanOrEqual(
+            abs(after.midX - before.midX),
+            tolerance,
+            "Window midX should stay stable during zoom resize",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(
+            abs(after.midY - before.midY),
+            tolerance,
+            "Window midY should stay stable during zoom resize",
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Smoke Tests
 
     func testSmoke_AppLaunchesAndDisplaysImage() throws {
@@ -158,6 +207,81 @@ final class CeeUITests: XCTestCase {
 
         let window = app.windows["imageWindow"]
         XCTAssertTrue(window.exists, "Window should exist after exiting fullscreen")
+    }
+
+    func testZoomShortcuts_KeepImageVisible() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey("1", modifierFlags: .command)   // Actual Size
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey("=", modifierFlags: .command)   // Zoom In
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey("-", modifierFlags: .command)   // Zoom Out
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey("0", modifierFlags: .command)   // Fit on Screen
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+    }
+
+    func testFullscreenZoom_StaysVisibleBeforeAndAfterExit() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+
+        app.typeKey("f", modifierFlags: .command)   // Enter fullscreen
+        sleep(2)
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey("=", modifierFlags: .command)   // Zoom In
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey("-", modifierFlags: .command)   // Zoom Out
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+
+        app.typeKey(.escape, modifierFlags: [])     // Exit fullscreen
+        sleep(2)
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+        assertImageOverlapsViewport(in: window)
+    }
+
+    func testZoomShortcuts_WindowCenterStaysStable() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+        waitForStableLayout()
+
+        app.typeKey("0", modifierFlags: .command)   // Fit on Screen
+        waitForStableLayout()
+        let before = window.frame
+
+        app.typeKey("=", modifierFlags: .command)   // Zoom In
+        waitForStableLayout()
+        let afterZoomIn = window.frame
+        XCTAssertGreaterThan(afterZoomIn.width, before.width,
+                             "Zoom In should increase window width in fit mode")
+        assertWindowCenterStable(from: before, to: afterZoomIn)
+
+        app.typeKey("-", modifierFlags: .command)   // Zoom Out
+        waitForStableLayout()
+        let afterZoomOut = window.frame
+        XCTAssertLessThan(afterZoomOut.width, afterZoomIn.width,
+                          "Zoom Out should decrease window width after zoom in")
+        assertWindowCenterStable(from: afterZoomIn, to: afterZoomOut)
     }
 
     // Note: scroll-wheel-triggered page turn cannot be reliably tested via XCUITest on macOS

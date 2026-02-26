@@ -7,6 +7,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var scrollView: ImageScrollView!
     private var contentView: ImageContentView!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
+    private var resizeAfterZoomTask: DispatchWorkItem?
+    private let resizeAfterZoomDelay: TimeInterval = 0.12
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
     private enum InitialScrollPosition { case preserve, top, bottom }
 
@@ -32,6 +34,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         view.window?.makeFirstResponder(scrollView)
     }
 
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        applyCenteringInsetsIfNeeded()
+    }
+
     /// 視窗重用時載入新資料夾
     func loadFolder(_ newFolder: ImageFolder) {
         self.folder = newFolder
@@ -45,6 +52,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
         applyScrollSensitivity()
         if settings.floatOnTop { view.window?.level = .floating }
+        applyCenteringInsetsIfNeeded()
     }
 
     private func applyScrollSensitivity() {
@@ -64,6 +72,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             case .high:   contentView.interpolation = .high
             }
         }
+    }
+
+    private func shouldResizeWindowToMatchImage() -> Bool {
+        settings.resizeWindowAutomatically || settings.alwaysFitOnOpen
     }
 
     // MARK: - Image Loading
@@ -96,11 +108,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             contentView.setAccessibilityLabel(item.fileName)  // Phase 6: for test assertions
             applyFitting(for: image.size)
             applyInitialScrollPosition(initialScroll)
-
-            if settings.resizeWindowAutomatically {
-                (view.window?.windowController as? ImageWindowController)?
-                    .resizeToFitImage(image.size)
-            }
+            applyCenteringInsetsIfNeeded()
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
@@ -115,7 +123,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         contentView.frame = NSRect(origin: .zero, size: imageSize)
         let viewportSize = scrollView.bounds.size
         guard viewportSize.width > 0, viewportSize.height > 0 else {
-            scrollView.magnification = 1.0
+            setMagnificationCentered(1.0)
             return
         }
 
@@ -125,11 +133,60 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 viewportSize: viewportSize,
                 options: settings.fittingOptions
             )
-            scrollView.magnification = fitted.width / imageSize.width
+            setMagnificationCentered(fitted.width / imageSize.width)
         } else if settings.isManualZoom {
-            scrollView.magnification = settings.magnification
+            setMagnificationCentered(settings.magnification)
+        } else {
+            setMagnificationCentered(scrollView.magnification)
         }
         updateScalingQuality()
+        applyCenteringInsetsIfNeeded()
+        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+    }
+
+    // MARK: - Zoom Center Helpers
+
+    private func viewportCenterInDocumentCoordinates() -> NSPoint {
+        let visible = scrollView.contentView.bounds
+        return NSPoint(x: visible.midX, y: visible.midY)
+    }
+
+    private func setMagnificationCentered(_ targetMagnification: CGFloat) {
+        let clamped = max(Constants.minMagnification, min(Constants.maxMagnification, targetMagnification))
+        scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())
+        applyCenteringInsetsIfNeeded()
+    }
+
+    private func applyCenteringInsetsIfNeeded() {
+        let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        guard let imageSize = contentView.image?.size,
+              imageSize.width > 0,
+              imageSize.height > 0 else {
+            if !insetsNearlyEqual(scrollView.contentInsets, zeroInsets) {
+                scrollView.contentInsets = zeroInsets
+            }
+            return
+        }
+
+        let viewport = scrollView.bounds.size
+        guard viewport.width > 0, viewport.height > 0 else { return }
+
+        let displayedWidth = imageSize.width * scrollView.magnification
+        let displayedHeight = imageSize.height * scrollView.magnification
+        let insetX = max((viewport.width - displayedWidth) / 2.0, 0)
+        let insetY = max((viewport.height - displayedHeight) / 2.0, 0)
+        let targetInsets = NSEdgeInsets(top: insetY, left: insetX, bottom: insetY, right: insetX)
+
+        if !insetsNearlyEqual(scrollView.contentInsets, targetInsets) {
+            scrollView.contentInsets = targetInsets
+        }
+    }
+
+    private func insetsNearlyEqual(_ lhs: NSEdgeInsets, _ rhs: NSEdgeInsets, epsilon: CGFloat = 0.5) -> Bool {
+        abs(lhs.top - rhs.top) <= epsilon &&
+        abs(lhs.left - rhs.left) <= epsilon &&
+        abs(lhs.bottom - rhs.bottom) <= epsilon &&
+        abs(lhs.right - rhs.right) <= epsilon
     }
 
     private func applyInitialScrollPosition(_ position: InitialScrollPosition) {
@@ -191,21 +248,21 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func zoomIn(_ sender: Any? = nil) {
         settings.isManualZoom = true
         let newMag = scrollView.magnification + Constants.zoomStep
-        scrollView.magnification = min(newMag, Constants.maxMagnification)
+        setMagnificationCentered(min(newMag, Constants.maxMagnification))
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
-        resizeWindowToFitZoomedImage(magnification: scrollView.magnification)
+        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
     @objc func zoomOut(_ sender: Any? = nil) {
         settings.isManualZoom = true
         let newMag = scrollView.magnification - Constants.zoomStep
-        scrollView.magnification = max(newMag, Constants.minMagnification)
+        setMagnificationCentered(max(newMag, Constants.minMagnification))
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
-        resizeWindowToFitZoomedImage(magnification: scrollView.magnification)
+        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
     @objc func fitOnScreen(_ sender: Any? = nil) {
@@ -214,15 +271,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             applyFitting(for: imageSize)
         }
         settings.save()
+        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
     @objc func actualSize(_ sender: Any? = nil) {
         settings.isManualZoom = true
-        scrollView.magnification = 1.0
+        setMagnificationCentered(1.0)
         settings.magnification = 1.0
         settings.save()
         updateScalingQuality()
-        resizeWindowToFitZoomedImage(magnification: 1.0)
+        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
     // MARK: - Toggle Actions (@objc for menu routing)
@@ -245,9 +303,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func toggleResizeAutomatically(_ sender: Any? = nil) {
         settings.resizeWindowAutomatically.toggle()
         settings.save()
-        if settings.resizeWindowAutomatically, let imageSize = contentView.image?.size {
-            (view.window?.windowController as? ImageWindowController)?
-                .resizeToFitImage(imageSize)
+        if shouldResizeWindowToMatchImage() {
+            scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        } else {
+            resizeAfterZoomTask?.cancel()
         }
     }
 
@@ -259,6 +318,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {
         view.window?.toggleFullScreen(nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.applyCenteringInsetsIfNeeded()
+        }
     }
 
     // MARK: - Fitting Options (@objc)
@@ -400,14 +462,51 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Window Resize for Zoom
 
-    private func resizeWindowToFitZoomedImage(magnification: CGFloat) {
-        guard let imageSize = contentView.image?.size else { return }
+    private func scheduleResizeToFitAfterZoom(magnification: CGFloat) {
+        guard shouldResizeWindowToMatchImage(),
+              let window = view.window,
+              !window.styleMask.contains(.fullScreen) else { return }
+
+        resizeAfterZoomTask?.cancel()
+        let targetMag = magnification
+        let task = DispatchWorkItem { [weak self] in
+            self?.resizeWindowToFitZoomedImagePreservingCenter(magnification: targetMag)
+        }
+        resizeAfterZoomTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + resizeAfterZoomDelay, execute: task)
+    }
+
+    private func resizeWindowToFitZoomedImagePreservingCenter(magnification: CGFloat) {
+        guard shouldResizeWindowToMatchImage(),
+              let window = view.window,
+              !window.styleMask.contains(.fullScreen),
+              let imageSize = contentView.image?.size else { return }
+
+        let anchorPoint = viewportCenterInDocumentCoordinates()
         let displayedSize = NSSize(
             width: imageSize.width * magnification,
             height: imageSize.height * magnification
         )
-        (view.window?.windowController as? ImageWindowController)?
+        (window.windowController as? ImageWindowController)?
             .resizeToFitImage(displayedSize, center: false)
+        recenterViewport(around: anchorPoint)
+        applyCenteringInsetsIfNeeded()
+    }
+
+    private func recenterViewport(around anchorPoint: NSPoint) {
+        guard let documentView = scrollView.documentView else { return }
+        let clipView = scrollView.contentView
+        let clipSize = clipView.bounds.size
+        guard clipSize.width > 0, clipSize.height > 0 else { return }
+
+        let maxOriginX = max(documentView.frame.width - clipSize.width, 0)
+        let maxOriginY = max(documentView.frame.height - clipSize.height, 0)
+        let targetOrigin = NSPoint(
+            x: min(max(anchorPoint.x - clipSize.width / 2.0, 0), maxOriginX),
+            y: min(max(anchorPoint.y - clipSize.height / 2.0, 0), maxOriginY)
+        )
+        clipView.scroll(to: targetOrigin)
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     // MARK: - Window Title Update
@@ -424,12 +523,25 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewDidReachBottom(_ scrollView: ImageScrollView) { goToNextImage() }
     func scrollViewDidReachTop(_ scrollView: ImageScrollView) { goToPreviousImage() }
 
-    func scrollViewMagnificationDidChange(_ scrollView: ImageScrollView, magnification: CGFloat) {
+    func scrollViewMagnificationDidChange(
+        _ scrollView: ImageScrollView,
+        magnification: CGFloat,
+        gesturePhase: NSEvent.Phase
+    ) {
         settings.isManualZoom = true
         settings.magnification = magnification
         settings.save()
         updateScalingQuality()
-        resizeWindowToFitZoomedImage(magnification: magnification)
+        applyCenteringInsetsIfNeeded()
+
+        if gesturePhase.isEmpty {
+            scheduleResizeToFitAfterZoom(magnification: magnification)
+            return
+        }
+
+        // Trackpad pinch phases should resize window in lockstep with magnification.
+        resizeAfterZoomTask?.cancel()
+        resizeWindowToFitZoomedImagePreservingCenter(magnification: magnification)
     }
 
     func scrollViewRequestNextImage(_ scrollView: ImageScrollView) { goToNextImage() }

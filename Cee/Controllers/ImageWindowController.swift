@@ -125,14 +125,50 @@ class ImageWindowController: NSWindowController {
     // MARK: - Resize to Fit Image
 
     func resizeToFitImage(_ size: NSSize, center: Bool = true) {
-        guard let window, let screen = window.screen else { return }
-        let maxSize = screen.visibleFrame.size
+        guard let window,
+              let screen = window.screen,
+              !window.styleMask.contains(.fullScreen) else { return }
+        let visibleFrame = screen.visibleFrame
+        let maxSize = visibleFrame.size
         let targetSize = NSSize(
             width: min(size.width, maxSize.width),
             height: min(size.height, maxSize.height)
         )
-        window.setContentSize(targetSize)
-        if center { window.center() }
+        let currentCenter = NSPoint(x: window.frame.midX, y: window.frame.midY)
+        let targetFrameSize = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: targetSize)
+        ).size
+        var targetFrame = NSRect(origin: .zero, size: targetFrameSize)
+
+        if center {
+            targetFrame.origin = NSPoint(
+                x: visibleFrame.midX - targetFrame.width / 2.0,
+                y: visibleFrame.midY - targetFrame.height / 2.0
+            )
+        } else {
+            targetFrame.origin = NSPoint(
+                x: currentCenter.x - targetFrame.width / 2.0,
+                y: currentCenter.y - targetFrame.height / 2.0
+            )
+        }
+
+        targetFrame.origin = clampedWindowOrigin(
+            for: targetFrame,
+            within: visibleFrame
+        )
+        window.setFrame(targetFrame, display: true, animate: false)
+    }
+
+    private func clampedWindowOrigin(for frame: NSRect, within visibleFrame: NSRect) -> NSPoint {
+        let minX = visibleFrame.minX
+        let minY = visibleFrame.minY
+        let maxX = max(visibleFrame.maxX - frame.width, minX)
+        let maxY = max(visibleFrame.maxY - frame.height, minY)
+
+        return NSPoint(
+            x: min(max(frame.origin.x, minX), maxX),
+            y: min(max(frame.origin.y, minY), maxY)
+        )
     }
 
     // MARK: - Window Title
