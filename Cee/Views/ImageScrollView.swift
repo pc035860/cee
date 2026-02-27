@@ -43,6 +43,19 @@ class ImageScrollView: NSScrollView {
     private var pageTurnLockUntil: TimeInterval = 0
     private let pageTurnLockDuration: TimeInterval = 1.0
 
+    // 方向鍵邊緣翻頁防誤觸：到邊緣後需連續按 N 次同方向才翻頁
+    private var edgePressCount: Int = 0
+    private var edgePressDirection: UInt16 = 0
+    private let edgePressThreshold: Int = 3
+    private var edgeIndicatorFadeTimer: DispatchWorkItem?
+
+    // 邊緣翻頁進度視覺提示
+    private enum Edge { case top, bottom, left, right }
+    private lazy var topIndicator = makeEdgeIndicator(edge: .top)
+    private lazy var bottomIndicator = makeEdgeIndicator(edge: .bottom)
+    private lazy var leftIndicator = makeEdgeIndicator(edge: .left)
+    private lazy var rightIndicator = makeEdgeIndicator(edge: .right)
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         setup()
@@ -238,37 +251,260 @@ class ImageScrollView: NSScrollView {
         reflectScrolledClipView(clip)
     }
 
+    // MARK: - Edge Indicator (翻頁進度視覺提示)
+
+    private static let indicatorThickness: CGFloat = 20
+
+    private func makeEdgeIndicator(edge: Edge) -> CAGradientLayer {
+        let layer = CAGradientLayer()
+        layer.opacity = 0
+        layer.isHidden = true
+        layer.zPosition = 1000  // 浮在 NSScrollView 內部 clip view 之上
+        // #F97068 coral accent
+        let accent = NSColor(red: 249/255.0, green: 112/255.0, blue: 104/255.0, alpha: 0.9).cgColor
+        let clear = NSColor.clear.cgColor
+        // AppKit layer-backed: y=0 是視覺頂部（flipped）
+        // 每條 indicator 的漸層方向：邊緣實色 → 內部透明
+        switch edge {
+        case .top:
+            layer.colors = [accent, clear]
+            layer.startPoint = CGPoint(x: 0.5, y: 0)  // 頂部邊緣
+            layer.endPoint = CGPoint(x: 0.5, y: 1)    // 向內淡出
+        case .bottom:
+            layer.colors = [clear, accent]
+            layer.startPoint = CGPoint(x: 0.5, y: 0)  // 內部
+            layer.endPoint = CGPoint(x: 0.5, y: 1)    // 底部邊緣
+        case .left:
+            layer.colors = [accent, clear]
+            layer.startPoint = CGPoint(x: 0, y: 0.5)  // 左邊緣
+            layer.endPoint = CGPoint(x: 1, y: 0.5)    // 向內淡出
+        case .right:
+            layer.colors = [clear, accent]
+            layer.startPoint = CGPoint(x: 0, y: 0.5)  // 內部
+            layer.endPoint = CGPoint(x: 1, y: 0.5)    // 右邊緣
+        }
+        return layer
+    }
+
+    private func ensureIndicatorsAttached() {
+        // wantsLayer 保證 self.layer 存在
+        wantsLayer = true
+        guard let root = layer else { return }
+        for indicator in [topIndicator, bottomIndicator, leftIndicator, rightIndicator] {
+            if indicator.superlayer == nil {
+                root.addSublayer(indicator)
+            }
+        }
+    }
+
+    private func edgeForKeyCode(_ keyCode: UInt16) -> Edge {
+        switch keyCode {
+        case 125, 49, 121: return .bottom  // ↓, Space, PageDown
+        case 126, 116:     return .top     // ↑, PageUp
+        case 124:          return .right   // →
+        case 123:          return .left    // ←
+        default:           return .bottom
+        }
+    }
+
+    private func indicatorLayer(for edge: Edge) -> CAGradientLayer {
+        switch edge {
+        case .top:    return topIndicator
+        case .bottom: return bottomIndicator
+        case .left:   return leftIndicator
+        case .right:  return rightIndicator
+        }
+    }
+
+    private func showEdgeIndicator(edge: Edge, progress: CGFloat) {
+        ensureIndicatorsAttached()
+        layoutEdgeIndicators()
+        let layer = indicatorLayer(for: edge)
+        layer.isHidden = false
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.1)
+        layer.opacity = Float(min(progress, 1.0))
+        CATransaction.commit()
+        scheduleIndicatorFadeOut()
+    }
+
+    /// 排程自動淡出：每次 edge press 重置計時器，閒置 1.5 秒後淡出
+    private func scheduleIndicatorFadeOut() {
+        edgeIndicatorFadeTimer?.cancel()
+        let task = DispatchWorkItem { [weak self] in
+            self?.resetEdgeState()
+        }
+        edgeIndicatorFadeTimer = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: task)
+    }
+
+    /// 重置所有邊緣狀態：隱藏 indicator + 清除計數
+    private func resetEdgeState() {
+        edgeIndicatorFadeTimer?.cancel()
+        edgeIndicatorFadeTimer = nil
+        edgePressCount = 0
+        edgePressDirection = 0
+        for indicator in [topIndicator, bottomIndicator, leftIndicator, rightIndicator] {
+            guard !indicator.isHidden else { continue }
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.3)
+            indicator.opacity = 0
+            CATransaction.commit()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                indicator.isHidden = true
+            }
+        }
+    }
+
+    private func hideEdgeIndicators() {
+        resetEdgeState()
+    }
+
+    private func layoutEdgeIndicators() {
+        let t = Self.indicatorThickness
+        let b = bounds
+        // AppKit layer-backed: y=0 是視覺頂部（flipped）
+        topIndicator.frame = CGRect(x: 0, y: 0, width: b.width, height: t)
+        bottomIndicator.frame = CGRect(x: 0, y: b.height - t, width: b.width, height: t)
+        leftIndicator.frame = CGRect(x: 0, y: 0, width: t, height: b.height)
+        rightIndicator.frame = CGRect(x: b.width - t, y: 0, width: t, height: b.height)
+    }
+
+    override func layout() {
+        super.layout()
+        layoutEdgeIndicators()
+    }
+
+    // MARK: - Arrow Key Edge Press
+
+    /// 邊緣按鍵計數器：到邊緣後需連續按 N 次同方向才觸發翻頁
+    /// threshold 可覆蓋預設值（PageUp/PageDown 只需 1 次確認）
+    private func handleEdgePress(keyCode: UInt16, threshold: Int? = nil, navigateAction: () -> Void) {
+        if keyCode == edgePressDirection {
+            edgePressCount += 1
+        } else {
+            // 方向改變：先隱藏舊 indicator 再重置
+            resetEdgeState()
+            edgePressDirection = keyCode
+            edgePressCount = 1
+        }
+        let effectiveThreshold = threshold ?? edgePressThreshold
+        let progress = CGFloat(edgePressCount) / CGFloat(effectiveThreshold)
+        let edge = edgeForKeyCode(keyCode)
+        showEdgeIndicator(edge: edge, progress: progress)
+        if edgePressCount >= effectiveThreshold {
+            edgePressCount = 0
+            edgePressDirection = 0
+            hideEdgeIndicators()
+            navigateAction()
+        }
+    }
+
     // MARK: - Keyboard (first responder)
 
     override var acceptsFirstResponder: Bool { true }
 
     /// 鍵盤事件在此攔截，避免 NSScrollView 內部消化方向鍵/Space/PageUp/PageDown
     /// 方向鍵根據 viewport overflow 動態切換 pan 或 navigate
+    /// 到邊緣時需連續按 N 次才翻頁，防止瀏覽長圖時誤觸
     override func keyDown(with event: NSEvent) {
         let overflow = viewportOverflow
 
         switch event.keyCode {
         case 124: // → RightArrow
-            if overflow.horizontal && !isAtRight { panRight() }
-            else { scrollDelegate?.scrollViewRequestNextImage(self) }
+            if overflow.horizontal {
+                if !isAtRight {
+                    panRight()
+                    edgePressCount = 0
+                    hideEdgeIndicators()
+                } else {
+                    handleEdgePress(keyCode: 124) { [weak self] in
+                        guard let self else { return }
+                        scrollDelegate?.scrollViewRequestNextImage(self)
+                    }
+                }
+            } else {
+                resetEdgeState()
+                scrollDelegate?.scrollViewRequestNextImage(self)
+            }
 
         case 123: // ← LeftArrow
-            if overflow.horizontal && !isAtLeft { panLeft() }
-            else { scrollDelegate?.scrollViewRequestPreviousImage(self) }
+            if overflow.horizontal {
+                if !isAtLeft {
+                    panLeft()
+                    edgePressCount = 0
+                    hideEdgeIndicators()
+                } else {
+                    handleEdgePress(keyCode: 123) { [weak self] in
+                        guard let self else { return }
+                        scrollDelegate?.scrollViewRequestPreviousImage(self)
+                    }
+                }
+            } else {
+                resetEdgeState()
+                scrollDelegate?.scrollViewRequestPreviousImage(self)
+            }
 
         case 125: // ↓ DownArrow
-            if overflow.vertical && !isAtBottom { panDown() }
-            else { scrollDelegate?.scrollViewRequestNextImage(self) }
+            if overflow.vertical {
+                if !isAtBottom {
+                    panDown()
+                    edgePressCount = 0
+                    hideEdgeIndicators()
+                } else {
+                    handleEdgePress(keyCode: 125) { [weak self] in
+                        guard let self else { return }
+                        scrollDelegate?.scrollViewRequestNextImage(self)
+                    }
+                }
+            } else {
+                resetEdgeState()
+                scrollDelegate?.scrollViewRequestNextImage(self)
+            }
 
         case 126: // ↑ UpArrow
-            if overflow.vertical && !isAtTop { panUp() }
-            else { scrollDelegate?.scrollViewRequestPreviousImage(self) }
+            if overflow.vertical {
+                if !isAtTop {
+                    panUp()
+                    edgePressCount = 0
+                    hideEdgeIndicators()
+                } else {
+                    handleEdgePress(keyCode: 126) { [weak self] in
+                        guard let self else { return }
+                        scrollDelegate?.scrollViewRequestPreviousImage(self)
+                    }
+                }
+            } else {
+                resetEdgeState()
+                scrollDelegate?.scrollViewRequestPreviousImage(self)
+            }
 
-        case 49:  scrollDelegate?.scrollViewRequestPageDown(self)       // Space
+        case 49, 121: // Space / PageDown
+            if overflow.vertical && isAtBottom {
+                handleEdgePress(keyCode: event.keyCode, threshold: 1) { [weak self] in
+                    guard let self else { return }
+                    scrollDelegate?.scrollViewRequestPageDown(self)
+                }
+            } else {
+                edgePressCount = 0
+                hideEdgeIndicators()
+                scrollDelegate?.scrollViewRequestPageDown(self)
+            }
+
+        case 116: // PageUp
+            if overflow.vertical && isAtTop {
+                handleEdgePress(keyCode: 116, threshold: 1) { [weak self] in
+                    guard let self else { return }
+                    scrollDelegate?.scrollViewRequestPageUp(self)
+                }
+            } else {
+                edgePressCount = 0
+                hideEdgeIndicators()
+                scrollDelegate?.scrollViewRequestPageUp(self)
+            }
+
         case 115: scrollDelegate?.scrollViewRequestFirstImage(self)     // Home
         case 119: scrollDelegate?.scrollViewRequestLastImage(self)      // End
-        case 121: scrollDelegate?.scrollViewRequestPageDown(self)       // PageDown
-        case 116: scrollDelegate?.scrollViewRequestPageUp(self)         // PageUp
         case 53:  // Esc — 退出全螢幕（僅在全螢幕模式下有效）
             if window?.styleMask.contains(.fullScreen) == true {
                 window?.toggleFullScreen(nil)
