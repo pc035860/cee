@@ -118,6 +118,7 @@ class ImageScrollView: NSScrollView {
     // MARK: - Window Notifications
 
     @objc private func windowDidResignKey(_ notification: Notification) {
+        guard notification.object as? NSWindow === window else { return }
         if isMouseDragging {
             isMouseDragging = false
             NSCursor.pop()
@@ -252,7 +253,7 @@ class ImageScrollView: NSScrollView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard isMouseDragging else { return }
+        guard isMouseDragging else { super.mouseDragged(with: event); return }
         let currentPoint = event.locationInWindow
         let deltaX = currentPoint.x - lastDragPoint.x
         let deltaY = currentPoint.y - lastDragPoint.y
