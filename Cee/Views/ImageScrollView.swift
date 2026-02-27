@@ -121,6 +121,12 @@ class ImageScrollView: NSScrollView {
     // MARK: - Scroll Wheel (Edge → Page Turn)
 
     override func scrollWheel(with event: NSEvent) {
+        // Cmd + scroll wheel = zoom (攔截在所有其他邏輯之前)
+        if event.modifierFlags.contains(.command) {
+            handleCmdScrollZoom(with: event)
+            return
+        }
+
         // 判斷是 trackpad（有 phase 生命週期）還是滑鼠滾輪（無 phase）
         let isTrackpad = event.phase != [] || event.momentumPhase != []
 
@@ -609,6 +615,33 @@ class ImageScrollView: NSScrollView {
     private func resetThreeFingerPanState() {
         threeFingerPanActive = false
         previousTouchPositions.removeAll()
+    }
+
+    // MARK: - Cmd + Scroll Wheel Zoom
+
+    private func handleCmdScrollZoom(with event: NSEvent) {
+        let delta = event.scrollingDeltaY
+        guard abs(delta) > 0.01 else { return }
+
+        // Zoom 方向：deltaY > 0 = 放大，deltaY < 0 = 縮小
+        // 不跟隨 Natural Scrolling 反轉（主流慣例：scroll up = zoom in）
+        let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.003 : 0.08
+        let newMag = magnification + delta * sensitivity
+        let clamped = max(minMagnification, min(maxMagnification, newMag))
+
+        // 以滑鼠游標位置為中心縮放
+        let mouseInView = convert(event.locationInWindow, from: nil)
+        let mouseInClip = contentView.convert(mouseInView, from: self)
+        let mouseInDoc = NSPoint(
+            x: contentView.bounds.origin.x + mouseInClip.x,
+            y: contentView.bounds.origin.y + mouseInClip.y
+        )
+        setMagnification(clamped, centeredAt: mouseInDoc)
+
+        // 通知 delegate（與 pinch zoom 一致）
+        scrollDelegate?.scrollViewMagnificationDidChange(
+            self, magnification: magnification, gesturePhase: event.phase
+        )
     }
 
     // MARK: - Pinch Zoom
