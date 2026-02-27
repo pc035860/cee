@@ -553,13 +553,16 @@ class ImageScrollView: NSScrollView {
         var totalDeltaY: CGFloat = 0
         var matchedCount = 0
 
+        // Map normalized trackpad movement to viewport size for drag-like feel:
+        // full trackpad swipe = full viewport scroll
+        let viewportSize = contentView.bounds.size
+
         for touch in touches {
             guard let key = touch.identity as? NSObject else { continue }
             let currentPos = touch.normalizedPosition
             if let prevPos = previousTouchPositions[key] {
-                let deviceSize = touch.deviceSize
-                totalDeltaX += (currentPos.x - prevPos.x) * deviceSize.width
-                totalDeltaY += (currentPos.y - prevPos.y) * deviceSize.height
+                totalDeltaX += (currentPos.x - prevPos.x) * viewportSize.width
+                totalDeltaY += (currentPos.y - prevPos.y) * viewportSize.height
                 matchedCount += 1
             }
             previousTouchPositions[key] = currentPos
