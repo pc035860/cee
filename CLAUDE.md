@@ -46,6 +46,7 @@ specs/init/         Phase specs (phase-1..6) + SPEC.md
 - **Protocol + @MainActor** — delegate protocols called from NSScrollView subclasses must be marked `@MainActor` to avoid Swift 6 "crosses into main actor-isolated code" errors when the conforming type (e.g. NSViewController) is implicitly `@MainActor`.
 - **Scroll geometry clamp** — for “scroll to top” in NSScrollView, use `docHeight - clipHeight` (clamped to `>= 0`), not raw `docHeight`.
 - **NSScrollView unflipped coordinates — isAtTop/isAtBottom are counter-intuitive.** In macOS's default (non-flipped) coordinate system, the visual top corresponds to high Y values (`clipBounds.maxY >= docFrame.height`), and visual bottom to low Y values (`clipBounds.minY <= 0`). Easy to swap.
+- **CALayer y-axis is flipped in layer-backed NSView.** When using `wantsLayer = true`, AppKit sets `layer.isGeometryFlipped = true` so `y=0` is the **visual top** (not bottom). Sublayer frames and `CAGradientLayer` startPoint/endPoint must account for this — the opposite of raw Core Animation convention.
 
 ## Window Sizing Gotchas
 
@@ -62,6 +63,10 @@ specs/init/         Phase specs (phase-1..6) + SPEC.md
 **Momentum lock after page turn.** After triggering a page turn, suppress all scroll events for ~1s (`CACurrentMediaTime()` + duration). On trackpad, a new `.began` phase immediately unlocks. Without this, residual momentum scrolls the new image and can trigger a second page turn.
 
 **Use `scrollerStyle = .overlay`** so scrollbars overlay content instead of consuming width, matching modern macOS behavior.
+
+**Keyboard edge-press guard for all page-turn keys.** Arrow keys, PageUp/PageDown, and Space all require extra presses at the edge before turning page. Arrow keys use a higher threshold (3 presses) since each press is a small pan step; PageUp/PageDown/Space use threshold 1 (one confirmation press) since each press scrolls a full page and the intent is clearer. Logic: no overflow → navigate directly (no guard); overflow + not at edge → pan/scroll; overflow + at edge → edge-press counter. All implemented in `ImageScrollView.handleEdgePress(keyCode:threshold:)`.
+
+**Edge indicator visual feedback.** `CAGradientLayer` overlays at viewport edges show page-turn progress (#F97068 coral gradient, opacity scales with press count). Auto-fade after 1.5s idle. Must call `resetEdgeState()` on any page navigation or direction change to prevent stale indicators.
 
 ## AppKit Menu Gotchas
 
