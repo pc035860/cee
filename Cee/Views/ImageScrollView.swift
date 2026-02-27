@@ -49,6 +49,10 @@ class ImageScrollView: NSScrollView {
     private let edgePressThreshold: Int = 3
     private var edgeIndicatorFadeTimer: DispatchWorkItem?
 
+    // Three-finger pan state
+    private var threeFingerPanActive = false
+    private var previousTouchPositions: [ObjectIdentifier: NSPoint] = [:]
+
     // 邊緣翻頁進度視覺提示
     private enum Edge { case top, bottom, left, right }
     private lazy var topIndicator = makeEdgeIndicator(edge: .top)
@@ -76,6 +80,10 @@ class ImageScrollView: NSScrollView {
         autohidesScrollers = true
         drawsBackground = true
         backgroundColor = .black
+
+        // Enable raw touch tracking for three-finger pan
+        allowedTouchTypes = [.indirect]  // trackpad only
+        wantsRestingTouches = false
 
         // Phase 6: UI test accessibility anchor
         // Note: NSScrollView already has .scrollArea role — only set identifier
@@ -515,18 +523,89 @@ class ImageScrollView: NSScrollView {
         }
     }
 
-    // MARK: - Three-Finger Swipe
+    // MARK: - Three-Finger Pan (raw touch tracking)
 
-    override func swipe(with event: NSEvent) {
-        if event.deltaX > 0 {
-            // 右滑（三指右移）→ 上一張
-            scrollDelegate?.scrollViewRequestPreviousImage(self)
-        } else if event.deltaX < 0 {
-            // 左滑（三指左移）→ 下一張
-            scrollDelegate?.scrollViewRequestNextImage(self)
+    override func touchesBegan(with event: NSEvent) {
+        let touches = event.touches(matching: .touching, in: self)
+        if touches.count == 3 {
+            threeFingerPanActive = true
+            previousTouchPositions.removeAll()
+            for touch in touches {
+                let key = ObjectIdentifier(touch.identity as AnyObject)
+                previousTouchPositions[key] = touch.normalizedPosition
+            }
         } else {
-            super.swipe(with: event)
+            super.touchesBegan(with: event)
         }
+    }
+
+    override func touchesMoved(with event: NSEvent) {
+        let touches = event.touches(matching: .touching, in: self)
+
+        guard touches.count == 3, threeFingerPanActive else {
+            if !threeFingerPanActive {
+                super.touchesMoved(with: event)
+            }
+            return
+        }
+
+        var totalDeltaX: CGFloat = 0
+        var totalDeltaY: CGFloat = 0
+        var matchedCount = 0
+
+        for touch in touches {
+            let key = ObjectIdentifier(touch.identity as AnyObject)
+            let currentPos = touch.normalizedPosition
+            if let prevPos = previousTouchPositions[key] {
+                let deviceSize = touch.deviceSize
+                totalDeltaX += (currentPos.x - prevPos.x) * deviceSize.width
+                totalDeltaY += (currentPos.y - prevPos.y) * deviceSize.height
+                matchedCount += 1
+            }
+            previousTouchPositions[key] = currentPos
+        }
+
+        guard matchedCount > 0 else { return }
+        let avgDeltaX = totalDeltaX / CGFloat(matchedCount)
+        let avgDeltaY = totalDeltaY / CGFloat(matchedCount)
+        performThreeFingerPan(deltaX: avgDeltaX, deltaY: avgDeltaY)
+    }
+
+    override func touchesEnded(with event: NSEvent) {
+        let remaining = event.touches(matching: .touching, in: self)
+        if remaining.count < 3 {
+            resetThreeFingerPanState()
+        }
+        super.touchesEnded(with: event)
+    }
+
+    override func touchesCancelled(with event: NSEvent) {
+        resetThreeFingerPanState()
+        super.touchesCancelled(with: event)
+    }
+
+    private func performThreeFingerPan(deltaX: CGFloat, deltaY: CGFloat) {
+        let clip = contentView
+        guard let docView = documentView else { return }
+
+        let docSize = docView.frame.size
+        let clipSize = clip.bounds.size
+
+        // 手指右移(+deltaX) → 內容左移 → origin.x 減少
+        // 手指上移(+deltaY) → 內容下移 → origin.y 減少 (unflipped: y=0 at bottom)
+        var newX = clip.bounds.origin.x - deltaX
+        var newY = clip.bounds.origin.y - deltaY
+
+        newX = max(0, min(newX, docSize.width - clipSize.width))
+        newY = max(0, min(newY, docSize.height - clipSize.height))
+
+        clip.scroll(to: NSPoint(x: newX, y: newY))
+        reflectScrolledClipView(clip)
+    }
+
+    private func resetThreeFingerPanState() {
+        threeFingerPanActive = false
+        previousTouchPositions.removeAll()
     }
 
     // MARK: - Pinch Zoom
