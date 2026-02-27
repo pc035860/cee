@@ -17,6 +17,7 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewRequestFirstImage(_ scrollView: ImageScrollView)
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView)
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView)
+    func scrollViewRequestPageUp(_ scrollView: ImageScrollView)
 }
 
 // MARK: - ImageScrollView
@@ -28,6 +29,8 @@ class ImageScrollView: NSScrollView {
 
     private var isAtBottom = false
     private var isAtTop = false
+    private var isAtLeft = false
+    private var isAtRight = false
     private let edgeThreshold: CGFloat = Constants.scrollEdgeThreshold
 
     // Trackpad gesture state: 只有從邊緣開始的新手勢才能觸發切圖
@@ -90,6 +93,8 @@ class ImageScrollView: NSScrollView {
         // 視覺底部 = 低 Y 值（minY 靠近 0）
         isAtTop = clipBounds.maxY >= docFrame.height - edgeThreshold
         isAtBottom = clipBounds.minY <= edgeThreshold
+        isAtLeft = clipBounds.minX <= edgeThreshold
+        isAtRight = clipBounds.maxX >= docFrame.width - edgeThreshold
     }
 
     // MARK: - Scroll Wheel (Edge → Page Turn)
@@ -171,20 +176,99 @@ class ImageScrollView: NSScrollView {
         }
     }
 
+    // NSScrollView 預設 becomeFirstResponder 回傳 false（它不打算自己接收鍵盤事件）
+    // 我們需要攔截方向鍵/Space/PageUp/PageDown，所以必須覆寫為 true
+    override func becomeFirstResponder() -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        // 點擊後確保 scroll view 是 first responder（接收鍵盤事件）
+        if window?.firstResponder !== self {
+            window?.makeFirstResponder(self)
+        }
+    }
+
+    // MARK: - Viewport Overflow Detection
+
+    /// 判斷圖片（含 magnification）是否超出 viewport 各軸
+    private var viewportOverflow: (horizontal: Bool, vertical: Bool) {
+        guard let docView = documentView else { return (false, false) }
+        let clipSize = contentView.bounds.size
+        let docSize = docView.frame.size
+        let eps: CGFloat = 1.0
+        return (
+            horizontal: docSize.width > clipSize.width + eps,
+            vertical: docSize.height > clipSize.height + eps
+        )
+    }
+
+    // MARK: - Programmatic Pan
+
+    private func panLeft() {
+        let clip = contentView
+        let newX = max(clip.bounds.minX - Constants.arrowPanStep, 0)
+        clip.scroll(to: NSPoint(x: newX, y: clip.bounds.minY))
+        reflectScrolledClipView(clip)
+    }
+
+    private func panRight() {
+        let clip = contentView
+        guard let docView = documentView else { return }
+        let maxX = max(docView.frame.width - clip.bounds.width, 0)
+        let newX = min(clip.bounds.minX + Constants.arrowPanStep, maxX)
+        clip.scroll(to: NSPoint(x: newX, y: clip.bounds.minY))
+        reflectScrolledClipView(clip)
+    }
+
+    /// macOS unflipped: visual up = increase Y
+    private func panUp() {
+        let clip = contentView
+        guard let docView = documentView else { return }
+        let maxY = max(docView.frame.height - clip.bounds.height, 0)
+        let newY = min(clip.bounds.minY + Constants.arrowPanStep, maxY)
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: newY))
+        reflectScrolledClipView(clip)
+    }
+
+    /// macOS unflipped: visual down = decrease Y
+    private func panDown() {
+        let clip = contentView
+        let newY = max(clip.bounds.minY - Constants.arrowPanStep, 0)
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: newY))
+        reflectScrolledClipView(clip)
+    }
+
     // MARK: - Keyboard (first responder)
 
     override var acceptsFirstResponder: Bool { true }
 
     /// 鍵盤事件在此攔截，避免 NSScrollView 內部消化方向鍵/Space/PageUp/PageDown
+    /// 方向鍵根據 viewport overflow 動態切換 pan 或 navigate
     override func keyDown(with event: NSEvent) {
+        let overflow = viewportOverflow
+
         switch event.keyCode {
-        case 124: scrollDelegate?.scrollViewRequestNextImage(self)      // → RightArrow
-        case 123: scrollDelegate?.scrollViewRequestPreviousImage(self)  // ← LeftArrow
+        case 124: // → RightArrow
+            if overflow.horizontal && !isAtRight { panRight() }
+            else { scrollDelegate?.scrollViewRequestNextImage(self) }
+
+        case 123: // ← LeftArrow
+            if overflow.horizontal && !isAtLeft { panLeft() }
+            else { scrollDelegate?.scrollViewRequestPreviousImage(self) }
+
+        case 125: // ↓ DownArrow
+            if overflow.vertical && !isAtBottom { panDown() }
+            else { scrollDelegate?.scrollViewRequestNextImage(self) }
+
+        case 126: // ↑ UpArrow
+            if overflow.vertical && !isAtTop { panUp() }
+            else { scrollDelegate?.scrollViewRequestPreviousImage(self) }
+
         case 49:  scrollDelegate?.scrollViewRequestPageDown(self)       // Space
         case 115: scrollDelegate?.scrollViewRequestFirstImage(self)     // Home
         case 119: scrollDelegate?.scrollViewRequestLastImage(self)      // End
-        case 121: scrollDelegate?.scrollViewRequestNextImage(self)      // PageDown
-        case 116: scrollDelegate?.scrollViewRequestPreviousImage(self)  // PageUp
+        case 121: scrollDelegate?.scrollViewRequestPageDown(self)       // PageDown
+        case 116: scrollDelegate?.scrollViewRequestPageUp(self)         // PageUp
         case 53:  // Esc — 退出全螢幕（僅在全螢幕模式下有效）
             if window?.styleMask.contains(.fullScreen) == true {
                 window?.toggleFullScreen(nil)
@@ -192,6 +276,20 @@ class ImageScrollView: NSScrollView {
                 super.keyDown(with: event)
             }
         default:  super.keyDown(with: event)
+        }
+    }
+
+    // MARK: - Three-Finger Swipe
+
+    override func swipe(with event: NSEvent) {
+        if event.deltaX > 0 {
+            // 右滑（三指右移）→ 上一張
+            scrollDelegate?.scrollViewRequestPreviousImage(self)
+        } else if event.deltaX < 0 {
+            // 左滑（三指左移）→ 下一張
+            scrollDelegate?.scrollViewRequestNextImage(self)
+        } else {
+            super.swipe(with: event)
         }
     }
 

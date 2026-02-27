@@ -8,7 +8,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var contentView: ImageContentView!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     private var resizeAfterZoomTask: DispatchWorkItem?
-    private let resizeAfterZoomDelay: TimeInterval = 0.12
+    private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
     private enum InitialScrollPosition { case preserve, top, bottom }
 
@@ -32,6 +32,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         applySettings()
         loadCurrentImage(initialScroll: .top)
         view.window?.makeFirstResponder(scrollView)
+        // 視窗重新取得 key window 時自動回到 scrollView
+        view.window?.initialFirstResponder = scrollView
     }
 
     override func viewDidLayout() {
@@ -228,17 +230,38 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateWindowTitle()
     }
 
+    /// Space / PageDown：視覺向下捲動一頁，到底部則翻到下一張
+    /// macOS unflipped: visual bottom = minY ≈ 0, scroll down = decrease Y
     private func scrollPageDownOrNext() {
         let clipView = scrollView.contentView
         let visibleHeight = clipView.bounds.height
-        let currentY = clipView.bounds.minY
-        let docHeight = scrollView.documentView?.frame.height ?? 0
+        let currentMinY = clipView.bounds.minY
 
-        if currentY + visibleHeight >= docHeight - Constants.scrollEdgeThreshold {
+        // Visual bottom in unflipped coords = minY near 0
+        if currentMinY <= Constants.scrollEdgeThreshold {
             goToNextImage()
         } else {
-            let newY = min(currentY + visibleHeight, docHeight - visibleHeight)
-            clipView.scroll(to: NSPoint(x: 0, y: newY))
+            let newY = max(currentMinY - visibleHeight, 0)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: newY))
+            scrollView.reflectScrolledClipView(clipView)
+        }
+    }
+
+    /// PageUp：視覺向上捲動一頁，到頂部則翻到上一張
+    /// macOS unflipped: visual top = maxY ≈ docHeight, scroll up = increase Y
+    private func scrollPageUpOrPrev() {
+        let clipView = scrollView.contentView
+        let visibleHeight = clipView.bounds.height
+        let currentMinY = clipView.bounds.minY
+        let docHeight = scrollView.documentView?.frame.height ?? 0
+
+        // Visual top in unflipped coords = maxY near docHeight
+        let clipMaxY = currentMinY + visibleHeight
+        if clipMaxY >= docHeight - Constants.scrollEdgeThreshold {
+            goToPreviousImage()
+        } else {
+            let newY = min(currentMinY + visibleHeight, docHeight - visibleHeight)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: newY))
             scrollView.reflectScrolledClipView(clipView)
         }
     }
@@ -549,4 +572,5 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) { goToFirstImage() }
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
+    func scrollViewRequestPageUp(_ scrollView: ImageScrollView) { scrollPageUpOrPrev() }
 }
