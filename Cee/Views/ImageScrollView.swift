@@ -53,6 +53,10 @@ class ImageScrollView: NSScrollView {
     private var threeFingerPanActive = false
     private var previousTouchPositions: [NSObject: NSPoint] = [:]
 
+    // Mouse drag pan state
+    private var isMouseDragging = false
+    private var lastDragPoint: NSPoint = .zero
+
     // 邊緣翻頁進度視覺提示
     private enum Edge { case top, bottom, left, right }
     private lazy var topIndicator = makeEdgeIndicator(edge: .top)
@@ -97,10 +101,27 @@ class ImageScrollView: NSScrollView {
             name: NSView.boundsDidChangeNotification,
             object: contentView
         )
+
+        // 視窗失焦時重置拖曳狀態，避免 cursor stack 殘留
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidResignKey),
+            name: NSWindow.didResignKeyNotification,
+            object: nil
+        )
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Window Notifications
+
+    @objc private func windowDidResignKey(_ notification: Notification) {
+        if isMouseDragging {
+            isMouseDragging = false
+            NSCursor.pop()
+        }
     }
 
     // MARK: - Edge Detection
@@ -207,12 +228,44 @@ class ImageScrollView: NSScrollView {
     // 我們需要攔截方向鍵/Space/PageUp/PageDown，所以必須覆寫為 true
     override func becomeFirstResponder() -> Bool { true }
 
+    // MARK: - Mouse Drag Pan
+
     override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
         // 點擊後確保 scroll view 是 first responder（接收鍵盤事件）
         if window?.firstResponder !== self {
             window?.makeFirstResponder(self)
         }
+        // 只在無修飾鍵時啟動拖曳 pan（Cmd+click 等不觸發）
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.isEmpty else {
+            super.mouseDown(with: event)
+            return
+        }
+        // 防護：清理上一次未結束的拖曳
+        if isMouseDragging {
+            isMouseDragging = false
+            NSCursor.pop()
+        }
+        isMouseDragging = true
+        lastDragPoint = event.locationInWindow
+        NSCursor.closedHand.push()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isMouseDragging else { return }
+        let currentPoint = event.locationInWindow
+        let deltaX = currentPoint.x - lastDragPoint.x
+        let deltaY = currentPoint.y - lastDragPoint.y
+        lastDragPoint = currentPoint
+        performPan(deltaX: deltaX, deltaY: deltaY)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isMouseDragging {
+            isMouseDragging = false
+            NSCursor.pop()
+        }
+        super.mouseUp(with: event)
     }
 
     // MARK: - Viewport Overflow Detection
@@ -577,7 +630,7 @@ class ImageScrollView: NSScrollView {
         guard matchedCount > 0 else { return }
         let avgDeltaX = totalDeltaX / CGFloat(matchedCount)
         let avgDeltaY = totalDeltaY / CGFloat(matchedCount)
-        performThreeFingerPan(deltaX: avgDeltaX, deltaY: avgDeltaY)
+        performPan(deltaX: avgDeltaX, deltaY: avgDeltaY)
     }
 
     override func touchesEnded(with event: NSEvent) {
@@ -593,7 +646,9 @@ class ImageScrollView: NSScrollView {
         super.touchesCancelled(with: event)
     }
 
-    private func performThreeFingerPan(deltaX: CGFloat, deltaY: CGFloat) {
+    /// Shared pan helper for mouse drag and three-finger trackpad pan.
+    /// Moves the clip view origin by the given delta (in view coordinates).
+    private func performPan(deltaX: CGFloat, deltaY: CGFloat) {
         let clip = contentView
         guard let docView = documentView else { return }
 
