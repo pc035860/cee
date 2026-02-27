@@ -51,7 +51,7 @@ class ImageScrollView: NSScrollView {
 
     // Three-finger pan state
     private var threeFingerPanActive = false
-    private var previousTouchPositions: [ObjectIdentifier: NSPoint] = [:]
+    private var previousTouchPositions: [NSObject: NSPoint] = [:]
 
     // 邊緣翻頁進度視覺提示
     private enum Edge { case top, bottom, left, right }
@@ -531,7 +531,7 @@ class ImageScrollView: NSScrollView {
             threeFingerPanActive = true
             previousTouchPositions.removeAll()
             for touch in touches {
-                let key = ObjectIdentifier(touch.identity as AnyObject)
+                let key = touch.identity as! NSObject
                 previousTouchPositions[key] = touch.normalizedPosition
             }
         } else {
@@ -554,7 +554,7 @@ class ImageScrollView: NSScrollView {
         var matchedCount = 0
 
         for touch in touches {
-            let key = ObjectIdentifier(touch.identity as AnyObject)
+            let key = touch.identity as! NSObject
             let currentPos = touch.normalizedPosition
             if let prevPos = previousTouchPositions[key] {
                 let deviceSize = touch.deviceSize
