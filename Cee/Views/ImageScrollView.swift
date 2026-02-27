@@ -531,7 +531,7 @@ class ImageScrollView: NSScrollView {
             threeFingerPanActive = true
             previousTouchPositions.removeAll()
             for touch in touches {
-                let key = touch.identity as! NSObject
+                guard let key = touch.identity as? NSObject else { continue }
                 previousTouchPositions[key] = touch.normalizedPosition
             }
         } else {
@@ -554,7 +554,7 @@ class ImageScrollView: NSScrollView {
         var matchedCount = 0
 
         for touch in touches {
-            let key = touch.identity as! NSObject
+            guard let key = touch.identity as? NSObject else { continue }
             let currentPos = touch.normalizedPosition
             if let prevPos = previousTouchPositions[key] {
                 let deviceSize = touch.deviceSize
