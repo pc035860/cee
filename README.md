@@ -13,7 +13,7 @@
 ## 功能
 
 - 從 Finder 右鍵「打開方式」開啟圖片，自動讀取同資料夾的圖片列表
-- 支援格式：JPEG、PNG、TIFF、HEIC/HEIF、GIF、WebP、BMP
+- 支援格式：JPEG、PNG、TIFF、HEIC/HEIF、GIF、WebP、BMP、PDF
 - 鍵盤快速鍵導航（Cmd+]/[ 切換圖片）
 - 方向鍵平移放大圖片，到邊緣後連續按鍵可翻頁
 - PageUp/PageDown/Space 逐頁捲動，到底/頂自動翻頁
@@ -25,6 +25,7 @@
 - 全螢幕模式、永遠浮於最上層
 - 開窗時自動調整視窗大小（可選）
 - 觸控板與滑鼠滾輪分離的靈敏度設定
+- PDF 逐頁瀏覽，記憶上次閱讀頁碼
 
 ---
 
@@ -137,7 +138,7 @@ build/Debug/Cee.app
 ./scripts/test-e2e.sh
 ```
 
-會自動 build 並跑全部 12 個 XCUITest smoke tests。
+會自動 build 並跑全部 15 個 XCUITest smoke tests。
 
 ### 修改專案結構後
 
