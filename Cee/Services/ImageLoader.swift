@@ -9,6 +9,10 @@ actor ImageLoader {
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
 
+    // 追蹤預載任務（支援取消）
+    private var prefetchTasks: [PDFCacheKey: Task<Void, Never>] = [:]
+    private var imagePrefetchTasks: [URL: Task<Void, Never>] = [:]
+
     /// PDF 頁面快取的 key，只以 url + pageIndex 作為 hash/比對依據（忽略 scale）
     private struct PDFCacheKey: Hashable {
         let url: URL
@@ -57,6 +61,9 @@ actor ImageLoader {
     }
 
     private func renderPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat) -> NSImage? {
+        // 早期取消檢查
+        guard !Task.isCancelled else { return nil }
+
         // 1. 取得或建立 PDFDocument
         let doc: PDFDocument
         if let cached = pdfDocumentCache[url] {
@@ -66,6 +73,10 @@ actor ImageLoader {
             pdfDocumentCache[url] = newDoc
             doc = newDoc
         }
+
+        // 載入文件後檢查
+        guard !Task.isCancelled else { return nil }
+
         guard let page = doc.page(at: pageIndex) else { return nil }
 
         // 2. 取得頁面尺寸（考慮旋轉後的實際顯示尺寸）
@@ -157,39 +168,79 @@ actor ImageLoader {
         ))
     }
 
+    /// 預載用的圖片載入（支援 cooperative cancellation）
+    private func loadImageCooperative(at url: URL) async -> NSImage? {
+        if let cached = cache[url] { return cached }
+        guard !Task.isCancelled else { return nil }
+
+        // 使用 Task 而非 Task.detached 以繼承 cancellation scope
+        let image = await Task(priority: .userInitiated) { () -> NSImage? in
+            guard !Task.isCancelled else { return nil }
+            return Self.decodeImage(at: url)
+        }.value
+
+        guard !Task.isCancelled else { return nil }
+        if let image { cache[url] = image }
+        return image
+    }
+
     /// 預載周圍項目（圖片或 PDF 頁面），釋放遠離的快取
     /// ⚠️ 接收值型別參數（ImageItem 是 Sendable struct）避免 Swift 6 Sendable 問題
     func updateCache(currentIndex: Int, items: [ImageItem]) {
         guard !items.isEmpty else { return }
         let range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
 
-        // 釋放超出範圍的圖片快取
+        // 計算需要的 keys
         let activeImageURLs = Set(items[range].filter { !$0.isPDF }.map(\.url))
-        cache = cache.filter { activeImageURLs.contains($0.key) }
-
-        // 釋放超出範圍的 PDF 快取（使用 PDFCacheKey 比對，忽略 scale）
         let activePDFKeys = Set(items[range].compactMap { item in
             item.pdfPageIndex.map { PDFCacheKey(url: item.url, pageIndex: $0) }
         })
-        pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
-
-        // 釋放視窗外的 PDFDocument 實例
         let activePDFURLs = Set(items[range].filter { $0.isPDF }.map(\.url))
+
+        // 取消不在範圍內的預載任務
+        for (url, task) in imagePrefetchTasks where !activeImageURLs.contains(url) {
+            task.cancel()
+            imagePrefetchTasks.removeValue(forKey: url)
+        }
+        for (key, task) in prefetchTasks where !activePDFKeys.contains(key) {
+            task.cancel()
+            prefetchTasks.removeValue(forKey: key)
+        }
+
+        // 釋放超出範圍的快取
+        cache = cache.filter { activeImageURLs.contains($0.key) }
+        pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
         pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
 
-        // 預載範圍內項目
+        // 啟動新的預載任務（可追蹤、可取消）
         for i in range {
             let item = items[i]
             if let pageIndex = item.pdfPageIndex {
                 let key = PDFCacheKey(url: item.url, pageIndex: pageIndex)
-                if pdfCache[key] == nil {
-                    Task { _ = await loadPDFPage(url: item.url, pageIndex: pageIndex) }
+                if pdfCache[key] == nil && prefetchTasks[key] == nil {
+                    prefetchTasks[key] = Task {
+                        defer { prefetchTasks.removeValue(forKey: key) }
+                        guard !Task.isCancelled else { return }
+                        _ = await loadPDFPage(url: item.url, pageIndex: pageIndex)
+                    }
                 }
             } else {
-                if cache[item.url] == nil {
-                    Task { _ = await loadImage(at: item.url) }
+                if cache[item.url] == nil && imagePrefetchTasks[item.url] == nil {
+                    imagePrefetchTasks[item.url] = Task {
+                        defer { imagePrefetchTasks.removeValue(forKey: item.url) }
+                        guard !Task.isCancelled else { return }
+                        _ = await loadImageCooperative(at: item.url)
+                    }
                 }
             }
         }
+    }
+
+    /// 取消所有預載任務
+    func cancelAllPrefetchTasks() {
+        for (_, task) in prefetchTasks { task.cancel() }
+        for (_, task) in imagePrefetchTasks { task.cancel() }
+        prefetchTasks.removeAll()
+        imagePrefetchTasks.removeAll()
     }
 }
