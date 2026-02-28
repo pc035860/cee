@@ -15,7 +15,23 @@ class ImageFolder {
     init(containing fileURL: URL) {
         self.folderURL = fileURL.deletingLastPathComponent()
         self.images = scanFolder()
-        self.currentIndex = images.firstIndex { $0.url == fileURL } ?? 0
+
+        // 找到對應的 ImageItem
+        if let firstIndex = images.firstIndex(where: { $0.url == fileURL }) {
+            let firstItem = images[firstIndex]
+
+            if firstItem.isPDF {
+                // PDF 檔案：計算總頁數並恢復上次頁碼
+                let totalPages = images.filter { $0.url == fileURL }.count
+                let savedPage = Self.getLastViewedPage(for: fileURL, totalPages: totalPages)
+                self.currentIndex = firstIndex + savedPage
+            } else {
+                // 一般圖片
+                self.currentIndex = firstIndex
+            }
+        } else {
+            self.currentIndex = 0
+        }
     }
 
     private func scanFolder() -> [ImageItem] {
@@ -60,6 +76,16 @@ class ImageFolder {
             return cgDoc.numberOfPages
         }
         return 0
+    }
+
+    /// 從 UserDefaults 讀取上次閱讀的 PDF 頁碼
+    private static func getLastViewedPage(for pdfURL: URL, totalPages: Int) -> Int {
+        let key = "pdf.lastPage.\(pdfURL.path)"
+        guard let savedPage = UserDefaults.standard.object(forKey: key) as? Int else {
+            return 0  // 預設第一頁
+        }
+        // 確保頁碼在有效範圍內（0 ~ totalPages-1）
+        return max(0, min(savedPage, totalPages - 1))
     }
 
     var currentImage: ImageItem? { images[safe: currentIndex] }

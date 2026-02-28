@@ -125,7 +125,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 currentIndex: folder.currentIndex,
                 items: folder.images
             )
+
+            // 儲存 PDF 頁碼（用於下次開啟時恢復）
+            savePDFLastViewedPage()
         }
+    }
+
+    /// 儲存當前 PDF 頁碼到 UserDefaults
+    private func savePDFLastViewedPage() {
+        guard let item = folder.currentImage,
+              let pageIndex = item.pdfPageIndex else { return }
+        let key = "pdf.lastPage.\(item.url.path)"
+        UserDefaults.standard.set(pageIndex, forKey: key)
     }
 
     private func applyFitting(for imageSize: NSSize) {
