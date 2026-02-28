@@ -685,14 +685,9 @@ class ImageScrollView: NSScrollView {
         let newMag = magnification + delta * sensitivity
         let clamped = max(minMagnification, min(maxMagnification, newMag))
 
-        // 以滑鼠游標位置為中心縮放
-        let mouseInView = convert(event.locationInWindow, from: nil)
-        let mouseInClip = contentView.convert(mouseInView, from: self)
-        let mouseInDoc = NSPoint(
-            x: contentView.bounds.origin.x + mouseInClip.x,
-            y: contentView.bounds.origin.y + mouseInClip.y
-        )
-        setMagnification(clamped, centeredAt: mouseInDoc)
+        // 以 viewport 中心為中心縮放（與 pinch zoom 一致）
+        let center = NSPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
+        setMagnification(clamped, centeredAt: center)
 
         // 通知 delegate（與 pinch zoom 一致）
         scrollDelegate?.scrollViewMagnificationDidChange(
