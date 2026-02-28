@@ -19,6 +19,7 @@ targets:
         INFOPLIST_FILE: Cee/App/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.local.cee
         PRODUCT_NAME: Cee
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: false
 
