@@ -424,7 +424,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {
         view.window?.toggleFullScreen(nil)
-        DispatchQueue.main.async { [weak self] in
+        // 全螢幕轉換需要等佈局完成後再調整置中
+        // 使用 asyncAfter 確保 Auto Layout 已更新 scrollView.bounds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.view.layoutSubtreeIfNeeded()
             self?.applyCenteringInsetsIfNeeded()
         }
     }
