@@ -176,9 +176,11 @@ class ImageWindowController: NSWindowController {
     func updateTitle(folder: ImageFolder) {
         guard let item = folder.currentImage else {
             window?.title = "Cee"
+            window?.subtitle = ""
             return
         }
         let position = "\(folder.currentIndex + 1)/\(folder.images.count)"
-        window?.title = "\(item.fileName) (\(position))"
+        window?.title = "\(item.url.lastPathComponent) (\(position))"
+        window?.subtitle = item.pdfPageIndex.map { "Page \($0 + 1)" } ?? ""
     }
 }

@@ -7,6 +7,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var scrollView: ImageScrollView!
     private var contentView: ImageContentView!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
+    private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var resizeAfterZoomTask: DispatchWorkItem?
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
@@ -43,6 +44,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// 視窗重用時載入新資料夾
     func loadFolder(_ newFolder: ImageFolder) {
+        Task { await loader.cancelAllPrefetchTasks() }
         self.folder = newFolder
         loadCurrentImage(initialScroll: .top)
         view.window?.makeFirstResponder(scrollView)
@@ -95,8 +97,17 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         currentLoadRequestID = requestID
         contentView.loadingState = .loading  // Phase 6: accessibility state tracking
 
-        Task {
-            guard let image = await loader.loadImage(at: item.url) else {
+        currentLoadTask?.cancel()
+        currentLoadTask = Task {
+            // PDF 或一般圖片走不同載入路徑
+            let image: NSImage?
+            if let pageIndex = item.pdfPageIndex {
+                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+            } else {
+                image = await loader.loadImage(at: item.url)
+            }
+
+            guard let image else {
                 // Phase 5: 載入失敗（檔案缺失 / 格式不支援）
                 guard currentLoadRequestID == requestID else { return }
                 contentView.image = nil
@@ -114,9 +125,20 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
-                imageURLs: folder.images.map(\.url)
+                items: folder.images
             )
+
+            // 儲存 PDF 頁碼（用於下次開啟時恢復）
+            savePDFLastViewedPage()
         }
+    }
+
+    /// 儲存當前 PDF 頁碼到 UserDefaults
+    private func savePDFLastViewedPage() {
+        guard let item = folder.currentImage,
+              let pageIndex = item.pdfPageIndex else { return }
+        let key = "pdf.lastPage.\(item.url.path)"
+        UserDefaults.standard.set(pageIndex, forKey: key)
     }
 
     private func applyFitting(for imageSize: NSSize) {

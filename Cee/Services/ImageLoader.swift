@@ -1,10 +1,23 @@
 import AppKit
 import ImageIO
+import PDFKit
 
 /// 使用 actor 確保快取的執行緒安全
 actor ImageLoader {
     private var cache: [URL: NSImage] = [:]
+    private var pdfCache: [PDFCacheKey: NSImage] = [:]
+    private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
+
+    // 追蹤預載任務（支援取消）
+    private var prefetchTasks: [PDFCacheKey: Task<Void, Never>] = [:]
+    private var imagePrefetchTasks: [URL: Task<Void, Never>] = [:]
+
+    /// PDF 頁面快取的 key（固定以 2x Retina 渲染，無需區分 scale）
+    private struct PDFCacheKey: Hashable {
+        let url: URL
+        let pageIndex: Int
+    }
 
     func loadImage(at url: URL) async -> NSImage? {
         if let cached = cache[url] { return cached }
@@ -17,6 +30,120 @@ actor ImageLoader {
         if let image { cache[url] = image }
         return image
     }
+
+    // MARK: - PDF Loading
+
+    func loadPDFPage(url: URL, pageIndex: Int) async -> NSImage? {
+        let key = PDFCacheKey(url: url, pageIndex: pageIndex)
+        if let cached = pdfCache[key] { return cached }
+
+        let image = renderPDFPage(url: url, pageIndex: pageIndex)
+
+        if let image { pdfCache[key] = image }
+        return image
+    }
+
+    /// 固定使用 2x Retina scale 渲染（幾乎所有 Mac 都是 Retina，非 Retina 顯示 2x 無害）
+    private static let renderScale: CGFloat = 2.0
+
+    private func renderPDFPage(url: URL, pageIndex: Int) -> NSImage? {
+        let backingScale = Self.renderScale
+        // 早期取消檢查
+        guard !Task.isCancelled else { return nil }
+
+        // 1. 取得或建立 PDFDocument
+        let doc: PDFDocument
+        if let cached = pdfDocumentCache[url] {
+            doc = cached
+        } else {
+            guard let newDoc = PDFDocument(url: url) else { return nil }
+            pdfDocumentCache[url] = newDoc
+            doc = newDoc
+        }
+
+        // 載入文件後檢查
+        guard !Task.isCancelled else { return nil }
+
+        guard let page = doc.page(at: pageIndex) else { return nil }
+
+        // 2. 取得頁面尺寸（考慮旋轉後的實際顯示尺寸）
+        let pageBounds = page.bounds(for: .cropBox)
+        let rotation = page.rotation
+
+        // 計算旋轉後的實際顯示尺寸（points）
+        let pointSize: CGSize
+        if rotation == 90 || rotation == 270 {
+            // 旋轉 90 或 270 度時，寬高互換
+            pointSize = CGSize(width: pageBounds.height, height: pageBounds.width)
+        } else {
+            pointSize = pageBounds.size
+        }
+
+        // 3. 建立 NSBitmapImageRep 以支援 Retina 縮放
+        let pixelSize = CGSize(
+            width: pointSize.width * backingScale,
+            height: pointSize.height * backingScale
+        )
+
+        // 像素上限保護：超過 1 億像素（≈400MB RGBA）時跳過，防止極大頁面 OOM
+        let totalPixels = pixelSize.width * pixelSize.height
+        guard totalPixels > 0, totalPixels <= 100_000_000 else { return nil }
+
+        guard let bitmapRep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(pixelSize.width),
+            pixelsHigh: Int(pixelSize.height),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,  // 讓 CG 自動對齊
+            bitsPerPixel: 0
+        ) else { return nil }
+
+        // 4. 建立 NSImage 並加入 bitmap representation
+        let image = NSImage(size: pointSize)
+        image.addRepresentation(bitmapRep)
+
+        // 5. 使用 NSGraphicsContext 繪製
+        guard let ctx = NSGraphicsContext(bitmapImageRep: bitmapRep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+
+        let cgCtx = ctx.cgContext
+
+        // 6. 套用 scale 變換以配合 pixel 尺寸
+        cgCtx.scaleBy(x: backingScale, y: backingScale)
+
+        // 7. 填白色背景
+        cgCtx.setFillColor(CGColor.white)
+        cgCtx.fill(CGRect(origin: .zero, size: pointSize))
+
+        // 8. 處理旋轉變換
+        if rotation != 0 {
+            cgCtx.saveGState()
+
+            // 平移到中心點
+            cgCtx.translateBy(x: pointSize.width / 2, y: pointSize.height / 2)
+            // 旋轉（rotation 是度數，需轉弧度；負號因為 CG 座標系 Y 軸向上）
+            cgCtx.rotate(by: -CGFloat(rotation) * .pi / 180)
+            // 平移回去（基於原始 pageBounds）
+            cgCtx.translateBy(x: -pageBounds.width / 2, y: -pageBounds.height / 2)
+        }
+
+        // 9. 繪製 PDF 頁面
+        page.draw(with: .cropBox, to: cgCtx)
+
+        if rotation != 0 {
+            cgCtx.restoreGState()
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
+        return image
+    }
+
+    // MARK: - Image Loading
 
     /// 使用 ImageIO 高效解碼（比 NSImage(contentsOf:) 更高效）
     private static func decodeImage(at url: URL) -> NSImage? {
@@ -33,22 +160,79 @@ actor ImageLoader {
         ))
     }
 
-    /// 預載周圍圖片，釋放遠離的快取
-    /// ⚠️ 接收值型別參數（非 ImageFolder class）避免 Swift 6 Sendable 問題
-    func updateCache(currentIndex: Int, imageURLs: [URL]) {
-        guard !imageURLs.isEmpty else { return }
-        let range = max(0, currentIndex - cacheRadius)...min(imageURLs.count - 1, currentIndex + cacheRadius)
+    /// 預載用的圖片載入（支援 cooperative cancellation）
+    private func loadImageCooperative(at url: URL) async -> NSImage? {
+        if let cached = cache[url] { return cached }
+        guard !Task.isCancelled else { return nil }
+
+        // 使用 Task 而非 Task.detached 以繼承 cancellation scope
+        let image = await Task(priority: .userInitiated) { () -> NSImage? in
+            guard !Task.isCancelled else { return nil }
+            return Self.decodeImage(at: url)
+        }.value
+
+        guard !Task.isCancelled else { return nil }
+        if let image { cache[url] = image }
+        return image
+    }
+
+    /// 預載周圍項目（圖片或 PDF 頁面），釋放遠離的快取
+    /// ⚠️ 接收值型別參數（ImageItem 是 Sendable struct）避免 Swift 6 Sendable 問題
+    func updateCache(currentIndex: Int, items: [ImageItem]) {
+        guard !items.isEmpty else { return }
+        let range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
+
+        // 計算需要的 keys
+        let activeImageURLs = Set(items[range].filter { !$0.isPDF }.map(\.url))
+        let activePDFKeys = Set(items[range].compactMap { item in
+            item.pdfPageIndex.map { PDFCacheKey(url: item.url, pageIndex: $0) }
+        })
+        let activePDFURLs = Set(items[range].filter { $0.isPDF }.map(\.url))
+
+        // 取消不在範圍內的預載任務
+        for (url, task) in imagePrefetchTasks where !activeImageURLs.contains(url) {
+            task.cancel()
+            imagePrefetchTasks.removeValue(forKey: url)
+        }
+        for (key, task) in prefetchTasks where !activePDFKeys.contains(key) {
+            task.cancel()
+            prefetchTasks.removeValue(forKey: key)
+        }
 
         // 釋放超出範圍的快取
-        let activeURLs = Set(range.map { imageURLs[$0] })
-        cache = cache.filter { activeURLs.contains($0.key) }
+        cache = cache.filter { activeImageURLs.contains($0.key) }
+        pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
+        pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
 
-        // 預載範圍內圖片
+        // 啟動新的預載任務（可追蹤、可取消）
         for i in range {
-            let url = imageURLs[i]
-            if cache[url] == nil {
-                Task { _ = await loadImage(at: url) }
+            let item = items[i]
+            if let pageIndex = item.pdfPageIndex {
+                let key = PDFCacheKey(url: item.url, pageIndex: pageIndex)
+                if pdfCache[key] == nil && prefetchTasks[key] == nil {
+                    prefetchTasks[key] = Task {
+                        defer { prefetchTasks.removeValue(forKey: key) }
+                        guard !Task.isCancelled else { return }
+                        _ = await loadPDFPage(url: item.url, pageIndex: pageIndex)
+                    }
+                }
+            } else {
+                if cache[item.url] == nil && imagePrefetchTasks[item.url] == nil {
+                    imagePrefetchTasks[item.url] = Task {
+                        defer { imagePrefetchTasks.removeValue(forKey: item.url) }
+                        guard !Task.isCancelled else { return }
+                        _ = await loadImageCooperative(at: item.url)
+                    }
+                }
             }
         }
+    }
+
+    /// 取消所有預載任務
+    func cancelAllPrefetchTasks() {
+        for (_, task) in prefetchTasks { task.cancel() }
+        for (_, task) in imagePrefetchTasks { task.cancel() }
+        prefetchTasks.removeAll()
+        imagePrefetchTasks.removeAll()
     }
 }
