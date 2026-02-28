@@ -256,27 +256,32 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let insetY = max((viewport.height - displayedHeight) / 2.0, 0)
         let targetInsets = NSEdgeInsets(top: insetY, left: insetX, bottom: insetY, right: insetX)
 
-        if !insetsNearlyEqual(scrollView.contentInsets, targetInsets) {
+        let insetsChanged = !insetsNearlyEqual(scrollView.contentInsets, targetInsets)
+        if insetsChanged {
             scrollView.contentInsets = targetInsets
-            // 修正 scroll position 到合法範圍，確保置中效果
-            clampScrollPositionToValidRange()
         }
+
+        // 每次都修正 scroll position（不只在 inset 變更時）
+        // 這確保全螢幕轉換後位置正確
+        clampScrollPositionToValidRange(insets: targetInsets)
     }
 
-    /// 將 scroll position 限制在合法範圍內，修正全螢幕轉換後的偏移問題
-    private func clampScrollPositionToValidRange() {
+    /// 將 scroll position 限制在合法範圍內，確保置中效果
+    /// - Parameter insets: 目標 contentInsets（已計算好的置中 insets）
+    private func clampScrollPositionToValidRange(insets: NSEdgeInsets) {
         let clipView = scrollView.contentView
-        let docSize = contentView.frame.size
         let viewportSize = scrollView.bounds.size
 
-        guard docSize.width > 0, docSize.height > 0,
-              viewportSize.width > 0, viewportSize.height > 0 else { return }
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
 
-        let insets = scrollView.contentInsets
-        // 計算合法的 scroll 範圍
+        // 置中模式下，合法的 scroll 範圍：
+        // - 當圖片小於 viewport 時，origin 應該在 [-inset, -inset]（讓內容置中）
+        // - 當圖片大於 viewport 時，origin 可以從 -inset 捲到 (docSize - viewport + inset)
         let minX = -insets.left
-        let maxX = max(docSize.width - viewportSize.width + insets.right, minX)
         let minY = -insets.top
+        // maxX/maxY 的計算：當沒有額外捲動空間時，應該等於 minX/minY
+        let docSize = contentView.frame.size
+        let maxX = max(docSize.width - viewportSize.width + insets.right, minX)
         let maxY = max(docSize.height - viewportSize.height + insets.bottom, minY)
 
         let currentOrigin = clipView.bounds.origin
