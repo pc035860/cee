@@ -125,6 +125,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         viewMenu.addItem(makeItem("Resize Window Automatically", action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
         viewMenu.addItem(makeItem("Enter Full Screen",           action: #selector(ImageViewController.toggleFullScreen(_:)),          key: "f"))
         viewMenu.addItem(makeItem("Float on Top",                action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(makeItem("Show Status Bar",             action: #selector(ImageViewController.toggleStatusBar(_:)),           key: "/"))
 
         // ── Go Menu ─────────────────────────────────────────────────────
         // Bare arrow/Home/End keys are handled by ImageScrollView.keyDown.

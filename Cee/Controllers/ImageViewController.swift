@@ -6,6 +6,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private let loader = ImageLoader()
     private var scrollView: ImageScrollView!
     private var contentView: ImageContentView!
+    private var statusBarView: StatusBarView!
+    private var statusBarHeightConstraint: NSLayoutConstraint!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var resizeAfterZoomTask: DispatchWorkItem?
@@ -25,7 +27,35 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         scrollView = ImageScrollView(frame: .zero)
         scrollView.documentView = contentView
         scrollView.scrollDelegate = self
-        self.view = scrollView
+
+        statusBarView = StatusBarView()
+
+        let container = NSView()
+        container.addSubview(scrollView)
+        container.addSubview(statusBarView)
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        statusBarView.translatesAutoresizingMaskIntoConstraints = false
+
+        statusBarHeightConstraint = statusBarView.heightAnchor.constraint(
+            equalToConstant: Constants.statusBarHeight
+        )
+
+        NSLayoutConstraint.activate([
+            // ScrollView fills container except bottom
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: statusBarView.topAnchor),
+
+            // StatusBar at bottom
+            statusBarView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            statusBarView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            statusBarView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            statusBarHeightConstraint,
+        ])
+
+        self.view = container
     }
 
     override func viewDidAppear() {
@@ -56,12 +86,34 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
         applyScrollSensitivity()
         if settings.floatOnTop { view.window?.level = .floating }
+        applyStatusBar()
         applyCenteringInsetsIfNeeded()
     }
 
     private func applyScrollSensitivity() {
         scrollView.trackpadOverscrollThreshold = settings.trackpadSensitivity.trackpadThreshold
         scrollView.wheelOverscrollThreshold = settings.wheelSensitivity.wheelThreshold
+    }
+
+    private func applyStatusBar() {
+        let visible = settings.showStatusBar
+        statusBarView.isHidden = !visible
+        statusBarHeightConstraint.constant = visible ? Constants.statusBarHeight : 0
+        applyCenteringInsetsIfNeeded()  // 重要：重新計算置中 insets
+    }
+
+    private func updateStatusBar() {
+        guard let image = contentView.image else { return }
+        let index = folder.currentIndex + 1
+        let total = folder.images.count
+        let zoom = scrollView.magnification
+
+        statusBarView.update(
+            index: index,
+            total: total,
+            zoom: zoom,
+            imageSize: image.size
+        )
     }
 
     private func updateScalingQuality() {
@@ -122,6 +174,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             applyFitting(for: image.size)
             applyInitialScrollPosition(initialScroll)
             applyCenteringInsetsIfNeeded()
+            updateStatusBar()  // Status Bar 更新
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
@@ -361,6 +414,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
     }
 
+    @objc func toggleStatusBar(_ sender: Any? = nil) {
+        settings.showStatusBar.toggle()
+        settings.save()
+        applyStatusBar()
+    }
+
     @objc func toggleFullScreen(_ sender: Any? = nil) {
         view.window?.toggleFullScreen(nil)
         DispatchQueue.main.async { [weak self] in
@@ -496,6 +555,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
+        case #selector(toggleStatusBar(_:)):
+            menuItem.title = settings.showStatusBar ? "Hide Status Bar" : "Show Status Bar"
+            return true
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"
@@ -578,6 +640,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         settings.save()
         updateScalingQuality()
         applyCenteringInsetsIfNeeded()
+        statusBarView.updateZoom(magnification)  // Status Bar 更新縮放
 
         if gesturePhase.isEmpty {
             scheduleResizeToFitAfterZoom(magnification: magnification)
