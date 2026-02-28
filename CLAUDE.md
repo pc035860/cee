@@ -83,6 +83,14 @@ xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,
 - **Last-viewed page** — `UserDefaults` key `pdf.lastPage.\(url.path)`, clamped to valid range.
 - **Window subtitle** shows "Page N" for PDF items.
 
+## Status Bar
+
+- **Container View pattern** — `ImageViewController.view` is a container NSView, not the scrollView directly. ScrollView + StatusBarView are siblings via Auto Layout.
+- **View hierarchy**: `container → [scrollView, statusBarView]`. ScrollView fills except bottom; StatusBar pinned to bottom with 22pt height.
+- **Toggle pattern** — `statusBarHeightConstraint.constant` toggles between 22pt/0; `applyCenteringInsetsIfNeeded()` called after toggle to recalculate centering.
+- **Zoom display** — "Fit" when `!isManualZoom && alwaysFitOnOpen`; "100%" when zoom=1.0 in manual mode; otherwise percentage.
+- **Settings persistence** — `ViewerSettings.showStatusBar` defaults to `true`. New fields are backward-compatible via Codable default values.
+
 ## Implementation Phases
 
-All phases 1–6 complete. PDF support in progress on `feat/pdf-support` branch.
+All phases 1–6 complete. PDF support complete. Status bar Phase 1 complete.
