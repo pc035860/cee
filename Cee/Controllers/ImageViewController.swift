@@ -107,12 +107,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let index = folder.currentIndex + 1
         let total = folder.images.count
         let zoom = scrollView.magnification
+        let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
 
         statusBarView.update(
             index: index,
             total: total,
             zoom: zoom,
-            imageSize: image.size
+            imageSize: image.size,
+            isFitting: isFitting
         )
     }
 
@@ -640,7 +642,8 @@ extension ImageViewController: ImageScrollViewDelegate {
         settings.save()
         updateScalingQuality()
         applyCenteringInsetsIfNeeded()
-        statusBarView.updateZoom(magnification)  // Status Bar 更新縮放
+        let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
+        statusBarView.updateZoom(magnification, isFitting: isFitting)  // Status Bar 更新縮放
 
         if gesturePhase.isEmpty {
             scheduleResizeToFitAfterZoom(magnification: magnification)

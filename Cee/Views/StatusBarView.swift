@@ -73,13 +73,16 @@ final class StatusBarView: NSView {
     // MARK: - Update Methods
 
     /// 更新所有顯示內容
-    func update(index: Int, total: Int, zoom: CGFloat, imageSize: NSSize) {
+    /// - Parameter `isFitting`: 當圖片處於 fitting 模式時為 true
+    func update(index: Int, total: Int, zoom: CGFloat, imageSize: NSSize, isFitting: Bool) {
         // 索引：N / M
         indexLabel.stringValue = "\(index) / \(total)"
 
-        // 縮放：75% 或 Fit
-        if zoom >= 0.99 && zoom <= 1.01 {
+        // 縮放：Fit（fitting 模式）或 100%（actual size）或百分比
+        if isFitting {
             zoomLabel.stringValue = "Fit"
+        } else if zoom >= 0.99 && zoom <= 1.01 {
+            zoomLabel.stringValue = "100%"
         } else {
             zoomLabel.stringValue = "\(Int(round(zoom * 100)))%"
         }
@@ -89,9 +92,12 @@ final class StatusBarView: NSView {
     }
 
     /// 僅更新縮放
-    func updateZoom(_ zoom: CGFloat) {
-        if zoom >= 0.99 && zoom <= 1.01 {
+    /// - Parameter `isFitting`: 當圖片處於 fitting 模式時為 true
+    func updateZoom(_ zoom: CGFloat, isFitting: Bool) {
+        if isFitting {
             zoomLabel.stringValue = "Fit"
+        } else if zoom >= 0.99 && zoom <= 1.01 {
+            zoomLabel.stringValue = "100%"
         } else {
             zoomLabel.stringValue = "\(Int(round(zoom * 100)))%"
         }
