@@ -96,7 +96,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         contentView.loadingState = .loading  // Phase 6: accessibility state tracking
 
         Task {
-            guard let image = await loader.loadImage(at: item.url) else {
+            // PDF 或一般圖片走不同載入路徑
+            let image: NSImage?
+            if let pageIndex = item.pdfPageIndex {
+                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+            } else {
+                image = await loader.loadImage(at: item.url)
+            }
+
+            guard let image else {
                 // Phase 5: 載入失敗（檔案缺失 / 格式不支援）
                 guard currentLoadRequestID == requestID else { return }
                 contentView.image = nil
@@ -114,7 +122,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
-                imageURLs: folder.images.map(\.url)
+                items: folder.images
             )
         }
     }

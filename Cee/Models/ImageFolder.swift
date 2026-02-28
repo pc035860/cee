@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import UniformTypeIdentifiers
 
 class ImageFolder {
@@ -7,7 +8,7 @@ class ImageFolder {
     var currentIndex: Int = 0
 
     static let supportedTypes: Set<UTType> = [
-        .jpeg, .png, .tiff, .heic, .heif, .gif, .webP, .bmp
+        .jpeg, .png, .tiff, .heic, .heif, .gif, .webP, .bmp, .pdf
     ]
 
     init(containing fileURL: URL) {
@@ -24,14 +25,26 @@ class ImageFolder {
             options: .skipsHiddenFiles
         ) else { return [] }
 
-        return contents
+        // Sort files first, then expand PDFs — ensures pages stay grouped after their source file
+        let sortedURLs = contents
             .filter { url in
                 guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
                 else { return false }
                 return Self.supportedTypes.contains(where: { type.conforms(to: $0) })
             }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            .map { ImageItem(url: $0) }
+
+        return sortedURLs.flatMap { url -> [ImageItem] in
+            guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+            else { return [] }
+
+            if type.conforms(to: .pdf) {
+                guard let doc = PDFDocument(url: url) else { return [] }
+                return (0..<doc.pageCount).map { ImageItem(url: url, pdfPageIndex: $0) }
+            } else {
+                return [ImageItem(url: url)]
+            }
+        }
     }
 
     var currentImage: ImageItem? { images[safe: currentIndex] }
