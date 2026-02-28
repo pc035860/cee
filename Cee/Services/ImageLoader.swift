@@ -34,6 +34,7 @@ actor ImageLoader {
     }
 
     private func renderPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat) -> NSImage? {
+        // 1. 取得或建立 PDFDocument
         let doc: PDFDocument
         if let cached = pdfDocumentCache[url] {
             doc = cached
@@ -43,11 +44,76 @@ actor ImageLoader {
             doc = newDoc
         }
         guard let page = doc.page(at: pageIndex) else { return nil }
-        let pointSize = page.bounds(for: .cropBox).size
-        let scale = backingScale
-        let pixelSize = CGSize(width: pointSize.width * scale, height: pointSize.height * scale)
-        let image = page.thumbnail(of: pixelSize, for: .cropBox)
-        image.size = pointSize  // 以 points 顯示，保留高解析度 representation
+
+        // 2. 取得頁面尺寸（考慮旋轉後的實際顯示尺寸）
+        let pageBounds = page.bounds(for: .cropBox)
+        let rotation = page.rotation
+
+        // 計算旋轉後的實際顯示尺寸（points）
+        let pointSize: CGSize
+        if rotation == 90 || rotation == 270 {
+            // 旋轉 90 或 270 度時，寬高互換
+            pointSize = CGSize(width: pageBounds.height, height: pageBounds.width)
+        } else {
+            pointSize = pageBounds.size
+        }
+
+        // 3. 建立 NSBitmapImageRep 以支援 Retina 縮放
+        let pixelSize = CGSize(
+            width: pointSize.width * backingScale,
+            height: pointSize.height * backingScale
+        )
+        guard let bitmapRep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(pixelSize.width),
+            pixelsHigh: Int(pixelSize.height),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,  // 讓 CG 自動對齊
+            bitsPerPixel: 0
+        ) else { return nil }
+
+        // 4. 建立 NSImage 並加入 bitmap representation
+        let image = NSImage(size: pointSize)
+        image.addRepresentation(bitmapRep)
+
+        // 5. 使用 NSGraphicsContext 繪製
+        guard let ctx = NSGraphicsContext(bitmapImageRep: bitmapRep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+
+        let cgCtx = ctx.cgContext
+
+        // 6. 套用 scale 變換以配合 pixel 尺寸
+        cgCtx.scaleBy(x: backingScale, y: backingScale)
+
+        // 7. 填白色背景
+        cgCtx.setFillColor(CGColor.white)
+        cgCtx.fill(CGRect(origin: .zero, size: pointSize))
+
+        // 8. 處理旋轉變換
+        if rotation != 0 {
+            cgCtx.saveGState()
+
+            // 平移到中心點
+            cgCtx.translateBy(x: pointSize.width / 2, y: pointSize.height / 2)
+            // 旋轉（rotation 是度數，需轉弧度；負號因為 CG 座標系 Y 軸向上）
+            cgCtx.rotate(by: -CGFloat(rotation) * .pi / 180)
+            // 平移回去（基於原始 pageBounds）
+            cgCtx.translateBy(x: -pageBounds.width / 2, y: -pageBounds.height / 2)
+        }
+
+        // 9. 繪製 PDF 頁面
+        page.draw(with: .cropBox, to: cgCtx)
+
+        if rotation != 0 {
+            cgCtx.restoreGState()
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
         return image
     }
 
