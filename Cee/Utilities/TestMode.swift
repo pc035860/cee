@@ -1,4 +1,24 @@
 import Foundation
+import OSLog
+
+enum DebugCentering {
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Cee", category: "CenteringDebug")
+
+    static let isEnabled: Bool = {
+        let processInfo = ProcessInfo.processInfo
+        if processInfo.environment["CEE_DEBUG_CENTERING"] == "1" {
+            return true
+        }
+        return processInfo.arguments.contains("--debug-centering")
+    }()
+
+    static func log(_ message: @autoclosure () -> String) {
+        guard isEnabled else { return }
+        let text = message()
+        logger.log("\(text, privacy: .public)")
+        fputs("[CenteringDebug] \(text)\n", stderr)
+    }
+}
 
 #if DEBUG
 enum TestMode {

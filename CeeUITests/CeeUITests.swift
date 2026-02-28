@@ -103,6 +103,85 @@ final class CeeUITests: XCTestCase {
         )
     }
 
+    private struct ScrollMetrics {
+        let magnification: CGFloat
+        let originX: CGFloat
+        let minX: CGFloat
+        let maxX: CGFloat
+    }
+
+    private func parseMetric(_ key: String, from raw: String) -> CGFloat? {
+        let pattern = "\(key)=(-?\\d+(?:\\.\\d+)?)"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
+        guard let match = regex.firstMatch(in: raw, options: [], range: range),
+              let valueRange = Range(match.range(at: 1), in: raw) else { return nil }
+        guard let number = Double(raw[valueRange]) else { return nil }
+        return CGFloat(number)
+    }
+
+    private func readScrollMetrics(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> ScrollMetrics {
+        let scroll = app.scrollViews["imageScrollView"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5), "imageScrollView should exist", file: file, line: line)
+
+        guard let raw = scroll.value as? String,
+              let mag = parseMetric("mag", from: raw),
+              let originX = parseMetric("originX", from: raw),
+              let minX = parseMetric("minX", from: raw),
+              let maxX = parseMetric("maxX", from: raw) else {
+            XCTFail("Cannot parse imageScrollView metrics: \(String(describing: scroll.value))", file: file, line: line)
+            return ScrollMetrics(magnification: 0, originX: 0, minX: 0, maxX: 0)
+        }
+
+        return ScrollMetrics(magnification: mag, originX: originX, minX: minX, maxX: maxX)
+    }
+
+    private func assertNotPinnedToLeftEdge(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let metrics = readScrollMetrics(file: file, line: line)
+        let scrollableWidth = metrics.maxX - metrics.minX
+        guard scrollableWidth > 1 else { return }  // 不可捲動時不判定貼邊
+
+        XCTAssertGreaterThan(
+            metrics.originX,
+            metrics.minX + 1.0,
+            "Image should not pin to left edge when scrollable. metrics=\(metrics)",
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertFullscreenCenteredInset(
+        minimumInset: CGFloat = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let metrics = readScrollMetrics(file: file, line: line)
+        let scrollableWidth = metrics.maxX - metrics.minX
+        guard scrollableWidth <= 1 else { return }  // 可捲動時交由 assertNotPinnedToLeftEdge 判斷
+
+        XCTAssertLessThan(
+            metrics.minX,
+            -minimumInset,
+            "Fullscreen centered inset should keep minX negative. metrics=\(metrics)",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            metrics.originX,
+            metrics.minX,
+            accuracy: 1.0,
+            "When non-scrollable horizontally, originX should stay on centered minX. metrics=\(metrics)",
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Smoke Tests
 
     func testSmoke_AppLaunchesAndDisplaysImage() throws {
@@ -256,6 +335,35 @@ final class CeeUITests: XCTestCase {
         sleep(2)
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
         assertImageOverlapsViewport(in: window)
+    }
+
+    func testFullscreenZoom_RemainsHorizontallyCentered() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+
+        app.typeKey("f", modifierFlags: .command)   // Enter fullscreen
+        sleep(2)
+        waitForStableLayout()
+        _ = readScrollMetrics()
+        assertFullscreenCenteredInset()
+
+        app.typeKey("=", modifierFlags: .command)   // Zoom In
+        waitForStableLayout()
+        app.typeKey("=", modifierFlags: .command)   // Zoom In
+        waitForStableLayout()
+        assertNotPinnedToLeftEdge()
+
+        app.typeKey("-", modifierFlags: .command)   // Zoom Out
+        waitForStableLayout()
+        assertNotPinnedToLeftEdge()
+        assertFullscreenCenteredInset()
+
+        app.typeKey(.escape, modifierFlags: [])     // Exit fullscreen
+        sleep(2)
+        waitForStableLayout()
+        assertNotPinnedToLeftEdge()
     }
 
     func testZoomShortcuts_WindowCenterStaysStable() throws {

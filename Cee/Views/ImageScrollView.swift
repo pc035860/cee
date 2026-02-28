@@ -78,6 +78,7 @@ class ImageScrollView: NSScrollView {
         allowsMagnification = true
         minMagnification = Constants.minMagnification
         maxMagnification = Constants.maxMagnification
+        automaticallyAdjustsContentInsets = false
         scrollerStyle = .overlay
         hasVerticalScroller = true
         hasHorizontalScroller = true
@@ -685,9 +686,9 @@ class ImageScrollView: NSScrollView {
         let newMag = magnification + delta * sensitivity
         let clamped = max(minMagnification, min(maxMagnification, newMag))
 
-        // 以 viewport 中心為中心縮放（與 pinch zoom 一致）
-        let center = NSPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
-        setMagnification(clamped, centeredAt: center)
+        // 以可預測的視窗中心為 anchor（避免 contentInsets 暫時被重置時漂移到左側）
+        let center = zoomAnchorPoint()
+        setMagnificationPreservingInsets(clamped, centeredAt: center)
 
         // 通知 delegate（與 pinch zoom 一致）
         scrollDelegate?.scrollViewMagnificationDidChange(
@@ -699,9 +700,9 @@ class ImageScrollView: NSScrollView {
 
     /// 以 viewport 中心為中心的 Pinch Zoom
     override func magnify(with event: NSEvent) {
-        let point = NSPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
+        let point = zoomAnchorPoint()
         let newMag = magnification + event.magnification
-        setMagnification(
+        setMagnificationPreservingInsets(
             max(minMagnification, min(maxMagnification, newMag)),
             centeredAt: point
         )
@@ -710,6 +711,59 @@ class ImageScrollView: NSScrollView {
             magnification: magnification,
             gesturePhase: event.phase
         )
+    }
+
+    private func setMagnificationPreservingInsets(_ magnification: CGFloat, centeredAt point: NSPoint) {
+        let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        let previousInsets = contentInsets
+        setMagnification(magnification, centeredAt: point)
+        // AppKit 在 magnify 期間可能把 contentInsets 重置為 0，導致畫面左右閃動。
+        // 優先恢復上一幀 insets；若上一幀本來就是 0，改用幾何推導值作為保底。
+        if !edgeInsetsNearlyEqual(contentInsets, previousInsets) {
+            contentInsets = previousInsets
+        }
+        if edgeInsetsNearlyEqual(contentInsets, zeroInsets),
+           let fallbackInsets = computedCenteringInsets(),
+           !edgeInsetsNearlyEqual(fallbackInsets, zeroInsets) {
+            contentInsets = fallbackInsets
+        }
+    }
+
+    private func edgeInsetsNearlyEqual(
+        _ lhs: NSEdgeInsets,
+        _ rhs: NSEdgeInsets,
+        epsilon: CGFloat = 0.01
+    ) -> Bool {
+        abs(lhs.top - rhs.top) <= epsilon &&
+        abs(lhs.left - rhs.left) <= epsilon &&
+        abs(lhs.bottom - rhs.bottom) <= epsilon &&
+        abs(lhs.right - rhs.right) <= epsilon
+    }
+
+    private func zoomAnchorPoint() -> NSPoint {
+        let bounds = contentView.bounds
+        var anchor = NSPoint(x: bounds.midX, y: bounds.midY)
+        guard let documentView else { return anchor }
+
+        let documentSize = documentView.frame.size
+        if bounds.width >= documentSize.width {
+            anchor.x = documentSize.width / 2.0
+        }
+        if bounds.height >= documentSize.height {
+            anchor.y = documentSize.height / 2.0
+        }
+        return anchor
+    }
+
+    private func computedCenteringInsets() -> NSEdgeInsets? {
+        guard let documentView else { return nil }
+        let clipSize = contentView.bounds.size
+        let docSize = documentView.frame.size
+        guard clipSize.width > 0, clipSize.height > 0, docSize.width > 0, docSize.height > 0 else { return nil }
+
+        let insetX = max((clipSize.width - docSize.width) / 2.0, 0)
+        let insetY = max((clipSize.height - docSize.height) / 2.0, 0)
+        return NSEdgeInsets(top: insetY, left: insetX, bottom: insetY, right: insetX)
     }
 
     // MARK: - Scroll Helpers

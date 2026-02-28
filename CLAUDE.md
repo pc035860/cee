@@ -10,6 +10,15 @@ xcodegen generate          # regenerate .xcodeproj after project.yml changes
 xcodebuild -project Cee.xcodeproj -scheme Cee -configuration Debug build
 ./scripts/test-e2e.sh      # run full XCUITest suite
 xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,arch=arm64' -only-testing:CeeUITests/CeeUITests/testSmoke_AppLaunchesAndDisplaysImage
+xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS' -only-testing:CeeUITests/CeeUITests/testFullscreenZoom_RemainsHorizontallyCentered
+```
+
+Runtime debug toggles:
+
+```bash
+# either one enables CenteringDebug logs
+CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
+/path/to/Cee.app/Contents/MacOS/Cee --debug-centering
 ```
 
 ## Key Conventions
@@ -33,6 +42,14 @@ xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,
 
 - **Window restoration can produce tiny windows.** Enforce minimum content size, reject tiny persisted sizes, post-show sanity check.
 - **"Title updates but image area empty"** = layout-size issue. Verify window/content/clip sizes before blaming decode.
+
+## Fullscreen & Centering Conventions
+
+- **Never sync fullscreen with fixed delays.** Use `NSWindow.didEnterFullScreen` / `didExitFullScreen` notifications as the only reliable sync point.
+- **Fullscreen UX policy:** hide both scrollbars in fullscreen, restore outside fullscreen.
+- **Centering math must stay in one coordinate space.** Use document-space values (`clipView.bounds`, `contentView.frame`, `contentInsets`, `clip origin`) consistently.
+- **Degenerate ranges are normal.** When image is smaller than viewport, scroll range may collapse (`min == max`); clamp exactly instead of treating as error.
+- **Pinch lifecycle rule:** avoid extra deferred recenter work during `.changed`; do final normalization only at `.ended/.cancelled` to prevent visual jitter.
 
 ## Scroll & Page-Turn Gotchas
 
@@ -59,6 +76,7 @@ xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,
 - **`@MainActor` + async lifecycle** for XCTestCase to avoid Swift 6 isolation warnings. Do NOT use `nonisolated(unsafe) var app`.
 - **Always assert `XCTWaiter` result.** `.wait(...)` returns `.timedOut` silently — must check.
 - **`TestMode`** — reads `--ui-testing`/`--reset-state`/`--disable-animations` from launch args, `UITEST_FIXTURE_PATH` from env.
+- **Scroll metrics assertions** — `imageScrollView` accessibility value exposes `mag/origin/min/max`; prefer numeric range assertions over screenshot-only checks for centering regressions.
 
 ## Mouse & Gesture Interaction Gotchas
 
@@ -91,6 +109,9 @@ xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,
 - **Zoom display** — "Fit" when `!isManualZoom && alwaysFitOnOpen`; "100%" when zoom=1.0 in manual mode; otherwise percentage.
 - **Settings persistence** — `ViewerSettings.showStatusBar` defaults to `true`. New fields are backward-compatible via Codable default values.
 
-## Implementation Phases
+## Recent Significant Changes
 
-All phases 1–6 complete. PDF support complete. Status bar Phase 1 complete.
+- **Fullscreen centering hardening:** migrated from delay-based sync to notification-driven transition handling, with explicit post-transition recentering.
+- **Pinch stability improvements:** centering/clamp flow now avoids per-frame deferred corrections that cause flicker.
+- **Fullscreen presentation polish:** scrollbars are hidden while fullscreen is active.
+- **Regression coverage upgraded:** UI tests now include horizontal centering checks with parsed scroll metrics, not only visibility checks.
