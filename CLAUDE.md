@@ -19,7 +19,7 @@ Cee/
 ├── App/            AppDelegate.swift, main.swift, Info.plist
 ├── Controllers/    ImageWindowController, ImageViewController
 ├── Models/         ImageItem, ImageFolder, ViewerSettings
-├── Services/       ImageLoader (actor), FittingCalculator
+├── Services/       ImageLoader (actor, PDF+image), FittingCalculator
 ├── Views/          ImageScrollView, ImageContentView
 └── Utilities/      Constants.swift, TestMode.swift (DEBUG only)
 CeeUITests/
@@ -39,7 +39,7 @@ specs/init/         Phase specs (phase-1..6) + SPEC.md
 
 ## Swift 6 Gotchas
 
-- **`ImageLoader` is an `actor`** — never pass `ImageFolder` (a non-Sendable class) across actor boundaries. Use value types: `updateCache(currentIndex: Int, imageURLs: [URL])`.
+- **`ImageLoader` is an `actor`** — never pass `ImageFolder` (a non-Sendable class) across actor boundaries. Use value types: `updateCache(currentIndex: Int, items: [ImageItem])`. `ImageItem` is `Sendable`.
 - **CGContext interpolation** — `NSGraphicsContext.imageInterpolation` is silently ignored on macOS Big Sur+ Retina. Always set `cgCtx.interpolationQuality` directly.
 - **`setMagnification(_:centeredAt:)`** — parameter label is `centeredAt:`, not `centeredAtPoint:` (renamed in recent SDK).
 - **NSImage coordinate system** — `NSImage.draw(in:)` handles the macOS bottom-left origin automatically. Only manual-flip needed when drawing a raw `CGImage` via `cgContext.draw(_:in:)`.
@@ -99,6 +99,26 @@ NSScrollView internally intercepts arrow keys, Space, PageUp/PageDown and does N
 
 **`TestMode` enum in `Cee/Utilities/TestMode.swift`.** App reads `--ui-testing` / `--reset-state` / `--disable-animations` from launch arguments and `UITEST_FIXTURE_PATH` from launch environment. The fixture path points to the first image; the app opens that file and discovers sibling images automatically.
 
+## PDF Support
+
+**PDF pages are expanded into individual `ImageItem` entries.** Each PDF page becomes a separate `ImageItem` with `pdfPageIndex` set (0-based). This means a 10-page PDF creates 10 items in the folder list, enabling standard prev/next navigation per page.
+
+**PDF page count: Spotlight first, CGPDFDocument fallback.** `MDItemCopyAttribute(kMDItemNumberOfPages)` is near-instant for indexed files. Falls back to `CGPDFDocument.numberOfPages` if Spotlight metadata is unavailable.
+
+**PDF rendering uses fixed 2x Retina scale.** No dynamic `backingScaleFactor` detection — almost all Macs are Retina, and 2x on non-Retina is harmless. Avoids complexity of tracking screen changes.
+
+**Pixel limit guard (100M pixels) prevents OOM on huge pages.** `renderPDFPage` returns nil if `width * height > 100_000_000` (~400MB RGBA).
+
+**PDF rotation handling.** `page.rotation` (0/90/180/270) requires swapping width/height for 90°/270° and applying CG transform (translate to center → rotate → translate back). The rotation angle is negated because CG's Y-axis points up.
+
+**Cancelable prefetch tasks.** `prefetchTasks` and `imagePrefetchTasks` dictionaries track background `Task` instances keyed by `PDFCacheKey`/`URL`. `updateCache` cancels out-of-range tasks before starting new ones. `cancelAllPrefetchTasks()` clears everything on folder change.
+
+**Last-viewed page persistence.** PDF page position is saved to `UserDefaults` with key `pdf.lastPage.\(url.path)` and restored on next open. Clamped to valid range.
+
+**`ImageItem` is `Sendable`.** Required for passing items across actor boundaries to `ImageLoader.updateCache(currentIndex:items:)`.
+
+**Window subtitle shows PDF page number.** `window?.subtitle` displays "Page N" for PDF items, empty string for images.
+
 ## Implementation Phases
 
 | Phase | Status | Scope |
@@ -109,6 +129,7 @@ NSScrollView internally intercepts arrow keys, Space, PageUp/PageDown and does N
 | 4 — Window Behavior | ✅ done | Resize-to-fit, float on top, window size memory |
 | 5 — Polish | ✅ done | Error handling, edge cases, perf validation |
 | 6 — E2E Testing | ✅ done | XCUITest smoke suite passing, xcodegen UITests target |
+| PDF Support | 🔄 in progress | PDF display, per-page navigation, prefetch, last-page memory |
 
 ## Mouse & Gesture Interaction Gotchas
 

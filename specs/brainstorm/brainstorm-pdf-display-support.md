@@ -451,23 +451,53 @@ if contentType.conforms(to: .pdf) {
 - 移除 `Task.detached`（actor serial executor 已非主執行緒）
 - `updateCache` 新增 pdfDocumentCache window-based eviction
 
-**Retina 渲染修正**
+**Retina 渲染修正**（後被 Phase 3 升級取代）
 - `thumbnail(of:for:)` 改用 `pointSize × backingScaleFactor` 作為 pixel 尺寸
 - `image.size` 設回 points，保留高解析度 bitmap representation
+- ⚠️ Phase 3 棄用 `thumbnail`，改用 `NSBitmapImageRep` + `page.draw` + 固定 2x scale
 
-**未完成項目（移至 Phase 3）**
-- 白色背景 + 旋轉頁面處理（`page.rotation != 0` 時套 `page.transform(for:)`）
-- `pdfCache` key 改用 `struct PDFCacheKey: Hashable` 取代 String
+**未完成項目（移至 Phase 3）** → 全部已完成
+- ~~白色背景 + 旋轉頁面處理~~ → Phase 3 完成
+- ~~`pdfCache` key 改用 `struct PDFCacheKey: Hashable`~~ → Phase 3 完成
 
-### Phase 3 — 進階優化
-- 白色背景 + 旋轉頁面處理（`page.rotation != 0` 時套 `page.transform(for:)`）
-- `pdfCache` key 改用 `struct PDFCacheKey: Hashable` 取代 String
+### Phase 3 — 進階優化 ✅ Done (2026-02-28)
+
+**白色背景 + 旋轉處理**（commit `3c3f443`）
+- `renderPDFPage` 填白色背景後再繪製 PDF 頁面（PDF 預設透明）
+- `page.rotation`（0/90/180/270）處理：90°/270° 寬高互換，CG transform 套 translate→rotate→translate
+- 旋轉角度取負值（CG Y 軸向上）
+
+**PDFCacheKey struct**（commit `cbc9926`）
+- `pdfCache` key 從 String 改用 `struct PDFCacheKey: Hashable { url: URL, pageIndex: Int }`
+- 固定 2x Retina 渲染，key 不再需要 scale 欄位
+
+**可取消背景渲染**（commit `6b3a160`）
+- `prefetchTasks: [PDFCacheKey: Task<Void, Never>]` 追蹤 PDF 預載任務
+- `imagePrefetchTasks: [URL: Task<Void, Never>]` 追蹤圖片預載任務
+- `updateCache` 取消超出視窗範圍的任務後再啟動新的
+- `cancelAllPrefetchTasks()` 在 folder 切換時清除全部
+- `loadImageCooperative` 支援 cooperative cancellation（多處 `Task.isCancelled` 檢查）
+
+**記住上次 PDF 頁碼**（commit `da87412`）
+- `UserDefaults` key `pdf.lastPage.\(url.path)` 儲存 0-based 頁碼
+- `ImageFolder.init` 讀取 saved page 並 clamp 到有效範圍
+- `ImageViewController.savePDFLastViewedPage()` 每次換頁時儲存
+
+**渲染強化**（commit `f8f6f35`）
+- 固定 `renderScale = 2.0`（不動態偵測 `backingScaleFactor`，避免螢幕切換複雜度）
+- 像素上限 100M pixels（≈400MB RGBA）防止極大頁面 OOM
+- 前景載入 `currentLoadTask` 支援取消（快速翻頁時 cancel 前一個）
+- `renderPDFPage` 多處 `Task.isCancelled` 早期退出
+
+**thumbnail → NSBitmapImageRep 渲染升級**
+- 棄用 `page.thumbnail(of:for:)`，改用 `NSBitmapImageRep` + `page.draw(with:to:)` 完全掌控渲染
+- pixel 尺寸 = point 尺寸 × 2x scale，`NSImage.size` 設為 point 尺寸保留 Retina 解析度
+
+**未完成項目（未來考慮）**
 - Zoom ≥ 2x 高解析度重渲染（兩層解析度策略）
-- 可取消背景渲染（快速翻頁時 cancel 不需要的 Task）
 - Go menu 動態標題（"Next Page" vs "Next Image"）
 - 密碼保護 PDF 處理（`doc.isLocked`）
 - 記憶體壓力處理（`DispatchSource.makeMemoryPressureSource`）
-- **記住上次 PDF 頁碼**（重開時回到上次閱讀位置）
 
 ---
 
