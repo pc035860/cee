@@ -110,6 +110,18 @@ NSScrollView internally intercepts arrow keys, Space, PageUp/PageDown and does N
 | 5 — Polish | ✅ done | Error handling, edge cases, perf validation |
 | 6 — E2E Testing | ✅ done | XCUITest smoke suite passing, xcodegen UITests target |
 
+## Mouse & Gesture Interaction Gotchas
+
+**Cmd+scroll wheel = zoom, not scroll.** Intercepted at the top of `scrollWheel(with:)` before any other logic. Uses viewport center (matching pinch zoom), not cursor position. Sensitivity differs by device: `hasPreciseScrollingDeltas` distinguishes trackpad (0.003) from mouse wheel (0.08). Zoom direction does NOT follow Natural Scrolling — "scroll up = zoom in" always.
+
+**Mouse drag pan: full mouseDown/mouseDragged/mouseUp chain.** `mouseDown` skips `super` (avoids NSScrollView's scroller modal tracking loop) and only activates drag when no modifier keys are held. `mouseDragged` MUST call `super` when not in drag mode — otherwise AppKit's event chain breaks for modifier-key clicks. `mouseUp` always calls `super`.
+
+**NSCursor push/pop requires focus-loss safety.** If the window loses key status mid-drag, `mouseUp` won't fire. Monitor `NSWindow.didResignKeyNotification` (filtered to own window) to pop cursor and reset drag state. Also guard against double-push in `mouseDown`.
+
+**`performPan(deltaX:deltaY:)` is the shared pan helper** used by both mouse drag and three-finger trackpad pan. Single implementation avoids drift between the two input methods.
+
+**Swift 6: `deinit` cannot access stored properties** due to strict concurrency isolation. Don't try to add cleanup guards in `deinit` for properties like cursor state — use notification-based cleanup instead.
+
 ## Zoom & Fit Behavior
 
 - **`alwaysFitOnOpen` takes precedence over `isManualZoom`** in `applyFitting`. Check fit flag first.
