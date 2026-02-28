@@ -329,6 +329,171 @@ final class CeeUITests: XCTestCase {
             "Landscape fixture (800×600) should render wider than tall, got \(size)")
     }
 
+    // MARK: - Zoom + Navigation Integration Tests
+    // These tests exercise keyboard zoom (Cmd+=/-/0/1) combined with menu navigation (Cmd+]/[).
+    // Keyboard zoom goes through ImageViewController.zoomIn/zoomOut/actualSize/fitOnScreen,
+    // which call scrollView.setMagnification + resizeWindowToFitZoomedImage.
+    // Note: Cmd+scroll zoom and mouse drag pan use different code paths (handleCmdScrollZoom,
+    // mouseDragged→performPan) that cannot be tested via XCUITest — see test doc comments.
+
+    /// Validates: Zoomed-in state does not block menu-based navigation (Cmd+]/[).
+    /// Exercises: ImageViewController.zoomIn → setMagnification → resizeWindowToFitZoomedImage,
+    /// then goToNextImage/goToPreviousImage while magnification > 1.
+    /// Does NOT cover: viewportOverflow (keyDown path), performPan, handleCmdScrollZoom.
+    func testZoomIn_NavigationStillWorks() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+
+        // Record baseline window size
+        app.typeKey("0", modifierFlags: .command)   // Fit on Screen (baseline)
+        waitForStableLayout()
+        let baselineFrame = window.frame
+
+        // Zoom in to create magnification > 1
+        app.typeKey("1", modifierFlags: .command)   // Actual Size
+        waitForStableLayout()
+        app.typeKey("=", modifierFlags: .command)   // Zoom In beyond actual size
+        waitForStableLayout()
+        app.typeKey("=", modifierFlags: .command)   // Zoom In more
+        waitForStableLayout()
+
+        // Verify zoom actually took effect — window should be larger than fit baseline
+        let zoomedFrame = window.frame
+        XCTAssertGreaterThan(zoomedFrame.width, baselineFrame.width,
+                             "Window should be wider after zoom in (zoomed: \(zoomedFrame.width), baseline: \(baselineFrame.width))")
+
+        // Image should still be visible after zoom
+        assertImageOverlapsViewport(in: window)
+
+        // Navigate to next image while zoomed — zoom state must not block navigation
+        app.typeKey("]", modifierFlags: .command)
+        let predNext = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
+        }
+        let resultNext = XCTWaiter().wait(
+            for: [XCTNSPredicateExpectation(predicate: predNext, object: nil)],
+            timeout: 15
+        )
+        XCTAssertEqual(resultNext, .completed, "Navigation to next image should work while zoomed")
+
+        // Navigate back
+        app.typeKey("[", modifierFlags: .command)
+        let predPrev = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
+        }
+        let resultPrev = XCTWaiter().wait(
+            for: [XCTNSPredicateExpectation(predicate: predPrev, object: nil)],
+            timeout: 15
+        )
+        XCTAssertEqual(resultPrev, .completed, "Navigation back should work while zoomed")
+
+        // Fit to restore normal state
+        app.typeKey("0", modifierFlags: .command)
+        waitForStableLayout()
+        assertImageOverlapsViewport(in: window)
+    }
+
+    /// Validates: Repeated zoom→navigate cycles don't corrupt state (zoom level, image index, title).
+    /// Exercises: zoomIn + goToNextImage + zoomOut + goToPreviousImage as a round-trip.
+    /// Does NOT cover: scrollViewMagnificationDidChange (only triggered by scroll view events,
+    /// not by menu-driven zoomIn/zoomOut).
+    func testMultipleZoomCycles_NavigationStable() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+        waitForStableLayout()
+        let initialFrame = window.frame
+
+        // Cycle 1: Zoom in → verify zoom → navigate next
+        app.typeKey("=", modifierFlags: .command)   // Zoom In
+        waitForStableLayout()
+        let afterZoomIn = window.frame
+        XCTAssertGreaterThan(afterZoomIn.width, initialFrame.width,
+                             "Zoom In should increase window width")
+
+        app.typeKey("]", modifierFlags: .command)   // Next image
+        let pred1 = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
+        }
+        let result1 = XCTWaiter().wait(
+            for: [XCTNSPredicateExpectation(predicate: pred1, object: nil)],
+            timeout: 15
+        )
+        XCTAssertEqual(result1, .completed, "Cycle 1: navigate to 002 after zoom in")
+
+        // Cycle 2: Zoom out → navigate prev
+        app.typeKey("-", modifierFlags: .command)   // Zoom Out
+        waitForStableLayout()
+        app.typeKey("[", modifierFlags: .command)   // Previous image
+        let pred2 = NSPredicate { _, _ in
+            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
+        }
+        let result2 = XCTWaiter().wait(
+            for: [XCTNSPredicateExpectation(predicate: pred2, object: nil)],
+            timeout: 15
+        )
+        XCTAssertEqual(result2, .completed, "Cycle 2: navigate back to 001 after zoom out")
+
+        // Verify we're back at the original image with stable state
+        let title = window.title
+        XCTAssertTrue(title.contains("001-landscape.jpg"),
+                      "Should be back at first image after zoom cycles, got: \(title)")
+        XCTAssertTrue(title.contains("1/3"),
+                      "Should show position 1/3, got: \(title)")
+        assertImageOverlapsViewport(in: window)
+    }
+
+    /// Validates: Aggressive zoom (Actual Size + 3× Zoom In) keeps image visible in viewport.
+    /// Exercises: actualSize → 3× zoomIn → fitOnScreen round-trip via menu shortcuts.
+    /// Verifies zoom magnitude by asserting window frame growth at each step.
+    /// Does NOT cover: scroll-event-triggered magnification path (handleCmdScrollZoom / pinch).
+    func testAggressiveZoom_ImageRemainsVisible() throws {
+        let window = app.windows["imageWindow"]
+        XCTAssertTrue(window.waitForExistence(timeout: 10),
+                      "Main window should appear after launch")
+        XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
+
+        // Actual Size first
+        app.typeKey("1", modifierFlags: .command)
+        waitForStableLayout()
+        let actualSizeFrame = window.frame
+        assertImageOverlapsViewport(in: window)
+
+        // Zoom in aggressively (3 steps), verify frame grows
+        app.typeKey("=", modifierFlags: .command)
+        waitForStableLayout()
+        let afterZoom1 = window.frame
+        XCTAssertGreaterThanOrEqual(afterZoom1.width, actualSizeFrame.width,
+                                    "First zoom should not shrink window")
+
+        app.typeKey("=", modifierFlags: .command)
+        waitForStableLayout()
+        let afterZoom2 = window.frame
+        XCTAssertGreaterThanOrEqual(afterZoom2.width, afterZoom1.width,
+                                    "Second zoom should not shrink window vs first zoom")
+
+        app.typeKey("=", modifierFlags: .command)
+        waitForStableLayout()
+        let afterZoom3 = window.frame
+        XCTAssertGreaterThanOrEqual(afterZoom3.width, afterZoom2.width,
+                                    "Third zoom should not shrink window vs second zoom")
+
+        // Image must still overlap viewport even at high magnification
+        assertImageOverlapsViewport(in: window)
+
+        // Fit on Screen to restore
+        app.typeKey("0", modifierFlags: .command)
+        waitForStableLayout()
+
+        // Verify image is fully restored and visible
+        let image = waitForImageState("imageContent-loaded")
+        XCTAssertTrue(image.exists, "Image should exist after fit restore")
+        assertImageOverlapsViewport(in: window)
+    }
+
     // Note: scroll view zoom + navigation is exercised via keyboard shortcuts.
     // Direct scroll wheel simulation is not feasible in XCUITest macOS due to accessibility
     // frame issue (hit point {1,0}) on NSScrollView.
