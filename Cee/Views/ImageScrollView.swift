@@ -734,10 +734,7 @@ class ImageScrollView: NSScrollView {
         _ rhs: NSEdgeInsets,
         epsilon: CGFloat = 0.01
     ) -> Bool {
-        abs(lhs.top - rhs.top) <= epsilon &&
-        abs(lhs.left - rhs.left) <= epsilon &&
-        abs(lhs.bottom - rhs.bottom) <= epsilon &&
-        abs(lhs.right - rhs.right) <= epsilon
+        lhs.isNearlyEqual(to: rhs, epsilon: epsilon)
     }
 
     private func zoomAnchorPoint() -> NSPoint {
@@ -755,6 +752,8 @@ class ImageScrollView: NSScrollView {
         return anchor
     }
 
+    /// 緊急 fallback：當 AppKit 在 magnify 期間將 contentInsets 清零時，
+    /// 用幾何推導重算置中 insets。這不是主要計算來源（主要在 ImageViewController.applyCenteringInsetsIfNeeded）。
     private func computedCenteringInsets() -> NSEdgeInsets? {
         guard let documentView else { return nil }
         let clipSize = contentView.bounds.size

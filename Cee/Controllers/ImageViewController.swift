@@ -12,11 +12,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
+    private var settingsSaveTask: DispatchWorkItem?
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     private var activeMagnifyAnchor: NSPoint?
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
     private enum InitialScrollPosition { case preserve, top, bottom }
-    private var isUITesting: Bool { ProcessInfo.processInfo.arguments.contains("--ui-testing") }
+    private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
     init(folder: ImageFolder) {
         self.folder = folder
@@ -90,13 +91,22 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
         applyScrollSensitivity()
         if settings.floatOnTop { view.window?.level = .floating }
-        applyStatusBar()
-        applyCenteringInsetsIfNeeded(reason: "applySettings")
+        applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
 
     private func applyScrollSensitivity() {
         scrollView.trackpadOverscrollThreshold = settings.trackpadSensitivity.trackpadThreshold
         scrollView.wheelOverscrollThreshold = settings.wheelSensitivity.wheelThreshold
+    }
+
+    /// settings.save() 的防抖版本，避免 magnify 60fps 時每幀都做 JSON encode + UserDefaults I/O
+    private func scheduleDebouncedSettingsSave() {
+        settingsSaveTask?.cancel()
+        let task = DispatchWorkItem { [weak self] in
+            self?.settings.save()
+        }
+        settingsSaveTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + resizeAfterZoomDelay, execute: task)
     }
 
     private func applyStatusBar() {
@@ -453,10 +463,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func insetsNearlyEqual(_ lhs: NSEdgeInsets, _ rhs: NSEdgeInsets, epsilon: CGFloat = 0.5) -> Bool {
-        abs(lhs.top - rhs.top) <= epsilon &&
-        abs(lhs.left - rhs.left) <= epsilon &&
-        abs(lhs.bottom - rhs.bottom) <= epsilon &&
-        abs(lhs.right - rhs.right) <= epsilon
+        lhs.isNearlyEqual(to: rhs, epsilon: epsilon)
     }
 
     private func applyInitialScrollPosition(_ position: InitialScrollPosition) {
@@ -887,7 +894,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
         settings.isManualZoom = true
         settings.magnification = magnification
-        settings.save()
+        scheduleDebouncedSettingsSave()
         updateScalingQuality()
         applyCenteringInsetsIfNeeded(reason: "magnify.phase=\(debugPhase(gesturePhase))")
 
@@ -926,12 +933,10 @@ extension ImageViewController: ImageScrollViewDelegate {
         let phaseText = debugPhase(phase)
         let task = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            DebugCentering.log("magnify deferred centering phase=\(phaseText) finalize=\(shouldFinalize)")
+            DebugCentering.log("magnify deferred centering phase=\(phaseText)")
             self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.phase=\(phaseText)")
-            if shouldFinalize {
-                self.centerScrollPositionInValidRange()
-                self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.finalize.phase=\(phaseText)")
-            }
+            self.centerScrollPositionInValidRange()
+            self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.finalize.phase=\(phaseText)")
         }
         postMagnifyCenteringTask = task
         // 讓 AppKit magnify 事件鏈先落地，再做一次保底置中。
