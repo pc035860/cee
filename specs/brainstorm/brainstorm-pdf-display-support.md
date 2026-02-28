@@ -291,32 +291,191 @@ func loadPDFPage(url: URL, pageIndex: Int) async throws -> NSImage {
 
 ---
 
-## 七、MVP 實作階段
+## 七、效能瓶頸分析與優化方案（2026-02-28 研究）
 
-### Phase 1 — 基礎可用（最小改動）
-- `ImageItem` 加 `pdfPageIndex: Int?`
-- `ImageFolder` 偵測 PDF 並展開頁面
-- `ImageLoader` 加 `loadPDFPage()`（用 `thumbnail(of:for:)` 最簡單）
-- `ImageWindowController` title bar 顯示頁碼
-- `AppDelegate` open panel 加 `.pdf`
+**研究方法**：4 人平行研究（CGPDFDocument 效能、Swift actor 快取、延遲展開模式、業界最佳實踐）
 
-### Phase 2 — 體驗完善
-- NSCache 快取 + ±2 頁預載
-- PDFDocument 實例快取（避免重複建立）
-- 白色背景 + 旋轉頁面處理
-- Retina 解析度正確渲染（`window.backingScaleFactor`）
+### 7.1 瓶頸分析
+
+#### 瓶頸 1：`scanFolder()` 同步建立所有 PDFDocument（主執行緒阻塞）
+
+`ImageFolder.swift:42` — 掃描資料夾時，每個 PDF 都建一次 `PDFDocument(url:)` 來取 `pageCount`。spec 說「只解析 header，成本低」，但對 10-22MB 的 PDF，cross-reference table 解析仍然耗時。
+
+#### 瓶頸 2：`renderPDFPage()` 每頁都重建 PDFDocument
+
+`ImageLoader.swift:40` — 開啟第 0 頁時，載入當前頁 + updateCache 預載 page 1, 2 = 3 次 `PDFDocument(url:)` 建立。加上 scanFolder 的建立次數，開啟資料夾總共建了 ~5 個同一份 PDF 的 PDFDocument。
+
+### 7.2 關鍵發現
+
+#### CGPDFDocument vs PDFDocument（效能比較研究）
+
+| 面向 | CGPDFDocument | PDFDocument (PDFKit) |
+|------|:---:|:---:|
+| xref table 解析 | ✅ 必須 | ✅ 必須（相同 Core Graphics 引擎） |
+| PDFPage 物件建立 | ❌ lazy（`page(at:)` 時才建） | ⚠️ 初始化時預建 PDFPage 陣列 |
+| 文字/annotation 基礎設施 | ❌ 無 | ⚠️ 初始化時建立 |
+| Outline/書籤解析 | ❌ 無 | ⚠️ 初始化時解析 |
+| 記憶體 baseline | ~6MB → ~25MB（含渲染快取） | 更高（ObjC 物件圖 + 上述開銷） |
+
+**結論**：兩者底層共用 Core Graphics xref 解析（主要成本），但 CGPDFDocument 省掉 PDFKit wrapper 開銷，**適合只取 `pageCount` 的場景**。
+
+#### Spotlight 元資料取頁數（驚喜發現）
+
+`kMDItemNumberOfPages` 可**不開啟 PDF** 就取得頁數（使用 Spotlight 預索引資料），本地檔案幾乎零成本：
+```swift
+// Shell: mdls -name kMDItemNumberOfPages document.pdf
+// Swift: NSMetadataItem 或 MDItemCopyAttribute
+```
+適合作為 Phase 2 的 scanFolder 加速方案，失敗時 fallback 到 `CGPDFDocument`。
+
+#### Swift Actor 快取模式
+
+- **Dictionary 優於 NSCache**：actor 已提供序列化存取，NSCache 的執行緒安全是多餘的；NSCache 驅逐行為不可預測（非 LRU）
+- **`renderPDFPage` 從 `static` 改為 instance method**：才能存取 actor 內的 `pdfDocumentCache`
+- **移除 `Task.detached`**：actor 方法已在非主執行緒執行，actor serial queue 不會成為瓶頸
+- **window-based eviction**：延伸現有 `updateCache` 滑動視窗機制，清理視窗外的 PDFDocument
+
+#### Sequential 開源閱覽器的作法
+
+Sequential 使用 **tree-based deferred loading**：
+- PDF 被視為容器（`PGPDFAdapter` 繼承 `PGContainerAdapter`）
+- 資料夾掃描時只建立節點，不解析 PDF
+- `loadIfNecessary` 機制在使用者導航到 PDF 時才展開頁面
+
+#### 業界 PDF 渲染最佳實踐
+
+- **PDFDocument 不是 thread-safe**：不能跨執行緒共用。但 actor 的 serial executor 天然解決此問題
+- **Pre-render ±1-2 頁**：顯示預渲染的 NSImage，避免 tile rendering lag
+- **可取消渲染**：快速翻頁時取消不再需要的背景渲染（Swift Task cancellation）
+- **兩層解析度**：zoom < 2x 用螢幕解析度；zoom ≥ 2x 觸發高解析度重渲染
+
+### 7.3 推薦方案：A + B 都做
+
+#### 方案 A：PDFDocument 快取（解決翻頁速度）
+
+在 `ImageLoader` actor 內快取 `PDFDocument` per URL：
+
+```swift
+// ImageLoader actor
+private var pdfDocumentCache: [URL: PDFDocument] = [:]
+
+// 從 static 改為 instance method
+private func cachedDocument(url: URL) -> PDFDocument? {
+    if let doc = pdfDocumentCache[url] { return doc }
+    let doc = PDFDocument(url: url)
+    if let doc { pdfDocumentCache[url] = doc }
+    return doc
+}
+
+// updateCache 時清理視窗外的 PDFDocument
+func updateCache(currentIndex: Int, items: [ImageItem]) {
+    let range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
+    let activePDFURLs = Set(items[range].filter { $0.isPDF }.map(\.url))
+    pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
+    // ... existing image cache logic
+}
+```
+
+#### 方案 B：scanFolder 輕量取頁數（解決開啟速度）
+
+優先順序：
+
+1. **Spotlight 元資料**（零成本，本地檔案幾乎一定有索引）
+2. **`CGPDFDocument`**（比 PDFKit 輕，只取 `numberOfPages`）
+3. **`PDFDocument`**（最後 fallback）
+
+```swift
+// scanFolder 中
+if contentType.conforms(to: .pdf) {
+    let pageCount: Int
+    // 嘗試 Spotlight 元資料（最快）
+    if let mdItem = MDItemCreateWithURL(nil, fileURL as CFURL),
+       let pages = MDItemCopyAttribute(mdItem, kMDItemNumberOfPages) as? Int {
+        pageCount = pages
+    }
+    // Fallback: CGPDFDocument（比 PDFKit 輕）
+    else if let cgDoc = CGPDFDocument(fileURL as CFURL) {
+        pageCount = cgDoc.numberOfPages
+    } else {
+        pageCount = 0
+    }
+    for i in 0..<pageCount {
+        items.append(ImageItem(url: fileURL, pdfPageIndex: i))
+    }
+}
+```
+
+### 7.4 研究來源
+
+- [CGPDFDocument Apple Docs](https://developer.apple.com/documentation/coregraphics/cgpdfdocument)
+- [PDFDocument Apple Docs](https://developer.apple.com/documentation/pdfkit/pdfdocument)
+- [WWDC22: What's new in PDFKit](https://developer.apple.com/videos/play/wwdc2022/10089/)
+- [PSPDFKit: What contributes to slow PDF rendering](https://pspdfkit.com/blog/2021/what-contributes-to-slow-pdf-rendering/)
+- [PSPDFKit: Tackling PDF performance issues](https://pspdfkit.com/blog/2021/tackling-pdf-performance-issues/)
+- [PSPDFKit: Rendering PDF pages](https://pspdfkit.com/guides/ios/getting-started/rendering-pdf-pages)
+- [PDF xref table parsing](https://eliot-jones.com/2025/8/pdf-parsing-xref)
+- [CGPDFDocument memory secrets (SO)](https://stackoverflow.com/questions/4668772/)
+- [CGPDFDocument threading rules (SO)](https://stackoverflow.com/questions/8199929/cgpdfdocument-threading)
+- [NSCache vs LRU](https://mjtsai.com/blog/2025/05/09/nscache-and-lrucache/)
+- [Swift actors guide](https://www.avanderlee.com/swift/actors/)
+- [Non-Sendable types in actors](https://www.massicotte.org/non-sendable/)
+- [Sequential source (GitHub)](https://github.com/btrask/Sequential)
+- [Spotlight PDF page count](https://leancrew.com/all-this/2017/04/pdf-page-counts-and-mdls/)
+- [Fast thumbnails with CGImageSource](https://macguru.dev/fast-thumbnails-with-cgimagesource/)
+- [Fast PDF viewer patterns (SO)](https://stackoverflow.com/questions/3889634/fast-and-lean-pdf-viewer-for-iphone-ipad-ios-tips-and-hints)
+- [Swift structured caching in actors (Swift Forums)](https://forums.swift.org/t/structured-caching-in-an-actor/65501)
+
+---
+
+## 八、MVP 實作階段
+
+### Phase 1 — 基礎可用（最小改動）✅ Done (2026-02-28, commit `cae2134`)
+- `ImageItem` 加 `pdfPageIndex: Int?` + `Sendable`
+- `ImageFolder` 偵測 PDF（`.pdf` 加入 `supportedTypes`）並用 `flatMap` 展開頁面
+- `ImageLoader` 加 `loadPDFPage()` + `pdfCache`（用 `thumbnail(of:for:)`）
+- `ImageViewController` 分支 PDF/圖片載入路徑，`updateCache` 改接 `[ImageItem]`
+- `ImageWindowController` title bar 加 `window.subtitle` 顯示頁碼
+- `AppDelegate` 自動繼承（`supportedTypes` 已含 `.pdf`）
+- **設計決策**：title bar `(x/y)` 保持扁平化索引（含 PDF 頁面），不改成檔案索引
+
+### Phase 2 — 效能優化 ✅ Done (2026-02-28)
+
+**方案 B：scanFolder 輕量化**（`ImageFolder.swift`）
+- `import PDFKit` → `import CoreGraphics` + `import CoreServices`
+- 新增 `pdfPageCount(for:)` helper：Spotlight `kMDItemNumberOfPages`（零成本） → `CGPDFDocument`（fallback） → 0
+- `scanFolder()` 不再建立 `PDFDocument`，主執行緒阻塞完全解除
+
+**方案 A：PDFDocument 快取**（`ImageLoader.swift`）
+- 新增 `pdfDocumentCache: [URL: PDFDocument]`，同一 PDF 只建立一次
+- `renderPDFPage` 從 `static` 改為 instance method，存取快取
+- 移除 `Task.detached`（actor serial executor 已非主執行緒）
+- `updateCache` 新增 pdfDocumentCache window-based eviction
+
+**Retina 渲染修正**
+- `thumbnail(of:for:)` 改用 `pointSize × backingScaleFactor` 作為 pixel 尺寸
+- `image.size` 設回 points，保留高解析度 bitmap representation
+
+**未完成項目（移至 Phase 3）**
+- 白色背景 + 旋轉頁面處理（`page.rotation != 0` 時套 `page.transform(for:)`）
+- `pdfCache` key 改用 `struct PDFCacheKey: Hashable` 取代 String
 
 ### Phase 3 — 進階優化
-- Zoom ≥ 2x 高解析度重渲染
+- 白色背景 + 旋轉頁面處理（`page.rotation != 0` 時套 `page.transform(for:)`）
+- `pdfCache` key 改用 `struct PDFCacheKey: Hashable` 取代 String
+- Zoom ≥ 2x 高解析度重渲染（兩層解析度策略）
+- 可取消背景渲染（快速翻頁時 cancel 不需要的 Task）
 - Go menu 動態標題（"Next Page" vs "Next Image"）
 - 密碼保護 PDF 處理（`doc.isLocked`）
-- 大型 PDF 效能優化
+- 記憶體壓力處理（`DispatchSource.makeMemoryPressureSource`）
+- **記住上次 PDF 頁碼**（重開時回到上次閱讀位置）
 
 ---
 
 ## 參考來源
 
+### 原始研究
 - [Apple PDFKit 文件](https://developer.apple.com/documentation/pdfkit)
+- [Apple CGPDFDocument 文件](https://developer.apple.com/documentation/coregraphics/cgpdfdocument)
 - [Apple ZoomingPDFViewer 範例](https://developer.apple.com/library/archive/samplecode/ZoomingPDFViewer/)
 - [WWDC22: What's new in PDFKit](https://developer.apple.com/videos/play/wwdc2022/10089/)
 - [PSPDFKit: PDF to Image in Swift](https://pspdfkit.com/blog/2020/convert-pdf-to-image-in-swift/)
@@ -328,3 +487,17 @@ func loadPDFPage(url: URL, pageIndex: Int) async throws -> NSImage {
 - [Swift Concurrency Image Loader 模式](https://www.donnywals.com/using-swifts-async-await-to-build-an-image-loader/)
 - [NSCache 與 LRUCache](https://mjtsai.com/blog/2025/05/09/nscache-and-lrucache/)
 - [CGPDFDocument 記憶體行為](https://stackoverflow.com/questions/4668772/)
+
+### 效能研究（2026-02-28 追加）
+- [PSPDFKit: What contributes to slow PDF rendering](https://pspdfkit.com/blog/2021/what-contributes-to-slow-pdf-rendering/)
+- [PSPDFKit: Tackling PDF performance issues](https://pspdfkit.com/blog/2021/tackling-pdf-performance-issues/)
+- [PSPDFKit: Rendering PDF pages guide](https://pspdfkit.com/guides/ios/getting-started/rendering-pdf-pages)
+- [PDF xref table parsing](https://eliot-jones.com/2025/8/pdf-parsing-xref)
+- [CGPDFDocument threading rules (SO)](https://stackoverflow.com/questions/8199929/cgpdfdocument-threading)
+- [Swift actors guide](https://www.avanderlee.com/swift/actors/)
+- [Non-Sendable types in actors](https://www.massicotte.org/non-sendable/)
+- [Sequential 原版 source (GitHub)](https://github.com/btrask/Sequential)
+- [Spotlight PDF page count](https://leancrew.com/all-this/2017/04/pdf-page-counts-and-mdls/)
+- [Fast thumbnails with CGImageSource](https://macguru.dev/fast-thumbnails-with-cgimagesource/)
+- [Fast PDF viewer patterns (SO)](https://stackoverflow.com/questions/3889634/fast-and-lean-pdf-viewer-for-iphone-ipad-ios-tips-and-hints)
+- [Swift structured caching in actors (Swift Forums)](https://forums.swift.org/t/structured-caching-in-an-actor/65501)

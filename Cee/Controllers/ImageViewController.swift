@@ -99,7 +99,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             // PDF 或一般圖片走不同載入路徑
             let image: NSImage?
             if let pageIndex = item.pdfPageIndex {
-                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+                let scale = view.window?.backingScaleFactor ?? 2.0
+                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex, backingScale: scale)
             } else {
                 image = await loader.loadImage(at: item.url)
             }

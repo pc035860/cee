@@ -6,6 +6,7 @@ import PDFKit
 actor ImageLoader {
     private var cache: [URL: NSImage] = [:]
     private var pdfCache: [String: NSImage] = [:]
+    private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
 
     func loadImage(at url: URL) async -> NSImage? {
@@ -22,30 +23,36 @@ actor ImageLoader {
 
     // MARK: - PDF Loading
 
-    func loadPDFPage(url: URL, pageIndex: Int) async -> NSImage? {
-        let key = pdfCacheKey(url: url, pageIndex: pageIndex)
+    func loadPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat = 2.0) async -> NSImage? {
+        let key = pdfCacheKey(url: url, pageIndex: pageIndex, scale: backingScale)
         if let cached = pdfCache[key] { return cached }
 
-        // TODO: Phase 2 — cache PDFDocument instances per-URL to avoid
-        // repeated ~19MB allocation per page render
-        let image = await Task.detached(priority: .userInitiated) {
-            Self.renderPDFPage(url: url, pageIndex: pageIndex)
-        }.value
+        let image = renderPDFPage(url: url, pageIndex: pageIndex, backingScale: backingScale)
 
         if let image { pdfCache[key] = image }
         return image
     }
 
-    private static func renderPDFPage(url: URL, pageIndex: Int) -> NSImage? {
-        guard let doc = PDFDocument(url: url),
-              let page = doc.page(at: pageIndex) else { return nil }
-        let size = page.bounds(for: .cropBox).size
-        // TODO: Phase 2 — multiply by backingScaleFactor for Retina-quality rendering
-        return page.thumbnail(of: size, for: .cropBox)
+    private func renderPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat) -> NSImage? {
+        let doc: PDFDocument
+        if let cached = pdfDocumentCache[url] {
+            doc = cached
+        } else {
+            guard let newDoc = PDFDocument(url: url) else { return nil }
+            pdfDocumentCache[url] = newDoc
+            doc = newDoc
+        }
+        guard let page = doc.page(at: pageIndex) else { return nil }
+        let pointSize = page.bounds(for: .cropBox).size
+        let scale = backingScale
+        let pixelSize = CGSize(width: pointSize.width * scale, height: pointSize.height * scale)
+        let image = page.thumbnail(of: pixelSize, for: .cropBox)
+        image.size = pointSize  // 以 points 顯示，保留高解析度 representation
+        return image
     }
 
-    private func pdfCacheKey(url: URL, pageIndex: Int) -> String {
-        "\(url.path)#\(pageIndex)"
+    private func pdfCacheKey(url: URL, pageIndex: Int, scale: CGFloat = 2.0) -> String {
+        "\(url.path)#\(pageIndex)@\(Int(scale))x"
     }
 
     // MARK: - Image Loading
@@ -75,12 +82,18 @@ actor ImageLoader {
         let activeImageURLs = Set(items[range].filter { !$0.isPDF }.map(\.url))
         cache = cache.filter { activeImageURLs.contains($0.key) }
 
-        // 釋放超出範圍的 PDF 快取
-        let activePDFKeys = Set(items[range].compactMap { item -> String? in
+        // 釋放超出範圍的 PDF 快取（prefix match 忽略 scale 後綴）
+        let activePDFPrefixes = Set(items[range].compactMap { item -> String? in
             guard let pageIndex = item.pdfPageIndex else { return nil }
-            return pdfCacheKey(url: item.url, pageIndex: pageIndex)
+            return "\(item.url.path)#\(pageIndex)@"
         })
-        pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
+        pdfCache = pdfCache.filter { entry in
+            activePDFPrefixes.contains { entry.key.hasPrefix($0) }
+        }
+
+        // 釋放視窗外的 PDFDocument 實例
+        let activePDFURLs = Set(items[range].filter { $0.isPDF }.map(\.url))
+        pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
 
         // 預載範圍內項目
         for i in range {

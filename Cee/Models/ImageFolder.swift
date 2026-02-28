@@ -1,5 +1,6 @@
 import Foundation
-import PDFKit
+import CoreGraphics
+import CoreServices
 import UniformTypeIdentifiers
 
 class ImageFolder {
@@ -39,12 +40,26 @@ class ImageFolder {
             else { return [] }
 
             if type.conforms(to: .pdf) {
-                guard let doc = PDFDocument(url: url) else { return [] }
-                return (0..<doc.pageCount).map { ImageItem(url: url, pdfPageIndex: $0) }
+                let count = Self.pdfPageCount(for: url)
+                guard count > 0 else { return [] }
+                return (0..<count).map { ImageItem(url: url, pdfPageIndex: $0) }
             } else {
                 return [ImageItem(url: url)]
             }
         }
+    }
+
+    /// 輕量取 PDF 頁數：Spotlight 元資料 → CGPDFDocument → 0
+    private static func pdfPageCount(for url: URL) -> Int {
+        if let mdItem = MDItemCreateWithURL(nil, url as CFURL),
+           let pages = MDItemCopyAttribute(mdItem, kMDItemNumberOfPages) as? Int,
+           pages > 0 {
+            return pages
+        }
+        if let cgDoc = CGPDFDocument(url as CFURL) {
+            return cgDoc.numberOfPages
+        }
+        return 0
     }
 
     var currentImage: ImageItem? { images[safe: currentIndex] }
