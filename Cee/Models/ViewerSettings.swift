@@ -46,6 +46,9 @@ struct ViewerSettings: Codable {
     var lastWindowWidth: CGFloat? = nil   // nil = 未曾儲存，首次啟動使用螢幕 80%
     var lastWindowHeight: CGFloat? = nil  // nil = 未曾儲存，首次啟動使用螢幕 80%
 
+    // MARK: - UI
+    var showStatusBar: Bool = true
+
     // MARK: - Persistence
     private static let key = "CeeViewerSettings"
 

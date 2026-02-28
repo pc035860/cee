@@ -78,16 +78,37 @@ class ImageWindowController: NSWindowController {
                        name: NSWindow.didResizeNotification, object: window)
         nc.addObserver(self, selector: #selector(windowWillEnterFullScreen(_:)),
                        name: NSWindow.willEnterFullScreenNotification, object: window)
+        nc.addObserver(self, selector: #selector(windowDidEnterFullScreen(_:)),
+                       name: NSWindow.didEnterFullScreenNotification, object: window)
         nc.addObserver(self, selector: #selector(windowDidExitFullScreen(_:)),
                        name: NSWindow.didExitFullScreenNotification, object: window)
     }
 
     @objc private func windowWillEnterFullScreen(_ notification: Notification) {
         isTransitioningFullScreen = true
+        DebugCentering.log("windowWillEnterFullScreen transitioning=true")
+    }
+
+    @objc private func windowDidEnterFullScreen(_ notification: Notification) {
+        isTransitioningFullScreen = false
+        DebugCentering.log("windowDidEnterFullScreen transitioning=false")
+        notifyFullscreenTransitionCompleted()
     }
 
     @objc private func windowDidExitFullScreen(_ notification: Notification) {
         isTransitioningFullScreen = false
+        DebugCentering.log("windowDidExitFullScreen transitioning=false")
+        notifyFullscreenTransitionCompleted()
+    }
+
+    private func notifyFullscreenTransitionCompleted() {
+        DebugCentering.log("notifyFullscreenTransitionCompleted dispatch")
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let vc = self.window?.contentViewController as? ImageViewController else { return }
+            DebugCentering.log("notifyFullscreenTransitionCompleted invoke VC handler")
+            vc.handleFullscreenTransitionDidComplete()
+        }
     }
 
     @objc private func windowDidResizeNotification(_ notification: Notification) {

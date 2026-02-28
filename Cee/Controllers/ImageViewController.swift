@@ -6,12 +6,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private let loader = ImageLoader()
     private var scrollView: ImageScrollView!
     private var contentView: ImageContentView!
+    private var statusBarView: StatusBarView!
+    private var statusBarHeightConstraint: NSLayoutConstraint!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var resizeAfterZoomTask: DispatchWorkItem?
+    private var postMagnifyCenteringTask: DispatchWorkItem?
+    private var settingsSaveTask: DispatchWorkItem?
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
+    private var activeMagnifyAnchor: NSPoint?
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
     private enum InitialScrollPosition { case preserve, top, bottom }
+    private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
     init(folder: ImageFolder) {
         self.folder = folder
@@ -25,7 +31,35 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         scrollView = ImageScrollView(frame: .zero)
         scrollView.documentView = contentView
         scrollView.scrollDelegate = self
-        self.view = scrollView
+
+        statusBarView = StatusBarView()
+
+        let container = NSView()
+        container.addSubview(scrollView)
+        container.addSubview(statusBarView)
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        statusBarView.translatesAutoresizingMaskIntoConstraints = false
+
+        statusBarHeightConstraint = statusBarView.heightAnchor.constraint(
+            equalToConstant: Constants.statusBarHeight
+        )
+
+        NSLayoutConstraint.activate([
+            // ScrollView fills container except bottom
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: statusBarView.topAnchor),
+
+            // StatusBar at bottom
+            statusBarView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            statusBarView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            statusBarView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            statusBarHeightConstraint,
+        ])
+
+        self.view = container
     }
 
     override func viewDidAppear() {
@@ -39,7 +73,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        applyCenteringInsetsIfNeeded()
+        updateScrollerVisibilityForFullscreen()
+        applyCenteringInsetsIfNeeded(reason: "viewDidLayout")
     }
 
     /// 視窗重用時載入新資料夾
@@ -56,12 +91,59 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
         applyScrollSensitivity()
         if settings.floatOnTop { view.window?.level = .floating }
-        applyCenteringInsetsIfNeeded()
+        applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
 
     private func applyScrollSensitivity() {
         scrollView.trackpadOverscrollThreshold = settings.trackpadSensitivity.trackpadThreshold
         scrollView.wheelOverscrollThreshold = settings.wheelSensitivity.wheelThreshold
+    }
+
+    /// settings.save() 的防抖版本，避免 magnify 60fps 時每幀都做 JSON encode + UserDefaults I/O
+    private func scheduleDebouncedSettingsSave() {
+        settingsSaveTask?.cancel()
+        let task = DispatchWorkItem { [weak self] in
+            self?.settings.save()
+        }
+        settingsSaveTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + resizeAfterZoomDelay, execute: task)
+    }
+
+    private func applyStatusBar() {
+        let visible = settings.showStatusBar
+        statusBarView.isHidden = !visible
+        statusBarHeightConstraint.constant = visible ? Constants.statusBarHeight : 0
+        applyCenteringInsetsIfNeeded(reason: "applyStatusBar")  // 重要：重新計算置中 insets
+    }
+
+    private func updateScrollerVisibilityForFullscreen() {
+        let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
+        let shouldShowScrollers = !isFullscreen
+        guard scrollView.hasVerticalScroller != shouldShowScrollers ||
+              scrollView.hasHorizontalScroller != shouldShowScrollers else { return }
+
+        scrollView.hasVerticalScroller = shouldShowScrollers
+        scrollView.hasHorizontalScroller = shouldShowScrollers
+        DebugCentering.log(
+            "updateScrollerVisibility fullscreen=\(isFullscreen) " +
+            "vertical=\(scrollView.hasVerticalScroller) horizontal=\(scrollView.hasHorizontalScroller)"
+        )
+    }
+
+    private func updateStatusBar() {
+        guard let image = contentView.image else { return }
+        let index = folder.currentIndex + 1
+        let total = folder.images.count
+        let zoom = scrollView.magnification
+        let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
+
+        statusBarView.update(
+            index: index,
+            total: total,
+            zoom: zoom,
+            imageSize: image.size,
+            isFitting: isFitting
+        )
     }
 
     private func updateScalingQuality() {
@@ -121,7 +203,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             contentView.setAccessibilityLabel(item.fileName)  // Phase 6: for test assertions
             applyFitting(for: image.size)
             applyInitialScrollPosition(initialScroll)
-            applyCenteringInsetsIfNeeded()
+            applyCenteringInsetsIfNeeded(reason: "loadCurrentImage")
+            updateStatusBar()  // Status Bar 更新
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
@@ -164,7 +247,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             setMagnificationCentered(scrollView.magnification)
         }
         updateScalingQuality()
-        applyCenteringInsetsIfNeeded()
+        applyCenteringInsetsIfNeeded(reason: "applyFitting")
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
@@ -178,10 +261,99 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func setMagnificationCentered(_ targetMagnification: CGFloat) {
         let clamped = max(Constants.minMagnification, min(Constants.maxMagnification, targetMagnification))
         scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())
-        applyCenteringInsetsIfNeeded()
+        applyCenteringInsetsIfNeeded(reason: "setMagnificationCentered")
     }
 
-    private func applyCenteringInsetsIfNeeded() {
+    private struct ScrollRange {
+        let minX: CGFloat
+        let maxX: CGFloat
+        let minY: CGFloat
+        let maxY: CGFloat
+
+        var width: CGFloat { maxX - minX }
+        var height: CGFloat { maxY - minY }
+    }
+
+    private func debugFloat(_ value: CGFloat) -> String {
+        String(format: "%.3f", value)
+    }
+
+    private func debugPoint(_ point: NSPoint) -> String {
+        "(\(debugFloat(point.x)),\(debugFloat(point.y)))"
+    }
+
+    private func debugSize(_ size: NSSize) -> String {
+        "(\(debugFloat(size.width))x\(debugFloat(size.height)))"
+    }
+
+    private func debugInsets(_ insets: NSEdgeInsets) -> String {
+        "(t:\(debugFloat(insets.top)),l:\(debugFloat(insets.left)),b:\(debugFloat(insets.bottom)),r:\(debugFloat(insets.right)))"
+    }
+
+    private func debugRange(_ range: ScrollRange?) -> String {
+        guard let range else { return "nil" }
+        return "(x:\(debugFloat(range.minX))...\(debugFloat(range.maxX)),y:\(debugFloat(range.minY))...\(debugFloat(range.maxY)))"
+    }
+
+    private func debugPhase(_ phase: NSEvent.Phase) -> String {
+        phase.isEmpty ? "none" : "\(phase.rawValue)"
+    }
+
+    private func scrollRange(for insets: NSEdgeInsets) -> ScrollRange? {
+        let clipView = scrollView.contentView
+        let visibleSize = clipView.bounds.size
+        let docSize = contentView.frame.size
+
+        guard visibleSize.width > 0, visibleSize.height > 0,
+              docSize.width > 0, docSize.height > 0 else { return nil }
+
+        let minX = -insets.left
+        let minY = -insets.top
+        let maxX = max(docSize.width - visibleSize.width + insets.right, minX)
+        let maxY = max(docSize.height - visibleSize.height + insets.bottom, minY)
+        return ScrollRange(minX: minX, maxX: maxX, minY: minY, maxY: maxY)
+    }
+
+    private func updateScrollDebugAccessibilityValue(range: ScrollRange?) {
+        guard isUITesting else { return }
+        guard let range else {
+            scrollView.setAccessibilityValue("unavailable")
+            return
+        }
+
+        let origin = scrollView.contentView.bounds.origin
+        let value = String(
+            format: "mag=%.4f;originX=%.4f;originY=%.4f;minX=%.4f;maxX=%.4f;minY=%.4f;maxY=%.4f",
+            scrollView.magnification,
+            origin.x, origin.y,
+            range.minX, range.maxX, range.minY, range.maxY
+        )
+        scrollView.setAccessibilityValue(value)
+    }
+
+    private func centerScrollPositionInValidRange() {
+        guard let range = scrollRange(for: scrollView.contentInsets) else {
+            updateScrollDebugAccessibilityValue(range: nil)
+            DebugCentering.log("centerScrollPositionInValidRange skipped range=nil")
+            return
+        }
+
+        let clipView = scrollView.contentView
+        let before = clipView.bounds.origin
+        let centeredOrigin = NSPoint(
+            x: (range.minX + range.maxX) / 2.0,
+            y: (range.minY + range.maxY) / 2.0
+        )
+        clipView.scroll(to: centeredOrigin)
+        scrollView.reflectScrolledClipView(clipView)
+        updateScrollDebugAccessibilityValue(range: range)
+        let after = clipView.bounds.origin
+        DebugCentering.log(
+            "centerScrollPositionInValidRange range=\(debugRange(range)) before=\(debugPoint(before)) after=\(debugPoint(after))"
+        )
+    }
+
+    private func applyCenteringInsetsIfNeeded(reason: String = "unspecified") {
         let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         guard let imageSize = contentView.image?.size,
               imageSize.width > 0,
@@ -189,28 +361,109 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             if !insetsNearlyEqual(scrollView.contentInsets, zeroInsets) {
                 scrollView.contentInsets = zeroInsets
             }
+            updateScrollDebugAccessibilityValue(range: scrollRange(for: zeroInsets))
+            DebugCentering.log("applyCentering reason=\(reason) image=nil resetInsets=\(debugInsets(zeroInsets))")
             return
         }
 
+        let clipView = scrollView.contentView
         let viewport = scrollView.bounds.size
-        guard viewport.width > 0, viewport.height > 0 else { return }
+        let clipSize = clipView.bounds.size
+        guard viewport.width > 0, viewport.height > 0, clipSize.width > 0, clipSize.height > 0 else {
+            DebugCentering.log(
+                "applyCentering reason=\(reason) skipped viewport=\(debugSize(viewport)) clip=\(debugSize(clipSize))"
+            )
+            return
+        }
 
-        let displayedWidth = imageSize.width * scrollView.magnification
-        let displayedHeight = imageSize.height * scrollView.magnification
-        let insetX = max((viewport.width - displayedWidth) / 2.0, 0)
-        let insetY = max((viewport.height - displayedHeight) / 2.0, 0)
+        // 重要：contentInsets / clip origin / document frame 都在文件座標系。
+        // 這裡必須用 clipView.bounds.size 與 contentView.frame.size 計算，避免縮放時座標系混用。
+        let documentSize = contentView.frame.size
+        let insetX = max((clipSize.width - documentSize.width) / 2.0, 0)
+        let insetY = max((clipSize.height - documentSize.height) / 2.0, 0)
         let targetInsets = NSEdgeInsets(top: insetY, left: insetX, bottom: insetY, right: insetX)
+        let previousInsets = scrollView.contentInsets
+        let previousRange = scrollRange(for: previousInsets)
+        let epsilon: CGFloat = 0.5
+        let currentOrigin = scrollView.contentView.bounds.origin
 
-        if !insetsNearlyEqual(scrollView.contentInsets, targetInsets) {
+        DebugCentering.log(
+            "applyCentering:start reason=\(reason) mag=\(debugFloat(scrollView.magnification)) " +
+            "viewport=\(debugSize(viewport)) clip=\(debugSize(clipSize)) image=\(debugSize(imageSize)) doc=\(debugSize(documentSize)) " +
+            "origin=\(debugPoint(currentOrigin)) previousInsets=\(debugInsets(previousInsets)) targetInsets=\(debugInsets(targetInsets))"
+        )
+
+        // 用較小容忍值判斷 insets 變化，避免像 0.017 這種小偏移被忽略，
+        // 造成看起來應置中但實際未套用 insets。
+        let insetsChanged = !insetsNearlyEqual(scrollView.contentInsets, targetInsets, epsilon: 0.01)
+        if insetsChanged {
             scrollView.contentInsets = targetInsets
+        }
+
+        let effectiveInsets = scrollView.contentInsets
+        guard let targetRange = scrollRange(for: effectiveInsets) else {
+            updateScrollDebugAccessibilityValue(range: nil)
+            return
+        }
+
+        // 從「不可捲動」切到「可捲動」時，改以中點初始化，避免落在左上角邊界
+        let becameScrollableX = (previousRange?.width ?? 0) <= epsilon && targetRange.width > epsilon
+        let becameScrollableY = (previousRange?.height ?? 0) <= epsilon && targetRange.height > epsilon
+        // 從 inset 置中模式跨到 scroll 模式時，保守回中，避免放大後貼左
+        let crossedInsetThresholdX = previousInsets.left > epsilon && targetInsets.left <= epsilon
+        let crossedInsetThresholdY = previousInsets.top > epsilon && targetInsets.top <= epsilon
+        let shouldRecenterX = becameScrollableX || crossedInsetThresholdX
+        let shouldRecenterY = becameScrollableY || crossedInsetThresholdY
+
+        DebugCentering.log(
+            "applyCentering:range reason=\(reason) previousRange=\(debugRange(previousRange)) " +
+            "targetRange=\(debugRange(targetRange)) insetsChanged=\(insetsChanged) " +
+            "effectiveInsets=\(debugInsets(effectiveInsets)) " +
+            "recenterX=\(shouldRecenterX) recenterY=\(shouldRecenterY)"
+        )
+
+        // 每次都修正 scroll position（不只在 inset 變更時）
+        // 這確保全螢幕轉換後位置正確
+        clampScrollPositionToValidRange(
+            range: targetRange,
+            recenterX: shouldRecenterX,
+            recenterY: shouldRecenterY,
+            reason: reason
+        )
+        updateScrollDebugAccessibilityValue(range: targetRange)
+        DebugCentering.log("applyCentering:end reason=\(reason) origin=\(debugPoint(scrollView.contentView.bounds.origin))")
+    }
+
+    /// 將 scroll position 限制在合法範圍內，確保置中效果
+    private func clampScrollPositionToValidRange(
+        range: ScrollRange,
+        recenterX: Bool = false,
+        recenterY: Bool = false,
+        reason: String = "unspecified"
+    ) {
+        let clipView = scrollView.contentView
+        let currentOrigin = clipView.bounds.origin
+        let clampedX = recenterX
+            ? (range.minX + range.maxX) / 2.0
+            : min(max(currentOrigin.x, range.minX), range.maxX)
+        let clampedY = recenterY
+            ? (range.minY + range.maxY) / 2.0
+            : min(max(currentOrigin.y, range.minY), range.maxY)
+
+        DebugCentering.log(
+            "clamp reason=\(reason) current=\(debugPoint(currentOrigin)) target=\(debugPoint(NSPoint(x: clampedX, y: clampedY))) " +
+            "range=\(debugRange(range)) recenterX=\(recenterX) recenterY=\(recenterY)"
+        )
+
+        if currentOrigin.x != clampedX || currentOrigin.y != clampedY {
+            clipView.scroll(to: NSPoint(x: clampedX, y: clampedY))
+            scrollView.reflectScrolledClipView(clipView)
+            DebugCentering.log("clamp applied reason=\(reason) newOrigin=\(debugPoint(clipView.bounds.origin))")
         }
     }
 
     private func insetsNearlyEqual(_ lhs: NSEdgeInsets, _ rhs: NSEdgeInsets, epsilon: CGFloat = 0.5) -> Bool {
-        abs(lhs.top - rhs.top) <= epsilon &&
-        abs(lhs.left - rhs.left) <= epsilon &&
-        abs(lhs.bottom - rhs.bottom) <= epsilon &&
-        abs(lhs.right - rhs.right) <= epsilon
+        lhs.isNearlyEqual(to: rhs, epsilon: epsilon)
     }
 
     private func applyInitialScrollPosition(_ position: InitialScrollPosition) {
@@ -361,11 +614,36 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
     }
 
+    @objc func toggleStatusBar(_ sender: Any? = nil) {
+        settings.showStatusBar.toggle()
+        settings.save()
+        applyStatusBar()
+    }
+
     @objc func toggleFullScreen(_ sender: Any? = nil) {
+        let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
+        DebugCentering.log(
+            "toggleFullScreen requested wasFullscreen=\(isFullscreen) origin=\(debugPoint(scrollView.contentView.bounds.origin)) " +
+            "insets=\(debugInsets(scrollView.contentInsets))"
+        )
         view.window?.toggleFullScreen(nil)
-        DispatchQueue.main.async { [weak self] in
-            self?.applyCenteringInsetsIfNeeded()
-        }
+    }
+
+    func handleFullscreenTransitionDidComplete() {
+        let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
+        DebugCentering.log(
+            "fullscreenTransition:didComplete start isFullscreen=\(isFullscreen) viewport=\(debugSize(scrollView.bounds.size)) " +
+            "origin=\(debugPoint(scrollView.contentView.bounds.origin)) insets=\(debugInsets(scrollView.contentInsets))"
+        )
+        updateScrollerVisibilityForFullscreen()
+        view.layoutSubtreeIfNeeded()
+        applyCenteringInsetsIfNeeded(reason: "fullscreenTransitionDidComplete.preCenter")
+        centerScrollPositionInValidRange()
+        applyCenteringInsetsIfNeeded(reason: "fullscreenTransitionDidComplete.postCenter")
+        DebugCentering.log(
+            "fullscreenTransition:didComplete end origin=\(debugPoint(scrollView.contentView.bounds.origin)) " +
+            "insets=\(debugInsets(scrollView.contentInsets))"
+        )
     }
 
     // MARK: - Fitting Options (@objc)
@@ -496,6 +774,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
+        case #selector(toggleStatusBar(_:)):
+            menuItem.title = settings.showStatusBar ? "Hide Status Bar" : "Show Status Bar"
+            return true
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"
@@ -535,7 +816,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         (window.windowController as? ImageWindowController)?
             .resizeToFitImage(displayedSize, center: false)
         recenterViewport(around: anchorPoint)
-        applyCenteringInsetsIfNeeded()
+        applyCenteringInsetsIfNeeded(reason: "resizeWindowToFitZoomedImagePreservingCenter")
     }
 
     private func recenterViewport(around anchorPoint: NSPoint) {
@@ -544,14 +825,40 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let clipSize = clipView.bounds.size
         guard clipSize.width > 0, clipSize.height > 0 else { return }
 
-        let maxOriginX = max(documentView.frame.width - clipSize.width, 0)
-        let maxOriginY = max(documentView.frame.height - clipSize.height, 0)
-        let targetOrigin = NSPoint(
-            x: min(max(anchorPoint.x - clipSize.width / 2.0, 0), maxOriginX),
-            y: min(max(anchorPoint.y - clipSize.height / 2.0, 0), maxOriginY)
+        let unclampedOrigin = NSPoint(
+            x: anchorPoint.x - clipSize.width / 2.0,
+            y: anchorPoint.y - clipSize.height / 2.0
+        )
+
+        let targetOrigin: NSPoint
+        if let range = scrollRange(for: scrollView.contentInsets) {
+            targetOrigin = NSPoint(
+                x: min(max(unclampedOrigin.x, range.minX), range.maxX),
+                y: min(max(unclampedOrigin.y, range.minY), range.maxY)
+            )
+            DebugCentering.log(
+                "recenterViewport rangeClamp insets=\(debugInsets(scrollView.contentInsets)) " +
+                "range=\(debugRange(range)) unclamped=\(debugPoint(unclampedOrigin))"
+            )
+        } else {
+            let maxOriginX = max(documentView.frame.width - clipSize.width, 0)
+            let maxOriginY = max(documentView.frame.height - clipSize.height, 0)
+            targetOrigin = NSPoint(
+                x: min(max(unclampedOrigin.x, 0), maxOriginX),
+                y: min(max(unclampedOrigin.y, 0), maxOriginY)
+            )
+            DebugCentering.log(
+                "recenterViewport fallbackClamp doc=\(debugSize(documentView.frame.size)) " +
+                "clip=\(debugSize(clipSize)) unclamped=\(debugPoint(unclampedOrigin))"
+            )
+        }
+        DebugCentering.log(
+            "recenterViewport anchor=\(debugPoint(anchorPoint)) clip=\(debugSize(clipSize)) doc=\(debugSize(documentView.frame.size)) " +
+            "target=\(debugPoint(targetOrigin)) current=\(debugPoint(clipView.bounds.origin))"
         )
         clipView.scroll(to: targetOrigin)
         scrollView.reflectScrolledClipView(clipView)
+        DebugCentering.log("recenterViewport applied origin=\(debugPoint(clipView.bounds.origin))")
     }
 
     // MARK: - Window Title Update
@@ -573,11 +880,31 @@ extension ImageViewController: ImageScrollViewDelegate {
         magnification: CGFloat,
         gesturePhase: NSEvent.Phase
     ) {
+        DebugCentering.log(
+            "magnify:start phase=\(debugPhase(gesturePhase)) mag=\(debugFloat(magnification)) " +
+            "origin=\(debugPoint(self.scrollView.contentView.bounds.origin)) insets=\(debugInsets(self.scrollView.contentInsets))"
+        )
+        if !gesturePhase.isEmpty && gesturePhase.contains(.began) {
+            // 鎖定手勢開始時的視窗中心，避免縮放過程漂移到左側
+            activeMagnifyAnchor = viewportCenterInDocumentCoordinates()
+            if let anchor = activeMagnifyAnchor {
+                DebugCentering.log("magnify anchor locked=\(debugPoint(anchor))")
+            }
+        }
+
         settings.isManualZoom = true
         settings.magnification = magnification
-        settings.save()
+        scheduleDebouncedSettingsSave()
         updateScalingQuality()
-        applyCenteringInsetsIfNeeded()
+        applyCenteringInsetsIfNeeded(reason: "magnify.phase=\(debugPhase(gesturePhase))")
+
+        if !gesturePhase.isEmpty, let anchor = activeMagnifyAnchor {
+            recenterViewport(around: anchor)
+            applyCenteringInsetsIfNeeded(reason: "magnify.recenter.phase=\(debugPhase(gesturePhase))")
+        }
+
+        let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
+        statusBarView.updateZoom(magnification, isFitting: isFitting)  // Status Bar 更新縮放
 
         if gesturePhase.isEmpty {
             scheduleResizeToFitAfterZoom(magnification: magnification)
@@ -587,6 +914,33 @@ extension ImageViewController: ImageScrollViewDelegate {
         // Trackpad pinch phases should resize window in lockstep with magnification.
         resizeAfterZoomTask?.cancel()
         resizeWindowToFitZoomedImagePreservingCenter(magnification: magnification)
+
+        if gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
+            activeMagnifyAnchor = nil
+            DebugCentering.log("magnify anchor cleared phase=\(debugPhase(gesturePhase))")
+        }
+
+        schedulePostMagnifyCentering(for: gesturePhase)
+    }
+
+    private func schedulePostMagnifyCentering(for phase: NSEvent.Phase) {
+        postMagnifyCenteringTask?.cancel()
+        let shouldFinalize = phase.contains(.ended) || phase.contains(.cancelled)
+        guard shouldFinalize else {
+            DebugCentering.log("magnify deferred centering skipped phase=\(debugPhase(phase))")
+            return
+        }
+        let phaseText = debugPhase(phase)
+        let task = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            DebugCentering.log("magnify deferred centering phase=\(phaseText)")
+            self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.phase=\(phaseText)")
+            self.centerScrollPositionInValidRange()
+            self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.finalize.phase=\(phaseText)")
+        }
+        postMagnifyCenteringTask = task
+        // 讓 AppKit magnify 事件鏈先落地，再做一次保底置中。
+        DispatchQueue.main.async(execute: task)
     }
 
     func scrollViewRequestNextImage(_ scrollView: ImageScrollView) { goToNextImage() }
