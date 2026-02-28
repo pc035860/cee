@@ -5,9 +5,32 @@ import PDFKit
 /// 使用 actor 確保快取的執行緒安全
 actor ImageLoader {
     private var cache: [URL: NSImage] = [:]
-    private var pdfCache: [String: NSImage] = [:]
+    private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
+
+    /// PDF 頁面快取的 key，只以 url + pageIndex 作為 hash/比對依據（忽略 scale）
+    private struct PDFCacheKey: Hashable {
+        let url: URL
+        let pageIndex: Int
+        let scale: CGFloat
+
+        init(url: URL, pageIndex: Int, scale: CGFloat = 2.0) {
+            self.url = url
+            self.pageIndex = pageIndex
+            self.scale = scale
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.url == rhs.url && lhs.pageIndex == rhs.pageIndex
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(url)
+            hasher.combine(pageIndex)
+            // 不 hash scale，讓不同 scale 的同一頁面共用快取條目
+        }
+    }
 
     func loadImage(at url: URL) async -> NSImage? {
         if let cached = cache[url] { return cached }
@@ -24,7 +47,7 @@ actor ImageLoader {
     // MARK: - PDF Loading
 
     func loadPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat = 2.0) async -> NSImage? {
-        let key = pdfCacheKey(url: url, pageIndex: pageIndex, scale: backingScale)
+        let key = PDFCacheKey(url: url, pageIndex: pageIndex, scale: backingScale)
         if let cached = pdfCache[key] { return cached }
 
         let image = renderPDFPage(url: url, pageIndex: pageIndex, backingScale: backingScale)
@@ -117,10 +140,6 @@ actor ImageLoader {
         return image
     }
 
-    private func pdfCacheKey(url: URL, pageIndex: Int, scale: CGFloat = 2.0) -> String {
-        "\(url.path)#\(pageIndex)@\(Int(scale))x"
-    }
-
     // MARK: - Image Loading
 
     /// 使用 ImageIO 高效解碼（比 NSImage(contentsOf:) 更高效）
@@ -148,14 +167,11 @@ actor ImageLoader {
         let activeImageURLs = Set(items[range].filter { !$0.isPDF }.map(\.url))
         cache = cache.filter { activeImageURLs.contains($0.key) }
 
-        // 釋放超出範圍的 PDF 快取（prefix match 忽略 scale 後綴）
-        let activePDFPrefixes = Set(items[range].compactMap { item -> String? in
-            guard let pageIndex = item.pdfPageIndex else { return nil }
-            return "\(item.url.path)#\(pageIndex)@"
+        // 釋放超出範圍的 PDF 快取（使用 PDFCacheKey 比對，忽略 scale）
+        let activePDFKeys = Set(items[range].compactMap { item in
+            item.pdfPageIndex.map { PDFCacheKey(url: item.url, pageIndex: $0) }
         })
-        pdfCache = pdfCache.filter { entry in
-            activePDFPrefixes.contains { entry.key.hasPrefix($0) }
-        }
+        pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
 
         // 釋放視窗外的 PDFDocument 實例
         let activePDFURLs = Set(items[range].filter { $0.isPDF }.map(\.url))
@@ -165,7 +181,7 @@ actor ImageLoader {
         for i in range {
             let item = items[i]
             if let pageIndex = item.pdfPageIndex {
-                let key = pdfCacheKey(url: item.url, pageIndex: pageIndex)
+                let key = PDFCacheKey(url: item.url, pageIndex: pageIndex)
                 if pdfCache[key] == nil {
                     Task { _ = await loadPDFPage(url: item.url, pageIndex: pageIndex) }
                 }
