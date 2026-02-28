@@ -258,6 +258,34 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         if !insetsNearlyEqual(scrollView.contentInsets, targetInsets) {
             scrollView.contentInsets = targetInsets
+            // 修正 scroll position 到合法範圍，確保置中效果
+            clampScrollPositionToValidRange()
+        }
+    }
+
+    /// 將 scroll position 限制在合法範圍內，修正全螢幕轉換後的偏移問題
+    private func clampScrollPositionToValidRange() {
+        let clipView = scrollView.contentView
+        let docSize = contentView.frame.size
+        let viewportSize = scrollView.bounds.size
+
+        guard docSize.width > 0, docSize.height > 0,
+              viewportSize.width > 0, viewportSize.height > 0 else { return }
+
+        let insets = scrollView.contentInsets
+        // 計算合法的 scroll 範圍
+        let minX = -insets.left
+        let maxX = max(docSize.width - viewportSize.width + insets.right, minX)
+        let minY = -insets.top
+        let maxY = max(docSize.height - viewportSize.height + insets.bottom, minY)
+
+        let currentOrigin = clipView.bounds.origin
+        let clampedX = min(max(currentOrigin.x, minX), maxX)
+        let clampedY = min(max(currentOrigin.y, minY), maxY)
+
+        if currentOrigin.x != clampedX || currentOrigin.y != clampedY {
+            clipView.scroll(to: NSPoint(x: clampedX, y: clampedY))
+            scrollView.reflectScrolledClipView(clipView)
         }
     }
 
