@@ -7,6 +7,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var scrollView: ImageScrollView!
     private var contentView: ImageContentView!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
+    private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var resizeAfterZoomTask: DispatchWorkItem?
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
@@ -43,6 +44,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// 視窗重用時載入新資料夾
     func loadFolder(_ newFolder: ImageFolder) {
+        Task { await loader.cancelAllPrefetchTasks() }
         self.folder = newFolder
         loadCurrentImage(initialScroll: .top)
         view.window?.makeFirstResponder(scrollView)
@@ -95,12 +97,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         currentLoadRequestID = requestID
         contentView.loadingState = .loading  // Phase 6: accessibility state tracking
 
-        Task {
+        currentLoadTask?.cancel()
+        currentLoadTask = Task {
             // PDF 或一般圖片走不同載入路徑
             let image: NSImage?
             if let pageIndex = item.pdfPageIndex {
-                let scale = view.window?.backingScaleFactor ?? 2.0
-                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex, backingScale: scale)
+                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
             } else {
                 image = await loader.loadImage(at: item.url)
             }

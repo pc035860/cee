@@ -13,27 +13,10 @@ actor ImageLoader {
     private var prefetchTasks: [PDFCacheKey: Task<Void, Never>] = [:]
     private var imagePrefetchTasks: [URL: Task<Void, Never>] = [:]
 
-    /// PDF 頁面快取的 key，只以 url + pageIndex 作為 hash/比對依據（忽略 scale）
+    /// PDF 頁面快取的 key（固定以 2x Retina 渲染，無需區分 scale）
     private struct PDFCacheKey: Hashable {
         let url: URL
         let pageIndex: Int
-        let scale: CGFloat
-
-        init(url: URL, pageIndex: Int, scale: CGFloat = 2.0) {
-            self.url = url
-            self.pageIndex = pageIndex
-            self.scale = scale
-        }
-
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.url == rhs.url && lhs.pageIndex == rhs.pageIndex
-        }
-
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(url)
-            hasher.combine(pageIndex)
-            // 不 hash scale，讓不同 scale 的同一頁面共用快取條目
-        }
     }
 
     func loadImage(at url: URL) async -> NSImage? {
@@ -50,17 +33,21 @@ actor ImageLoader {
 
     // MARK: - PDF Loading
 
-    func loadPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat = 2.0) async -> NSImage? {
-        let key = PDFCacheKey(url: url, pageIndex: pageIndex, scale: backingScale)
+    func loadPDFPage(url: URL, pageIndex: Int) async -> NSImage? {
+        let key = PDFCacheKey(url: url, pageIndex: pageIndex)
         if let cached = pdfCache[key] { return cached }
 
-        let image = renderPDFPage(url: url, pageIndex: pageIndex, backingScale: backingScale)
+        let image = renderPDFPage(url: url, pageIndex: pageIndex)
 
         if let image { pdfCache[key] = image }
         return image
     }
 
-    private func renderPDFPage(url: URL, pageIndex: Int, backingScale: CGFloat) -> NSImage? {
+    /// 固定使用 2x Retina scale 渲染（幾乎所有 Mac 都是 Retina，非 Retina 顯示 2x 無害）
+    private static let renderScale: CGFloat = 2.0
+
+    private func renderPDFPage(url: URL, pageIndex: Int) -> NSImage? {
+        let backingScale = Self.renderScale
         // 早期取消檢查
         guard !Task.isCancelled else { return nil }
 
@@ -97,6 +84,11 @@ actor ImageLoader {
             width: pointSize.width * backingScale,
             height: pointSize.height * backingScale
         )
+
+        // 像素上限保護：超過 1 億像素（≈400MB RGBA）時跳過，防止極大頁面 OOM
+        let totalPixels = pixelSize.width * pixelSize.height
+        guard totalPixels > 0, totalPixels <= 100_000_000 else { return nil }
+
         guard let bitmapRep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int(pixelSize.width),
