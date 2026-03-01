@@ -200,8 +200,15 @@ class ImageWindowController: NSWindowController {
             window?.subtitle = ""
             return
         }
-        let position = "\(folder.currentIndex + 1)/\(folder.images.count)"
-        window?.title = "\(item.url.lastPathComponent) (\(position))"
+        // StatusBar 可見時索引在 bar 顯示，標題列不重複
+        let showIndex = (contentViewController as? ImageViewController)
+            .map { !$0.settings.showStatusBar } ?? true
+        if showIndex {
+            let position = "\(folder.currentIndex + 1)/\(folder.images.count)"
+            window?.title = "\(item.url.lastPathComponent) (\(position))"
+        } else {
+            window?.title = item.url.lastPathComponent
+        }
         window?.subtitle = item.pdfPageIndex.map { "Page \($0 + 1)" } ?? ""
     }
 }

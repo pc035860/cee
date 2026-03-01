@@ -18,6 +18,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var activeMagnifyAnchor: NSPoint?
     private var isZooming = false
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
+
+    /// StatusBar 佔用的實際高度（隱藏時為 0）
+    private var effectiveStatusBarHeight: CGFloat {
+        settings.showStatusBar ? Constants.statusBarHeight : 0
+    }
+
+    /// ScrollView bounds 扣除 statusBar overlay 後的有效 viewport
+    private var effectiveScrollViewport: NSSize {
+        NSSize(
+            width: scrollView.bounds.width,
+            height: scrollView.bounds.height - effectiveStatusBarHeight
+        )
+    }
     private enum InitialScrollPosition { case preserve, top, bottom }
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
@@ -48,13 +61,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         )
 
         NSLayoutConstraint.activate([
-            // ScrollView fills container except bottom
+            // ScrollView fills entire container (statusBar overlays on top)
             scrollView.topAnchor.constraint(equalTo: container.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: statusBarView.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
-            // StatusBar at bottom
+            // StatusBar overlays at bottom
             statusBarView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             statusBarView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             statusBarView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
@@ -113,7 +126,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applyStatusBar() {
         let visible = settings.showStatusBar
         statusBarView.isHidden = !visible
-        statusBarHeightConstraint.constant = visible ? Constants.statusBarHeight : 0
+        // statusBarHeightConstraint 永遠是 22pt，改由 contentInsets 控制可見性
         applyCenteringInsetsIfNeeded(reason: "applyStatusBar")  // 重要：重新計算置中 insets
     }
 
@@ -245,8 +258,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard imageSize.width > 0, imageSize.height > 0 else { return }
         // documentView frame 必須設定為圖片原始尺寸，magnification 才有東西可縮放
         contentView.frame = NSRect(origin: .zero, size: imageSize)
-        let viewportSize = scrollView.bounds.size
-        guard viewportSize.width > 0, viewportSize.height > 0 else {
+        // 計算有效 viewport：scrollView 現在填滿 container，需扣除覆蓋的 statusBar 高度
+        let viewport = effectiveScrollViewport
+        guard viewport.width > 0, viewport.height > 0 else {
             setMagnificationCentered(1.0)
             return
         }
@@ -254,7 +268,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         if settings.alwaysFitOnOpen {
             let fitted = FittingCalculator.calculate(
                 imageSize: imageSize,
-                viewportSize: viewportSize,
+                viewportSize: viewport,
                 options: settings.fittingOptions
             )
             setMagnificationCentered(fitted.width / imageSize.width)
@@ -334,9 +348,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
               docSize.width > 0, docSize.height > 0 else { return nil }
 
         let minX = -insets.left
-        let minY = -insets.top
+        // NSScrollView contentInsets 以視覺邊緣為語意：.top = visual top, .bottom = visual bottom
+        // unflipped 座標下 visual top = high Y (maxY), visual bottom = low Y (minY)
+        let minY = -insets.bottom
         let maxX = max(docSize.width - visibleSize.width + insets.right, minX)
-        let maxY = max(docSize.height - visibleSize.height + insets.bottom, minY)
+        let maxY = max(docSize.height - visibleSize.height + insets.top, minY)
         return ScrollRange(minX: minX, maxX: maxX, minY: minY, maxY: maxY)
     }
 
@@ -406,8 +422,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // 這裡必須用 clipView.bounds.size 與 contentView.frame.size 計算，避免縮放時座標系混用。
         let documentSize = contentView.frame.size
         let insetX = max((clipSize.width - documentSize.width) / 2.0, 0)
-        let insetY = max((clipSize.height - documentSize.height) / 2.0, 0)
-        let targetInsets = NSEdgeInsets(top: insetY, left: insetX, bottom: insetY, right: insetX)
+        // NSScrollView contentInsets 以視覺邊緣為語意：.top = visual top, .bottom = visual bottom。
+        // statusBar 在 visual bottom → statusBarH 加到 .bottom。
+        // clipSize / documentSize / contentInsets 皆在同一座標系，statusBarH 直接使用即可。
+        let statusBarH = effectiveStatusBarHeight
+        let effectiveClipHeight = clipSize.height - statusBarH
+        let insetY = max((effectiveClipHeight - documentSize.height) / 2.0, 0)
+        // .top = visual top（置中）、.bottom = visual bottom（置中 + status bar padding）
+        let targetInsets = NSEdgeInsets(top: insetY, left: insetX, bottom: insetY + statusBarH, right: insetX)
         let previousInsets = scrollView.contentInsets
         let previousRange = scrollRange(for: previousInsets)
         let epsilon: CGFloat = 0.5
@@ -649,6 +671,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.showStatusBar.toggle()
         settings.save()
         applyStatusBar()
+        updateWindowTitle()  // 切換 Status Bar 後更新標題列顯示
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {
@@ -848,7 +871,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
               let imageSize = contentView.image?.size else { return }
 
         let anchorPoint = viewportCenterInDocumentCoordinates()
-        let statusBarH = statusBarHeightConstraint.constant
+        let statusBarH = effectiveStatusBarHeight
         let displayedSize = NSSize(
             width: imageSize.width * magnification,
             height: imageSize.height * magnification + statusBarH
@@ -861,11 +884,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // 在 auto-fit 模式下重新校正 magnification 以匹配實際 viewport。
         if settings.alwaysFitOnOpen && !settings.isManualZoom {
             view.layoutSubtreeIfNeeded()
-            let actualViewport = scrollView.bounds.size
-            if actualViewport.width > 0, actualViewport.height > 0 {
+            // 使用有效 viewport（扣除 statusBar）來計算 fitting
+            let viewport = effectiveScrollViewport
+            if viewport.width > 0, viewport.height > 0 {
                 let fitted = FittingCalculator.calculate(
                     imageSize: imageSize,
-                    viewportSize: actualViewport,
+                    viewportSize: viewport,
                     options: settings.fittingOptions
                 )
                 let refitMag = fitted.width / imageSize.width

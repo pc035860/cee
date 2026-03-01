@@ -35,6 +35,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **`setMagnification(_:centeredAt:)`** — parameter label is `centeredAt:`, not `centeredAtPoint:`.
 - **Protocol + @MainActor** — delegate protocols called from NSScrollView subclasses must be marked `@MainActor` to avoid Swift 6 isolation errors.
 - **NSScrollView unflipped coordinates** — visual top = high Y (`clipBounds.maxY >= docFrame.height`), visual bottom = low Y (`clipBounds.minY <= 0`). Easy to swap.
+- **NSScrollView `contentInsets` uses visual semantics** — `.top` = visual top (high Y), `.bottom` = visual bottom (low Y), regardless of unflipped coordinate system. In `scrollRange`: `minY = -insets.bottom`, `maxY = docH - clipH + insets.top`. Getting this backwards causes asymmetric scroll range bugs.
 - **CALayer y-axis is flipped in layer-backed NSView.** `wantsLayer = true` → AppKit sets `layer.isGeometryFlipped = true` → `y=0` is visual top. Opposite of raw Core Animation.
 - **`deinit` cannot access stored properties** in strict concurrency. Use notification-based cleanup instead.
 
@@ -48,7 +49,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Never sync fullscreen with fixed delays.** Use `NSWindow.didEnterFullScreen` / `didExitFullScreen` notifications as the only reliable sync point.
 - **Fullscreen UX policy:** hide both scrollbars in fullscreen, restore outside fullscreen.
 - **Re-apply AutoFit after fullscreen transition.** `handleFullscreenTransitionDidComplete()` must call `applyFitting()` when `!isManualZoom && alwaysFitOnOpen` to handle viewport size changes.
-- **Centering math must stay in one coordinate space.** Use document-space values (`clipView.bounds`, `contentView.frame`, `contentInsets`, `clip origin`) consistently.
+- **Centering math must stay in one coordinate space.** `clipView.bounds`, `contentView.frame`, `contentInsets`, and `clip origin` are all in the same space. Never convert screen-point constants (like `statusBarHeight`) by dividing by magnification.
 - **Degenerate ranges are normal.** When image is smaller than viewport, scroll range may collapse (`min == max`); clamp exactly instead of treating as error.
 - **Pinch lifecycle rule:** avoid extra deferred recenter work during `.changed`; do final normalization only at `.ended/.cancelled` to prevent visual jitter.
 
@@ -116,9 +117,12 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 ## Status Bar
 
-- **Container View pattern** — `ImageViewController.view` is a container NSView, not the scrollView directly. ScrollView + StatusBarView are siblings via Auto Layout.
-- **View hierarchy**: `container → [scrollView, statusBarView]`. ScrollView fills except bottom; StatusBar pinned to bottom with 22pt height.
-- **Toggle pattern** — `statusBarHeightConstraint.constant` toggles between 22pt/0; `applyCenteringInsetsIfNeeded()` called after toggle to recalculate centering.
+- **Overlay design** — StatusBarView (`NSVisualEffectView`, `.titlebar` material) overlays at the bottom of the scroll view. ScrollView fills the entire container; status bar floats on top for translucent immersive effect.
+- **View hierarchy**: `container → [scrollView, statusBarView]`. ScrollView fills entire container; StatusBar pinned to bottom with fixed 22pt height.
+- **contentInsets for padding** — `applyCenteringInsetsIfNeeded` adds `statusBarH` to `.bottom` inset (visual bottom) so images aren't obscured. All scroll helpers (`scrollToTop/Bottom`, `panUp/Down`, `performPan`) must use insets-aware range, not hardcoded `0`/`doc-clip`.
+- **No magnification conversion for statusBarH** — `clipView.bounds.size`, `contentView.frame.size`, and `contentInsets` are all in the same coordinate space. Do NOT divide `statusBarH` by magnification; it causes padding to vary with zoom level.
+- **applyFitting uses effectiveViewportSize** — `scrollView.bounds.height - statusBarH` for fitting calculation, keeping the status bar area as overlay-only space.
+- **Toggle pattern** — `statusBarView.isHidden` controls visibility; `statusBarHeightConstraint` stays at 22pt. `applyCenteringInsetsIfNeeded()` called after toggle.
 - **Zoom display** — "Fit" when `!isManualZoom && alwaysFitOnOpen`; "100%" when zoom=1.0 in manual mode; otherwise percentage.
 - **Settings persistence** — `ViewerSettings.showStatusBar` defaults to `true`. New fields are backward-compatible via Codable default values.
 
@@ -129,3 +133,4 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Fullscreen hardening:** migrated from delay-based sync to notification-driven transition handling. AutoFit now re-applies after fullscreen transition when in auto-fit mode.
 - **Smooth arrow pan:** arrow key scrolling now uses `NSAnimationContext` for 0.1s smooth animation instead of instant jump.
 - **Simplified navigation:** up/down arrows only scroll, never navigate images. Left/right arrows retain edge navigation.
+- **Status bar overlay with material effect:** StatusBarView migrated to `NSVisualEffectView` with `.titlebar` material. ScrollView now fills entire container; status bar overlays at bottom with `contentInsets`-based padding. Fixed `scrollRange` Y-axis semantics (`.top`=visual top, `.bottom`=visual bottom) to match NSScrollView's native scroll bounds.
