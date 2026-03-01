@@ -47,6 +47,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 - **Never sync fullscreen with fixed delays.** Use `NSWindow.didEnterFullScreen` / `didExitFullScreen` notifications as the only reliable sync point.
 - **Fullscreen UX policy:** hide both scrollbars in fullscreen, restore outside fullscreen.
+- **Re-apply AutoFit after fullscreen transition.** `handleFullscreenTransitionDidComplete()` must call `applyFitting()` when `!isManualZoom && alwaysFitOnOpen` to handle viewport size changes.
 - **Centering math must stay in one coordinate space.** Use document-space values (`clipView.bounds`, `contentView.frame`, `contentInsets`, `clip origin`) consistently.
 - **Degenerate ranges are normal.** When image is smaller than viewport, scroll range may collapse (`min == max`); clamp exactly instead of treating as error.
 - **Pinch lifecycle rule:** avoid extra deferred recenter work during `.changed`; do final normalization only at `.ended/.cancelled` to prevent visual jitter.
@@ -56,7 +57,8 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Trackpad vs mouse wheel need separate handling.** Trackpad has phase lifecycle; mouse wheel has none. Detect via `event.phase != [] || event.momentumPhase != []`. Independent thresholds (trackpad ~130pt, wheel ~20pt).
 - **Trackpad page-turn: edge-start + accumulate + once-per-gesture.** Without edge-start check, mid-scroll momentum triggers false page turns.
 - **Momentum lock after page turn (~1s).** New `.began` phase immediately unlocks. Without this, residual momentum triggers second page turn.
-- **Keyboard edge-press guard.** Arrow keys: 3 extra presses at edge. PageUp/PageDown/Space: 1 extra press. No overflow → navigate directly. See `handleEdgePress(keyCode:threshold:)`.
+- **Keyboard navigation: left/right only.** Arrow up/down only scroll, never navigate. Left/right arrows: 3 extra presses at edge to navigate. PageUp/PageDown/Space: 1 extra press. See `handleEdgePress(keyCode:threshold:)`.
+- **Arrow pan animation** uses `NSAnimationContext` with `allowsImplicitAnimation = true` + `clip.scroll(to:)`, duration 0.1s. `reflectScrolledClipView` in completion handler syncs scrollbars.
 - **Edge indicators** (`CAGradientLayer`, #F97068 coral). Must call `resetEdgeState()` on page navigation or direction change.
 
 ## AppKit Menu Gotchas
@@ -124,5 +126,6 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 - **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` + `NSImage.draw(in:)` to GPU `layer.contents = cgImage`. Eliminates per-frame CPU resample during zoom (was ~33M pixels/frame for 4K Retina). Scaling quality now uses `CALayer` filters instead of `CGContext.interpolationQuality`.
 - **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.
-- **Fullscreen centering hardening:** migrated from delay-based sync to notification-driven transition handling, with explicit post-transition recentering.
-- **Pinch stability improvements:** centering/clamp flow now avoids per-frame deferred corrections that cause flicker.
+- **Fullscreen hardening:** migrated from delay-based sync to notification-driven transition handling. AutoFit now re-applies after fullscreen transition when in auto-fit mode.
+- **Smooth arrow pan:** arrow key scrolling now uses `NSAnimationContext` for 0.1s smooth animation instead of instant jump.
+- **Simplified navigation:** up/down arrows only scroll, never navigate images. Left/right arrows retain edge navigation.
