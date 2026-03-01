@@ -15,7 +15,7 @@ class ImageWindowController: NSWindowController {
         if let existing = shared, let vc = existing.contentViewController as? ImageViewController {
             // 重用現有視窗，載入新資料夾
             vc.loadFolder(folder)
-            existing.updateTitle(folder: folder, showIndex: !vc.settings.showStatusBar)
+            existing.updateTitle(folder: folder)
             existing.window?.makeKeyAndOrderFront(nil)
             return
         }
@@ -43,7 +43,7 @@ class ImageWindowController: NSWindowController {
         controller.showWindow(nil)
         controller.ensureUsableWindowSize()
         controller.setupResizeObserver()
-        controller.updateTitle(folder: folder, showIndex: !viewController.settings.showStatusBar)
+        controller.updateTitle(folder: folder)
     }
 
     /// 從 ViewerSettings 讀取儲存的視窗大小；若未儲存則用螢幕可見區域 80%
@@ -194,12 +194,15 @@ class ImageWindowController: NSWindowController {
 
     // MARK: - Window Title
 
-    func updateTitle(folder: ImageFolder, showIndex: Bool = true) {
+    func updateTitle(folder: ImageFolder) {
         guard let item = folder.currentImage else {
             window?.title = "Cee"
             window?.subtitle = ""
             return
         }
+        // StatusBar 可見時索引在 bar 顯示，標題列不重複
+        let showIndex = (contentViewController as? ImageViewController)
+            .map { !$0.settings.showStatusBar } ?? true
         if showIndex {
             let position = "\(folder.currentIndex + 1)/\(folder.images.count)"
             window?.title = "\(item.url.lastPathComponent) (\(position))"

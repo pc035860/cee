@@ -28,7 +28,6 @@ final class StatusBarView: NSVisualEffectView {
         material = .titlebar
         blendingMode = .withinWindow
         state = .active
-        wantsLayer = true
     }
 
     private func setupUI() {
@@ -41,7 +40,6 @@ final class StatusBarView: NSVisualEffectView {
             label.textColor = NSColor.secondaryLabelColor
             label.alignment = .center
             label.lineBreakMode = .byClipping
-            label.backgroundColor = .clear  // 確保透明背景
         }
 
         // 加入 subviews

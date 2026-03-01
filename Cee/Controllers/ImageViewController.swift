@@ -18,6 +18,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var activeMagnifyAnchor: NSPoint?
     private var isZooming = false
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
+
+    /// StatusBar 佔用的實際高度（隱藏時為 0）
+    private var effectiveStatusBarHeight: CGFloat {
+        settings.showStatusBar ? Constants.statusBarHeight : 0
+    }
+
+    /// ScrollView bounds 扣除 statusBar overlay 後的有效 viewport
+    private var effectiveScrollViewport: NSSize {
+        NSSize(
+            width: scrollView.bounds.width,
+            height: scrollView.bounds.height - effectiveStatusBarHeight
+        )
+    }
     private enum InitialScrollPosition { case preserve, top, bottom }
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
@@ -246,12 +259,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // documentView frame 必須設定為圖片原始尺寸，magnification 才有東西可縮放
         contentView.frame = NSRect(origin: .zero, size: imageSize)
         // 計算有效 viewport：scrollView 現在填滿 container，需扣除覆蓋的 statusBar 高度
-        let statusBarH = settings.showStatusBar ? Constants.statusBarHeight : 0
-        let effectiveViewportSize = NSSize(
-            width: scrollView.bounds.size.width,
-            height: scrollView.bounds.size.height - statusBarH
-        )
-        guard effectiveViewportSize.width > 0, effectiveViewportSize.height > 0 else {
+        let viewport = effectiveScrollViewport
+        guard viewport.width > 0, viewport.height > 0 else {
             setMagnificationCentered(1.0)
             return
         }
@@ -259,7 +268,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         if settings.alwaysFitOnOpen {
             let fitted = FittingCalculator.calculate(
                 imageSize: imageSize,
-                viewportSize: effectiveViewportSize,
+                viewportSize: viewport,
                 options: settings.fittingOptions
             )
             setMagnificationCentered(fitted.width / imageSize.width)
@@ -416,7 +425,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // NSScrollView contentInsets 以視覺邊緣為語意：.top = visual top, .bottom = visual bottom。
         // statusBar 在 visual bottom → statusBarH 加到 .bottom。
         // clipSize / documentSize / contentInsets 皆在同一座標系，statusBarH 直接使用即可。
-        let statusBarH: CGFloat = settings.showStatusBar ? Constants.statusBarHeight : 0
+        let statusBarH = effectiveStatusBarHeight
         let effectiveClipHeight = clipSize.height - statusBarH
         let insetY = max((effectiveClipHeight - documentSize.height) / 2.0, 0)
         // .top = visual top（置中）、.bottom = visual bottom（置中 + status bar padding）
@@ -862,7 +871,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
               let imageSize = contentView.image?.size else { return }
 
         let anchorPoint = viewportCenterInDocumentCoordinates()
-        let statusBarH = settings.showStatusBar ? Constants.statusBarHeight : 0
+        let statusBarH = effectiveStatusBarHeight
         let displayedSize = NSSize(
             width: imageSize.width * magnification,
             height: imageSize.height * magnification + statusBarH
@@ -876,14 +885,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         if settings.alwaysFitOnOpen && !settings.isManualZoom {
             view.layoutSubtreeIfNeeded()
             // 使用有效 viewport（扣除 statusBar）來計算 fitting
-            let effectiveViewport = NSSize(
-                width: scrollView.bounds.size.width,
-                height: scrollView.bounds.size.height - statusBarH
-            )
-            if effectiveViewport.width > 0, effectiveViewport.height > 0 {
+            let viewport = effectiveScrollViewport
+            if viewport.width > 0, viewport.height > 0 {
                 let fitted = FittingCalculator.calculate(
                     imageSize: imageSize,
-                    viewportSize: effectiveViewport,
+                    viewportSize: viewport,
                     options: settings.fittingOptions
                 )
                 let refitMag = fitted.width / imageSize.width
@@ -945,7 +951,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     func updateWindowTitle() {
         (view.window?.windowController as? ImageWindowController)?
-            .updateTitle(folder: folder, showIndex: !settings.showStatusBar)
+            .updateTitle(folder: folder)
     }
 }
 
