@@ -522,38 +522,20 @@ class ImageScrollView: NSScrollView {
             }
 
         case 125: // ↓ DownArrow
-            if overflow.vertical {
-                if !isAtBottom {
-                    panDown()
-                    edgePressCount = 0
-                    hideEdgeIndicators()
-                } else {
-                    handleEdgePress(keyCode: 125) { [weak self] in
-                        guard let self else { return }
-                        scrollDelegate?.scrollViewRequestNextImage(self)
-                    }
-                }
-            } else {
-                resetEdgeState()
-                scrollDelegate?.scrollViewRequestNextImage(self)
+            if overflow.vertical && !isAtBottom {
+                panDown()
+                edgePressCount = 0
+                hideEdgeIndicators()
             }
+            // Removed: navigation at bottom edge (up/down arrows no longer navigate)
 
         case 126: // ↑ UpArrow
-            if overflow.vertical {
-                if !isAtTop {
-                    panUp()
-                    edgePressCount = 0
-                    hideEdgeIndicators()
-                } else {
-                    handleEdgePress(keyCode: 126) { [weak self] in
-                        guard let self else { return }
-                        scrollDelegate?.scrollViewRequestPreviousImage(self)
-                    }
-                }
-            } else {
-                resetEdgeState()
-                scrollDelegate?.scrollViewRequestPreviousImage(self)
+            if overflow.vertical && !isAtTop {
+                panUp()
+                edgePressCount = 0
+                hideEdgeIndicators()
             }
+            // Removed: navigation at top edge (up/down arrows no longer navigate)
 
         case 49, 121: // Space / PageDown
             if overflow.vertical && isAtBottom {
