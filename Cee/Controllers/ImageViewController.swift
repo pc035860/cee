@@ -215,7 +215,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             }
             guard currentLoadRequestID == requestID else { return }
 
-            showErrorPlaceholder(false)
             contentView.image = image
             contentView.loadingState = .loaded
             contentView.setAccessibilityLabel(item.fileName)  // Phase 6: for test assertions
@@ -280,21 +279,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func setMagnificationCentered(_ targetMagnification: CGFloat) {
         isZooming = true
         defer { isZooming = false }
-        let clamped = max(Constants.minMagnification, min(Constants.maxMagnification, targetMagnification))
+        let effectiveMin = effectiveMinMagnification()
+        let clamped = max(effectiveMin, min(Constants.maxMagnification, targetMagnification))
         scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())
         applyCenteringInsetsIfNeeded(reason: "setMagnificationCentered")
     }
 
-    /// 根據圖片原始尺寸與視窗最小尺寸動態計算最小 magnification。
-    /// 防止 magnification 低於視窗最小尺寸對應的臨界值（否則 resizeToFitImage 停止縮小但 mag 繼續降，造成漂移）。
+    /// Delegates to scrollView's unified effectiveMinMagnification().
     private func effectiveMinMagnification() -> CGFloat {
-        guard let imageSize = contentView.image?.size,
-              imageSize.width > 0, imageSize.height > 0 else {
-            return Constants.minMagnification
-        }
-        let minMagW = Constants.minWindowContentWidth / imageSize.width
-        let minMagH = Constants.minWindowContentHeight / imageSize.height
-        return max(Constants.minMagnification, max(minMagW, minMagH))
+        scrollView.effectiveMinMagnification()
     }
 
     private struct ScrollRange {

@@ -78,6 +78,7 @@ class ImageContentView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layer?.contentsGravity = .resize
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
@@ -88,9 +89,7 @@ class ImageContentView: NSView {
         guard let layer else { return }
         layer.contents = cachedCGImage
         layer.contentsScale = window?.backingScaleFactor ?? 2.0
-        layer.contentsGravity = .resize
-        layer.magnificationFilter = layerScalingFilter
-        layer.minificationFilter = layerMinificationFilter
+        // contentsGravity set once in init; filters managed by didSet.
     }
 
     /// Refresh contentsScale when dragging window across Retina/non-Retina displays.

@@ -337,8 +337,9 @@ class ImageScrollView: NSScrollView {
             self.reflectScrolledClipView(clip)
         }
         scrollDebounceWorkItem = workItem
+        let debounceDelay = Constants.arrowPanAnimationDuration + 0.05  // padding after animation settles
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + Constants.arrowPanAnimationDuration + 0.05,
+            deadline: .now() + debounceDelay,
             execute: workItem
         )
     }
@@ -752,12 +753,16 @@ class ImageScrollView: NSScrollView {
     /// 根據圖片原始尺寸與視窗最小尺寸動態計算最小 magnification。
     /// 當 displayedSize < minWindowContent 時 resizeToFitImage 不再縮小視窗，
     /// 但 magnification 會繼續降導致不同步漂移。此方法確保 magnification 不會低於該臨界值。
-    private func effectiveMinMagnification() -> CGFloat {
+    func effectiveMinMagnification() -> CGFloat {
         guard let docView = documentView else { return minMagnification }
-        let originalSize = docView.bounds.size
-        guard originalSize.width > 0, originalSize.height > 0 else { return minMagnification }
-        let minMagW = Constants.minWindowContentWidth / originalSize.width
-        let minMagH = Constants.minWindowContentHeight / originalSize.height
+        // documentView.frame 是已縮放尺寸，除以 magnification 取得原始圖片尺寸
+        let currentMag = magnification
+        guard currentMag > 0 else { return minMagnification }
+        let originalWidth = docView.frame.width / currentMag
+        let originalHeight = docView.frame.height / currentMag
+        guard originalWidth > 0, originalHeight > 0 else { return minMagnification }
+        let minMagW = Constants.minWindowContentWidth / originalWidth
+        let minMagH = Constants.minWindowContentHeight / originalHeight
         return max(minMagnification, max(minMagW, minMagH))
     }
 
