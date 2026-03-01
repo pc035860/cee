@@ -675,6 +675,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         )
 
         view.layoutSubtreeIfNeeded()
+
+        // Re-apply AutoFit if in auto-fit mode (not manual zoom)
+        if !settings.isManualZoom && settings.alwaysFitOnOpen {
+            if let imageSize = contentView.image?.size {
+                applyFitting(for: imageSize)
+            }
+        }
+
         applyCenteringInsetsIfNeeded(reason: "fullscreenTransitionDidComplete.preCenter")
         centerScrollPositionInValidRange()
         applyCenteringInsetsIfNeeded(reason: "fullscreenTransitionDidComplete.postCenter")
