@@ -10,11 +10,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var statusBarHeightConstraint: NSLayoutConstraint!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
+    private var errorPlaceholderView: ErrorPlaceholderView?
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     private var activeMagnifyAnchor: NSPoint?
+    private var isZooming = false
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
     private enum InitialScrollPosition { case preserve, top, bottom }
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
@@ -73,7 +75,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        updateScrollerVisibilityForFullscreen()
         applyCenteringInsetsIfNeeded(reason: "viewDidLayout")
     }
 
@@ -116,20 +117,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         applyCenteringInsetsIfNeeded(reason: "applyStatusBar")  // 重要：重新計算置中 insets
     }
 
-    private func updateScrollerVisibilityForFullscreen() {
-        let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
-        let shouldShowScrollers = !isFullscreen
-        guard scrollView.hasVerticalScroller != shouldShowScrollers ||
-              scrollView.hasHorizontalScroller != shouldShowScrollers else { return }
-
-        scrollView.hasVerticalScroller = shouldShowScrollers
-        scrollView.hasHorizontalScroller = shouldShowScrollers
-        DebugCentering.log(
-            "updateScrollerVisibility fullscreen=\(isFullscreen) " +
-            "vertical=\(scrollView.hasVerticalScroller) horizontal=\(scrollView.hasHorizontalScroller)"
-        )
-    }
-
     private func updateStatusBar() {
         guard let image = contentView.image else { return }
         let index = folder.currentIndex + 1
@@ -147,16 +134,43 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func updateScalingQuality() {
+        // GPU layer filters — no needsDisplay, no CPU redraw.
         let showPixels = settings.showPixelsWhenZoomingIn && scrollView.magnification > 1.0
-        contentView.showPixels = showPixels
         if showPixels {
-            contentView.interpolation = .none
+            contentView.layerScalingFilter = .nearest
+            contentView.layerMinificationFilter = .nearest
         } else {
             switch settings.scalingQuality {
-            case .low:    contentView.interpolation = .low
-            case .medium: contentView.interpolation = .default
-            case .high:   contentView.interpolation = .high
+            case .low:
+                contentView.layerScalingFilter = .nearest
+                contentView.layerMinificationFilter = .linear
+            case .medium:
+                contentView.layerScalingFilter = .linear
+                contentView.layerMinificationFilter = .linear
+            case .high:
+                contentView.layerScalingFilter = .linear
+                contentView.layerMinificationFilter = .trilinear
             }
+        }
+    }
+
+    private func showErrorPlaceholder(_ show: Bool) {
+        if show {
+            if errorPlaceholderView == nil {
+                let placeholder = ErrorPlaceholderView()
+                placeholder.translatesAutoresizingMaskIntoConstraints = false
+                scrollView.addSubview(placeholder)
+                NSLayoutConstraint.activate([
+                    placeholder.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+                    placeholder.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+                    placeholder.topAnchor.constraint(equalTo: scrollView.topAnchor),
+                    placeholder.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+                ])
+                errorPlaceholderView = placeholder
+            }
+            errorPlaceholderView?.isHidden = false
+        } else {
+            errorPlaceholderView?.isHidden = true
         }
     }
 
@@ -171,12 +185,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard !folder.images.isEmpty else {
             contentView.image = nil
             contentView.loadingState = .error
+            showErrorPlaceholder(true)
             return
         }
 
         guard let item = folder.currentImage else { return }
         let requestID = UUID()
         currentLoadRequestID = requestID
+        showErrorPlaceholder(false)  // 立即隱藏舊 error placeholder
         contentView.loadingState = .loading  // Phase 6: accessibility state tracking
 
         currentLoadTask?.cancel()
@@ -194,6 +210,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 guard currentLoadRequestID == requestID else { return }
                 contentView.image = nil
                 contentView.loadingState = .error
+                showErrorPlaceholder(true)
                 return
             }
             guard currentLoadRequestID == requestID else { return }
@@ -247,6 +264,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             setMagnificationCentered(scrollView.magnification)
         }
         updateScalingQuality()
+
         applyCenteringInsetsIfNeeded(reason: "applyFitting")
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
@@ -259,9 +277,17 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func setMagnificationCentered(_ targetMagnification: CGFloat) {
-        let clamped = max(Constants.minMagnification, min(Constants.maxMagnification, targetMagnification))
+        isZooming = true
+        defer { isZooming = false }
+        let effectiveMin = effectiveMinMagnification()
+        let clamped = max(effectiveMin, min(Constants.maxMagnification, targetMagnification))
         scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())
         applyCenteringInsetsIfNeeded(reason: "setMagnificationCentered")
+    }
+
+    /// Delegates to scrollView's unified effectiveMinMagnification().
+    private func effectiveMinMagnification() -> CGFloat {
+        scrollView.effectiveMinMagnification()
     }
 
     private struct ScrollRange {
@@ -412,8 +438,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // 從 inset 置中模式跨到 scroll 模式時，保守回中，避免放大後貼左
         let crossedInsetThresholdX = previousInsets.left > epsilon && targetInsets.left <= epsilon
         let crossedInsetThresholdY = previousInsets.top > epsilon && targetInsets.top <= epsilon
-        let shouldRecenterX = becameScrollableX || crossedInsetThresholdX
-        let shouldRecenterY = becameScrollableY || crossedInsetThresholdY
+        // 縮放期間不強制 recenter — 保留用戶的 pan 位置，僅 clamp 到合法範圍
+        let shouldRecenterX = !isZooming && (becameScrollableX || crossedInsetThresholdX)
+        let shouldRecenterY = !isZooming && (becameScrollableY || crossedInsetThresholdY)
 
         DebugCentering.log(
             "applyCentering:range reason=\(reason) previousRange=\(debugRange(previousRange)) " +
@@ -550,16 +577,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
+
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
     @objc func zoomOut(_ sender: Any? = nil) {
         settings.isManualZoom = true
         let newMag = scrollView.magnification - Constants.zoomStep
-        setMagnificationCentered(max(newMag, Constants.minMagnification))
+        let effectiveMin = effectiveMinMagnification()
+        setMagnificationCentered(max(newMag, effectiveMin))
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
+
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
@@ -578,6 +608,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.magnification = 1.0
         settings.save()
         updateScalingQuality()
+
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
@@ -635,8 +666,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             "fullscreenTransition:didComplete start isFullscreen=\(isFullscreen) viewport=\(debugSize(scrollView.bounds.size)) " +
             "origin=\(debugPoint(scrollView.contentView.bounds.origin)) insets=\(debugInsets(scrollView.contentInsets))"
         )
-        updateScrollerVisibilityForFullscreen()
+
         view.layoutSubtreeIfNeeded()
+
+        // Re-apply AutoFit if in auto-fit mode (not manual zoom)
+        if !settings.isManualZoom && settings.alwaysFitOnOpen {
+            if let imageSize = contentView.image?.size {
+                applyFitting(for: imageSize)
+            }
+        }
+
         applyCenteringInsetsIfNeeded(reason: "fullscreenTransitionDidComplete.preCenter")
         centerScrollPositionInValidRange()
         applyCenteringInsetsIfNeeded(reason: "fullscreenTransitionDidComplete.postCenter")
@@ -809,12 +848,35 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
               let imageSize = contentView.image?.size else { return }
 
         let anchorPoint = viewportCenterInDocumentCoordinates()
+        let statusBarH = statusBarHeightConstraint.constant
         let displayedSize = NSSize(
             width: imageSize.width * magnification,
-            height: imageSize.height * magnification
+            height: imageSize.height * magnification + statusBarH
         )
         (window.windowController as? ImageWindowController)?
             .resizeToFitImage(displayedSize, center: false)
+
+        // Window resize 後 Auto Layout 可能 pixel-align scrollView bounds，
+        // 導致 scrollView 比 imageSize * mag 小幾個 pixel。
+        // 在 auto-fit 模式下重新校正 magnification 以匹配實際 viewport。
+        if settings.alwaysFitOnOpen && !settings.isManualZoom {
+            view.layoutSubtreeIfNeeded()
+            let actualViewport = scrollView.bounds.size
+            if actualViewport.width > 0, actualViewport.height > 0 {
+                let fitted = FittingCalculator.calculate(
+                    imageSize: imageSize,
+                    viewportSize: actualViewport,
+                    options: settings.fittingOptions
+                )
+                let refitMag = fitted.width / imageSize.width
+                if abs(refitMag - scrollView.magnification) > 1e-6 {
+                    isZooming = true
+                    scrollView.magnification = refitMag
+                    isZooming = false
+                }
+            }
+        }
+
         recenterViewport(around: anchorPoint)
         applyCenteringInsetsIfNeeded(reason: "resizeWindowToFitZoomedImagePreservingCenter")
     }
@@ -884,12 +946,15 @@ extension ImageViewController: ImageScrollViewDelegate {
             "magnify:start phase=\(debugPhase(gesturePhase)) mag=\(debugFloat(magnification)) " +
             "origin=\(debugPoint(self.scrollView.contentView.bounds.origin)) insets=\(debugInsets(self.scrollView.contentInsets))"
         )
+        isZooming = true
+
         if !gesturePhase.isEmpty && gesturePhase.contains(.began) {
             // 鎖定手勢開始時的視窗中心，避免縮放過程漂移到左側
             activeMagnifyAnchor = viewportCenterInDocumentCoordinates()
             if let anchor = activeMagnifyAnchor {
                 DebugCentering.log("magnify anchor locked=\(debugPoint(anchor))")
             }
+
         }
 
         settings.isManualZoom = true
@@ -907,6 +972,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         statusBarView.updateZoom(magnification, isFitting: isFitting)  // Status Bar 更新縮放
 
         if gesturePhase.isEmpty {
+            isZooming = false
             scheduleResizeToFitAfterZoom(magnification: magnification)
             return
         }
@@ -917,6 +983,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
         if gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
             activeMagnifyAnchor = nil
+            // isZooming 延後到 schedulePostMagnifyCentering 的 finalize 完成後才設 false
             DebugCentering.log("magnify anchor cleared phase=\(debugPhase(gesturePhase))")
         }
 
@@ -933,13 +1000,14 @@ extension ImageViewController: ImageScrollViewDelegate {
         let phaseText = debugPhase(phase)
         let task = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            DebugCentering.log("magnify deferred centering phase=\(phaseText)")
+            DebugCentering.log("magnify deferred finalize phase=\(phaseText)")
+            // 只做 insets 更新 + clamp，不做 centerScrollPositionInValidRange()
+            // 以保留用戶的 pan 位置
             self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.phase=\(phaseText)")
-            self.centerScrollPositionInValidRange()
-            self.applyCenteringInsetsIfNeeded(reason: "magnify.deferred.finalize.phase=\(phaseText)")
+            self.isZooming = false
         }
         postMagnifyCenteringTask = task
-        // 讓 AppKit magnify 事件鏈先落地，再做一次保底置中。
+        // 讓 AppKit magnify 事件鏈先落地，再做一次保底 clamp。
         DispatchQueue.main.async(execute: task)
     }
 

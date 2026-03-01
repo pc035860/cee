@@ -31,60 +31,70 @@ class ImageContentView: NSView {
 
     // MARK: - Properties
 
-    var image: NSImage? { didSet { needsDisplay = true } }
-    var interpolation: NSImageInterpolation = .default { didSet { needsDisplay = true } }
-    var showPixels: Bool = false { didSet { needsDisplay = true } }
+    var image: NSImage? {
+        didSet {
+            guard image !== oldValue else { return }
+            if let image {
+                cachedCGImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                if cachedCGImage == nil {
+                    DebugCentering.log("WARNING: NSImage -> CGImage conversion returned nil for \(image)")
+                }
+            } else {
+                cachedCGImage = nil
+            }
+            needsDisplay = true  // triggers updateLayer()
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    /// Controls layer magnification filter (upscaling).
+    /// Setting this does NOT trigger needsDisplay — GPU handles it immediately.
+    var layerScalingFilter: CALayerContentsFilter = .linear {
+        didSet {
+            guard layerScalingFilter != oldValue else { return }
+            layer?.magnificationFilter = layerScalingFilter
+        }
+    }
+
+    /// Controls layer minification filter (downscaling).
+    /// Setting this does NOT trigger needsDisplay — GPU handles it immediately.
+    var layerMinificationFilter: CALayerContentsFilter = .linear {
+        didSet {
+            guard layerMinificationFilter != oldValue else { return }
+            layer?.minificationFilter = layerMinificationFilter
+        }
+    }
+
+    /// Cached CGImage to avoid repeated NSImage -> CGImage conversion.
+    private var cachedCGImage: CGImage?
 
     override var intrinsicContentSize: NSSize {
         image?.size ?? .zero
     }
 
-    // MARK: - Drawing
+    // MARK: - Layer-backed rendering
 
-    override func draw(_ dirtyRect: NSRect) {
-        // Error placeholder（檔案缺失 / 格式不支援 / 空資料夾）
-        if image == nil && loadingState == .error {
-            drawErrorPlaceholder(in: bounds)
-            return
-        }
-
-        guard let image, let ctx = NSGraphicsContext.current else { return }
-
-        // 縮放品質控制
-        // 注意：NSGraphicsContext.imageInterpolation 在 macOS Big Sur+ Retina 已失效
-        // 必須使用 CGContext 層級的 interpolationQuality
-        let cgCtx = ctx.cgContext
-        if showPixels {
-            cgCtx.interpolationQuality = .none
-        } else {
-            switch interpolation {
-            case .none:    cgCtx.interpolationQuality = .none
-            case .low:     cgCtx.interpolationQuality = .low
-            case .high:    cgCtx.interpolationQuality = .high
-            default:       cgCtx.interpolationQuality = .medium
-            }
-        }
-
-        // NSImage.draw(in:) 自動處理 macOS 座標系（原點左下）
-        image.draw(in: bounds)
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layer?.contentsGravity = .resize
     }
 
-    // MARK: - Error Placeholder
+    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
-    private func drawErrorPlaceholder(in rect: NSRect) {
-        NSColor(white: 0.15, alpha: 1.0).setFill()
-        NSBezierPath.fill(rect)
+    override var wantsUpdateLayer: Bool { true }
 
-        let text = "Cannot display image"
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 14, weight: .regular),
-            .foregroundColor: NSColor(white: 0.6, alpha: 1.0)
-        ]
-        let size = text.size(withAttributes: attrs)
-        let origin = NSPoint(
-            x: rect.midX - size.width / 2,
-            y: rect.midY - size.height / 2
-        )
-        text.draw(at: origin, withAttributes: attrs)
+    override func updateLayer() {
+        guard let layer else { return }
+        layer.contents = cachedCGImage
+        layer.contentsScale = window?.backingScaleFactor ?? 2.0
+        // contentsGravity set once in init; filters managed by didSet.
+    }
+
+    /// Refresh contentsScale when dragging window across Retina/non-Retina displays.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
     }
 }

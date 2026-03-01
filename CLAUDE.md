@@ -31,7 +31,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 ## Swift 6 Gotchas
 
 - **`ImageLoader` is an `actor`** — never pass `ImageFolder` (non-Sendable class) across actor boundaries. Use value types (`ImageItem` is `Sendable`).
-- **CGContext interpolation** — `NSGraphicsContext.imageInterpolation` is silently ignored on macOS Big Sur+ Retina. Always set `cgCtx.interpolationQuality` directly.
+- **CGContext interpolation (legacy)** — `NSGraphicsContext.imageInterpolation` is silently ignored on macOS Big Sur+ Retina. `ImageContentView` now uses GPU `layer.contents` instead of `draw()`; see "GPU Layer Rendering" section.
 - **`setMagnification(_:centeredAt:)`** — parameter label is `centeredAt:`, not `centeredAtPoint:`.
 - **Protocol + @MainActor** — delegate protocols called from NSScrollView subclasses must be marked `@MainActor` to avoid Swift 6 isolation errors.
 - **NSScrollView unflipped coordinates** — visual top = high Y (`clipBounds.maxY >= docFrame.height`), visual bottom = low Y (`clipBounds.minY <= 0`). Easy to swap.
@@ -47,6 +47,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 - **Never sync fullscreen with fixed delays.** Use `NSWindow.didEnterFullScreen` / `didExitFullScreen` notifications as the only reliable sync point.
 - **Fullscreen UX policy:** hide both scrollbars in fullscreen, restore outside fullscreen.
+- **Re-apply AutoFit after fullscreen transition.** `handleFullscreenTransitionDidComplete()` must call `applyFitting()` when `!isManualZoom && alwaysFitOnOpen` to handle viewport size changes.
 - **Centering math must stay in one coordinate space.** Use document-space values (`clipView.bounds`, `contentView.frame`, `contentInsets`, `clip origin`) consistently.
 - **Degenerate ranges are normal.** When image is smaller than viewport, scroll range may collapse (`min == max`); clamp exactly instead of treating as error.
 - **Pinch lifecycle rule:** avoid extra deferred recenter work during `.changed`; do final normalization only at `.ended/.cancelled` to prevent visual jitter.
@@ -56,7 +57,8 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Trackpad vs mouse wheel need separate handling.** Trackpad has phase lifecycle; mouse wheel has none. Detect via `event.phase != [] || event.momentumPhase != []`. Independent thresholds (trackpad ~130pt, wheel ~20pt).
 - **Trackpad page-turn: edge-start + accumulate + once-per-gesture.** Without edge-start check, mid-scroll momentum triggers false page turns.
 - **Momentum lock after page turn (~1s).** New `.began` phase immediately unlocks. Without this, residual momentum triggers second page turn.
-- **Keyboard edge-press guard.** Arrow keys: 3 extra presses at edge. PageUp/PageDown/Space: 1 extra press. No overflow → navigate directly. See `handleEdgePress(keyCode:threshold:)`.
+- **Keyboard navigation: left/right only.** Arrow up/down only scroll, never navigate. Left/right arrows: 3 extra presses at edge to navigate. PageUp/PageDown/Space: 1 extra press. See `handleEdgePress(keyCode:threshold:)`.
+- **Arrow pan animation** uses `NSAnimationContext` with `allowsImplicitAnimation = true` + `clip.scroll(to:)`, duration 0.1s. `reflectScrolledClipView` in completion handler syncs scrollbars.
 - **Edge indicators** (`CAGradientLayer`, #F97068 coral). Must call `resetEdgeState()` on page navigation or direction change.
 
 ## AppKit Menu Gotchas
@@ -84,11 +86,22 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Mouse drag pan** — `mouseDown` skips `super` (avoids scroller modal loop), only when no modifiers. `mouseDragged` MUST call `super` when not dragging.
 - **NSCursor push/pop** — monitor `didResignKeyNotification` for focus-loss mid-drag cleanup. Guard against double-push.
 
+## GPU Layer Rendering
+
+- **`ImageContentView` uses `layer.contents = cgImage`**, not `NSView.draw()`. Image is rasterized once into GPU texture; NSScrollView magnification applies GPU affine transform with zero CPU redraw.
+- **`wantsUpdateLayer = true`** — `updateLayer()` sets `layer.contents`, `contentsScale`, `contentsGravity`, and filters. Never mix with `draw()`.
+- **`layerContentsRedrawPolicy = .onSetNeedsDisplay`** — prevents magnification changes from invalidating the layer cache. Only `needsDisplay = true` (image change) triggers `updateLayer()`.
+- **Scaling quality = layer filters.** `layerScalingFilter` (magnification) and `layerMinificationFilter` (minification) map to `.nearest`/`.linear`/`.trilinear`. These are GPU-side — setting them does NOT trigger `needsDisplay`.
+- **`viewDidChangeBackingProperties()`** — triggers `needsDisplay` to refresh `contentsScale` when dragging across Retina/non-Retina displays.
+- **Error placeholder is a separate view** (`ErrorPlaceholderView`), overlaid on `scrollView`, not drawn in `draw()`.
+
 ## Zoom & Fit Behavior
 
 - **`alwaysFitOnOpen` takes precedence over `isManualZoom`** in `applyFitting`.
 - **Zoom actions must call `resizeWindowToFitZoomedImage`** after magnification change.
 - **`toggleAlwaysFit` clears `isManualZoom`**.
+- **Dynamic min magnification** — `effectiveMinMagnification()` (in both `ImageScrollView` and `ImageViewController`) computes the floor from `minWindowContentWidth/Height ÷ imageSize`. Prevents magnification from dropping below what the window can display, which causes window-resize desync and drift.
+- **`isZooming` flag** — suppresses force-recenter in `applyCenteringInsetsIfNeeded` during all zoom paths (keyboard, pinch, Cmd+scroll). Without this, `crossedInsetThreshold`/`becameScrollable` recentering destroys the user's pan position mid-zoom.
 
 ## PDF Support
 
@@ -111,7 +124,8 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 ## Recent Significant Changes
 
-- **Fullscreen centering hardening:** migrated from delay-based sync to notification-driven transition handling, with explicit post-transition recentering.
-- **Pinch stability improvements:** centering/clamp flow now avoids per-frame deferred corrections that cause flicker.
-- **Fullscreen presentation polish:** scrollbars are hidden while fullscreen is active.
-- **Regression coverage upgraded:** UI tests now include horizontal centering checks with parsed scroll metrics, not only visibility checks.
+- **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` + `NSImage.draw(in:)` to GPU `layer.contents = cgImage`. Eliminates per-frame CPU resample during zoom (was ~33M pixels/frame for 4K Retina). Scaling quality now uses `CALayer` filters instead of `CGContext.interpolationQuality`.
+- **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.
+- **Fullscreen hardening:** migrated from delay-based sync to notification-driven transition handling. AutoFit now re-applies after fullscreen transition when in auto-fit mode.
+- **Smooth arrow pan:** arrow key scrolling now uses `NSAnimationContext` for 0.1s smooth animation instead of instant jump.
+- **Simplified navigation:** up/down arrows only scroll, never navigate images. Left/right arrows retain edge navigation.

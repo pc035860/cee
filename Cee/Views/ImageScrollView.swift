@@ -79,10 +79,8 @@ class ImageScrollView: NSScrollView {
         minMagnification = Constants.minMagnification
         maxMagnification = Constants.maxMagnification
         automaticallyAdjustsContentInsets = false
-        scrollerStyle = .overlay
-        hasVerticalScroller = true
-        hasHorizontalScroller = true
-        autohidesScrollers = true
+        hasVerticalScroller = false
+        hasHorizontalScroller = false
         drawsBackground = true
         backgroundColor = .black
 
@@ -286,11 +284,12 @@ class ImageScrollView: NSScrollView {
 
     // MARK: - Programmatic Pan
 
+    private var scrollDebounceWorkItem: DispatchWorkItem?
+
     private func panLeft() {
         let clip = contentView
         let newX = max(clip.bounds.minX - Constants.arrowPanStep, 0)
-        clip.scroll(to: NSPoint(x: newX, y: clip.bounds.minY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: newX, y: clip.bounds.minY))
     }
 
     private func panRight() {
@@ -298,8 +297,7 @@ class ImageScrollView: NSScrollView {
         guard let docView = documentView else { return }
         let maxX = max(docView.frame.width - clip.bounds.width, 0)
         let newX = min(clip.bounds.minX + Constants.arrowPanStep, maxX)
-        clip.scroll(to: NSPoint(x: newX, y: clip.bounds.minY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: newX, y: clip.bounds.minY))
     }
 
     /// macOS unflipped: visual up = increase Y
@@ -308,16 +306,42 @@ class ImageScrollView: NSScrollView {
         guard let docView = documentView else { return }
         let maxY = max(docView.frame.height - clip.bounds.height, 0)
         let newY = min(clip.bounds.minY + Constants.arrowPanStep, maxY)
-        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: newY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
     }
 
     /// macOS unflipped: visual down = decrease Y
     private func panDown() {
         let clip = contentView
         let newY = max(clip.bounds.minY - Constants.arrowPanStep, 0)
-        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: newY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
+    }
+
+    /// Animated scroll helper with debounced completion
+    /// Uses debounce to prevent stuttering when key repeat triggers rapid successive animations
+    private func animateScroll(to newOrigin: NSPoint) {
+        let clip = contentView
+
+        // Cancel previous debounce timer
+        scrollDebounceWorkItem?.cancel()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Constants.arrowPanAnimationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .linear)
+            context.allowsImplicitAnimation = true
+            clip.scroll(to: newOrigin)
+        }
+
+        // Debounce: only sync scrollbars after animations settle
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.reflectScrolledClipView(clip)
+        }
+        scrollDebounceWorkItem = workItem
+        let debounceDelay = Constants.arrowPanAnimationDuration + 0.05  // padding after animation settles
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + debounceDelay,
+            execute: workItem
+        )
     }
 
     // MARK: - Edge Indicator (翻頁進度視覺提示)
@@ -515,38 +539,20 @@ class ImageScrollView: NSScrollView {
             }
 
         case 125: // ↓ DownArrow
-            if overflow.vertical {
-                if !isAtBottom {
-                    panDown()
-                    edgePressCount = 0
-                    hideEdgeIndicators()
-                } else {
-                    handleEdgePress(keyCode: 125) { [weak self] in
-                        guard let self else { return }
-                        scrollDelegate?.scrollViewRequestNextImage(self)
-                    }
-                }
-            } else {
-                resetEdgeState()
-                scrollDelegate?.scrollViewRequestNextImage(self)
+            if overflow.vertical && !isAtBottom {
+                panDown()
+                edgePressCount = 0
+                hideEdgeIndicators()
             }
+            // Removed: navigation at bottom edge (up/down arrows no longer navigate)
 
         case 126: // ↑ UpArrow
-            if overflow.vertical {
-                if !isAtTop {
-                    panUp()
-                    edgePressCount = 0
-                    hideEdgeIndicators()
-                } else {
-                    handleEdgePress(keyCode: 126) { [weak self] in
-                        guard let self else { return }
-                        scrollDelegate?.scrollViewRequestPreviousImage(self)
-                    }
-                }
-            } else {
-                resetEdgeState()
-                scrollDelegate?.scrollViewRequestPreviousImage(self)
+            if overflow.vertical && !isAtTop {
+                panUp()
+                edgePressCount = 0
+                hideEdgeIndicators()
             }
+            // Removed: navigation at top edge (up/down arrows no longer navigate)
 
         case 49, 121: // Space / PageDown
             if overflow.vertical && isAtBottom {
@@ -684,7 +690,8 @@ class ImageScrollView: NSScrollView {
         // 不跟隨 Natural Scrolling 反轉（主流慣例：scroll up = zoom in）
         let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.003 : 0.08
         let newMag = magnification + delta * sensitivity
-        let clamped = max(minMagnification, min(maxMagnification, newMag))
+        let effectiveMin = effectiveMinMagnification()
+        let clamped = max(effectiveMin, min(maxMagnification, newMag))
 
         // 以可預測的視窗中心為 anchor（避免 contentInsets 暫時被重置時漂移到左側）
         let center = zoomAnchorPoint()
@@ -702,8 +709,9 @@ class ImageScrollView: NSScrollView {
     override func magnify(with event: NSEvent) {
         let point = zoomAnchorPoint()
         let newMag = magnification + event.magnification
+        let effectiveMin = effectiveMinMagnification()
         setMagnificationPreservingInsets(
-            max(minMagnification, min(maxMagnification, newMag)),
+            max(effectiveMin, min(maxMagnification, newMag)),
             centeredAt: point
         )
         scrollDelegate?.scrollViewMagnificationDidChange(
@@ -739,17 +747,23 @@ class ImageScrollView: NSScrollView {
 
     private func zoomAnchorPoint() -> NSPoint {
         let bounds = contentView.bounds
-        var anchor = NSPoint(x: bounds.midX, y: bounds.midY)
-        guard let documentView else { return anchor }
+        return NSPoint(x: bounds.midX, y: bounds.midY)
+    }
 
-        let documentSize = documentView.frame.size
-        if bounds.width >= documentSize.width {
-            anchor.x = documentSize.width / 2.0
-        }
-        if bounds.height >= documentSize.height {
-            anchor.y = documentSize.height / 2.0
-        }
-        return anchor
+    /// 根據圖片原始尺寸與視窗最小尺寸動態計算最小 magnification。
+    /// 當 displayedSize < minWindowContent 時 resizeToFitImage 不再縮小視窗，
+    /// 但 magnification 會繼續降導致不同步漂移。此方法確保 magnification 不會低於該臨界值。
+    func effectiveMinMagnification() -> CGFloat {
+        guard let docView = documentView else { return minMagnification }
+        // documentView.frame 是已縮放尺寸，除以 magnification 取得原始圖片尺寸
+        let currentMag = magnification
+        guard currentMag > 0 else { return minMagnification }
+        let originalWidth = docView.frame.width / currentMag
+        let originalHeight = docView.frame.height / currentMag
+        guard originalWidth > 0, originalHeight > 0 else { return minMagnification }
+        let minMagW = Constants.minWindowContentWidth / originalWidth
+        let minMagH = Constants.minWindowContentHeight / originalHeight
+        return max(minMagnification, max(minMagW, minMagH))
     }
 
     /// 緊急 fallback：當 AppKit 在 magnify 期間將 contentInsets 清零時，
