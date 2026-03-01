@@ -31,7 +31,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 ## Swift 6 Gotchas
 
 - **`ImageLoader` is an `actor`** — never pass `ImageFolder` (non-Sendable class) across actor boundaries. Use value types (`ImageItem` is `Sendable`).
-- **CGContext interpolation** — `NSGraphicsContext.imageInterpolation` is silently ignored on macOS Big Sur+ Retina. Always set `cgCtx.interpolationQuality` directly.
+- **CGContext interpolation (legacy)** — `NSGraphicsContext.imageInterpolation` is silently ignored on macOS Big Sur+ Retina. `ImageContentView` now uses GPU `layer.contents` instead of `draw()`; see "GPU Layer Rendering" section.
 - **`setMagnification(_:centeredAt:)`** — parameter label is `centeredAt:`, not `centeredAtPoint:`.
 - **Protocol + @MainActor** — delegate protocols called from NSScrollView subclasses must be marked `@MainActor` to avoid Swift 6 isolation errors.
 - **NSScrollView unflipped coordinates** — visual top = high Y (`clipBounds.maxY >= docFrame.height`), visual bottom = low Y (`clipBounds.minY <= 0`). Easy to swap.
@@ -84,6 +84,15 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Mouse drag pan** — `mouseDown` skips `super` (avoids scroller modal loop), only when no modifiers. `mouseDragged` MUST call `super` when not dragging.
 - **NSCursor push/pop** — monitor `didResignKeyNotification` for focus-loss mid-drag cleanup. Guard against double-push.
 
+## GPU Layer Rendering
+
+- **`ImageContentView` uses `layer.contents = cgImage`**, not `NSView.draw()`. Image is rasterized once into GPU texture; NSScrollView magnification applies GPU affine transform with zero CPU redraw.
+- **`wantsUpdateLayer = true`** — `updateLayer()` sets `layer.contents`, `contentsScale`, `contentsGravity`, and filters. Never mix with `draw()`.
+- **`layerContentsRedrawPolicy = .onSetNeedsDisplay`** — prevents magnification changes from invalidating the layer cache. Only `needsDisplay = true` (image change) triggers `updateLayer()`.
+- **Scaling quality = layer filters.** `layerScalingFilter` (magnification) and `layerMinificationFilter` (minification) map to `.nearest`/`.linear`/`.trilinear`. These are GPU-side — setting them does NOT trigger `needsDisplay`.
+- **`viewDidChangeBackingProperties()`** — triggers `needsDisplay` to refresh `contentsScale` when dragging across Retina/non-Retina displays.
+- **Error placeholder is a separate view** (`ErrorPlaceholderView`), overlaid on `scrollView`, not drawn in `draw()`.
+
 ## Zoom & Fit Behavior
 
 - **`alwaysFitOnOpen` takes precedence over `isManualZoom`** in `applyFitting`.
@@ -113,8 +122,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 ## Recent Significant Changes
 
+- **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` + `NSImage.draw(in:)` to GPU `layer.contents = cgImage`. Eliminates per-frame CPU resample during zoom (was ~33M pixels/frame for 4K Retina). Scaling quality now uses `CALayer` filters instead of `CGContext.interpolationQuality`.
+- **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.
 - **Fullscreen centering hardening:** migrated from delay-based sync to notification-driven transition handling, with explicit post-transition recentering.
 - **Pinch stability improvements:** centering/clamp flow now avoids per-frame deferred corrections that cause flicker.
-- **Fullscreen presentation polish:** scrollbars are hidden while fullscreen is active.
-- **Regression coverage upgraded:** UI tests now include horizontal centering checks with parsed scroll metrics, not only visibility checks.
-- **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.

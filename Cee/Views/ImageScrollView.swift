@@ -79,10 +79,8 @@ class ImageScrollView: NSScrollView {
         minMagnification = Constants.minMagnification
         maxMagnification = Constants.maxMagnification
         automaticallyAdjustsContentInsets = false
-        scrollerStyle = .overlay
-        hasVerticalScroller = true
-        hasHorizontalScroller = true
-        autohidesScrollers = true
+        hasVerticalScroller = false
+        hasHorizontalScroller = false
         drawsBackground = true
         backgroundColor = .black
 
