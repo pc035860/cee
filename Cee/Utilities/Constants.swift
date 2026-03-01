@@ -12,6 +12,7 @@ enum Constants {
     static let minMagnification: CGFloat = 0.1
     static let maxMagnification: CGFloat = 10.0
     static let arrowPanStep: CGFloat = 50.0                // 方向鍵平移步距 px
+    static let arrowPanAnimationDuration: TimeInterval = 0.1  // 方向鍵平移動畫時長
 
     // Status Bar
     static let statusBarHeight: CGFloat = 22

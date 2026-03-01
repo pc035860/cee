@@ -287,8 +287,7 @@ class ImageScrollView: NSScrollView {
     private func panLeft() {
         let clip = contentView
         let newX = max(clip.bounds.minX - Constants.arrowPanStep, 0)
-        clip.scroll(to: NSPoint(x: newX, y: clip.bounds.minY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: newX, y: clip.bounds.minY))
     }
 
     private func panRight() {
@@ -296,8 +295,7 @@ class ImageScrollView: NSScrollView {
         guard let docView = documentView else { return }
         let maxX = max(docView.frame.width - clip.bounds.width, 0)
         let newX = min(clip.bounds.minX + Constants.arrowPanStep, maxX)
-        clip.scroll(to: NSPoint(x: newX, y: clip.bounds.minY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: newX, y: clip.bounds.minY))
     }
 
     /// macOS unflipped: visual up = increase Y
@@ -306,16 +304,27 @@ class ImageScrollView: NSScrollView {
         guard let docView = documentView else { return }
         let maxY = max(docView.frame.height - clip.bounds.height, 0)
         let newY = min(clip.bounds.minY + Constants.arrowPanStep, maxY)
-        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: newY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
     }
 
     /// macOS unflipped: visual down = decrease Y
     private func panDown() {
         let clip = contentView
         let newY = max(clip.bounds.minY - Constants.arrowPanStep, 0)
-        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: newY))
-        reflectScrolledClipView(clip)
+        animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
+    }
+
+    /// Animated scroll helper for arrow key panning
+    private func animateScroll(to newOrigin: NSPoint) {
+        let clip = contentView
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Constants.arrowPanAnimationDuration
+            context.allowsImplicitAnimation = true
+            clip.scroll(to: newOrigin)
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            self.reflectScrolledClipView(clip)
+        }
     }
 
     // MARK: - Edge Indicator (翻頁進度視覺提示)
