@@ -284,6 +284,8 @@ class ImageScrollView: NSScrollView {
 
     // MARK: - Programmatic Pan
 
+    private var scrollDebounceWorkItem: DispatchWorkItem?
+
     private func panLeft() {
         let clip = contentView
         let newX = max(clip.bounds.minX - Constants.arrowPanStep, 0)
@@ -314,17 +316,30 @@ class ImageScrollView: NSScrollView {
         animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
     }
 
-    /// Animated scroll helper for arrow key panning
+    /// Animated scroll helper with debounced completion
+    /// Uses debounce to prevent stuttering when key repeat triggers rapid successive animations
     private func animateScroll(to newOrigin: NSPoint) {
         let clip = contentView
+
+        // Cancel previous debounce timer
+        scrollDebounceWorkItem?.cancel()
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Constants.arrowPanAnimationDuration
             context.allowsImplicitAnimation = true
             clip.scroll(to: newOrigin)
-        } completionHandler: { [weak self] in
+        }
+
+        // Debounce: only sync scrollbars after animations settle
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.reflectScrolledClipView(clip)
         }
+        scrollDebounceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Constants.arrowPanAnimationDuration + 0.05,
+            execute: workItem
+        )
     }
 
     // MARK: - Edge Indicator (翻頁進度視覺提示)
