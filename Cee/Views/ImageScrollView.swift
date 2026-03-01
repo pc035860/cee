@@ -326,6 +326,7 @@ class ImageScrollView: NSScrollView {
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Constants.arrowPanAnimationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .linear)
             context.allowsImplicitAnimation = true
             clip.scroll(to: newOrigin)
         }
