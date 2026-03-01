@@ -684,7 +684,8 @@ class ImageScrollView: NSScrollView {
         // 不跟隨 Natural Scrolling 反轉（主流慣例：scroll up = zoom in）
         let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.003 : 0.08
         let newMag = magnification + delta * sensitivity
-        let clamped = max(minMagnification, min(maxMagnification, newMag))
+        let effectiveMin = effectiveMinMagnification()
+        let clamped = max(effectiveMin, min(maxMagnification, newMag))
 
         // 以可預測的視窗中心為 anchor（避免 contentInsets 暫時被重置時漂移到左側）
         let center = zoomAnchorPoint()
@@ -702,8 +703,9 @@ class ImageScrollView: NSScrollView {
     override func magnify(with event: NSEvent) {
         let point = zoomAnchorPoint()
         let newMag = magnification + event.magnification
+        let effectiveMin = effectiveMinMagnification()
         setMagnificationPreservingInsets(
-            max(minMagnification, min(maxMagnification, newMag)),
+            max(effectiveMin, min(maxMagnification, newMag)),
             centeredAt: point
         )
         scrollDelegate?.scrollViewMagnificationDidChange(
@@ -739,17 +741,19 @@ class ImageScrollView: NSScrollView {
 
     private func zoomAnchorPoint() -> NSPoint {
         let bounds = contentView.bounds
-        var anchor = NSPoint(x: bounds.midX, y: bounds.midY)
-        guard let documentView else { return anchor }
+        return NSPoint(x: bounds.midX, y: bounds.midY)
+    }
 
-        let documentSize = documentView.frame.size
-        if bounds.width >= documentSize.width {
-            anchor.x = documentSize.width / 2.0
-        }
-        if bounds.height >= documentSize.height {
-            anchor.y = documentSize.height / 2.0
-        }
-        return anchor
+    /// 根據圖片原始尺寸與視窗最小尺寸動態計算最小 magnification。
+    /// 當 displayedSize < minWindowContent 時 resizeToFitImage 不再縮小視窗，
+    /// 但 magnification 會繼續降導致不同步漂移。此方法確保 magnification 不會低於該臨界值。
+    private func effectiveMinMagnification() -> CGFloat {
+        guard let docView = documentView else { return minMagnification }
+        let originalSize = docView.bounds.size
+        guard originalSize.width > 0, originalSize.height > 0 else { return minMagnification }
+        let minMagW = Constants.minWindowContentWidth / originalSize.width
+        let minMagH = Constants.minWindowContentHeight / originalSize.height
+        return max(minMagnification, max(minMagW, minMagH))
     }
 
     /// 緊急 fallback：當 AppKit 在 magnify 期間將 contentInsets 清零時，

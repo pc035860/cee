@@ -89,6 +89,8 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **`alwaysFitOnOpen` takes precedence over `isManualZoom`** in `applyFitting`.
 - **Zoom actions must call `resizeWindowToFitZoomedImage`** after magnification change.
 - **`toggleAlwaysFit` clears `isManualZoom`**.
+- **Dynamic min magnification** — `effectiveMinMagnification()` (in both `ImageScrollView` and `ImageViewController`) computes the floor from `minWindowContentWidth/Height ÷ imageSize`. Prevents magnification from dropping below what the window can display, which causes window-resize desync and drift.
+- **`isZooming` flag** — suppresses force-recenter in `applyCenteringInsetsIfNeeded` during all zoom paths (keyboard, pinch, Cmd+scroll). Without this, `crossedInsetThreshold`/`becameScrollable` recentering destroys the user's pan position mid-zoom.
 
 ## PDF Support
 
@@ -115,3 +117,4 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Pinch stability improvements:** centering/clamp flow now avoids per-frame deferred corrections that cause flicker.
 - **Fullscreen presentation polish:** scrollbars are hidden while fullscreen is active.
 - **Regression coverage upgraded:** UI tests now include horizontal centering checks with parsed scroll metrics, not only visibility checks.
+- **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.
