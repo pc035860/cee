@@ -1,6 +1,6 @@
 import AppKit
 
-final class StatusBarView: NSView {
+final class StatusBarView: NSVisualEffectView {
 
     // MARK: - UI Elements
 
@@ -13,17 +13,25 @@ final class StatusBarView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        setupVisualEffect()
         setupUI()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        setupVisualEffect()
         setupUI()
     }
 
-    private func setupUI() {
+    private func setupVisualEffect() {
+        // 設定毛玻璃效果，與標題列一致
+        material = .titlebar
+        blendingMode = .withinWindow
+        state = .active
         wantsLayer = true
+    }
 
+    private func setupUI() {
         // 頂部分隔線（NSBox 原生支援 dynamic color，深淺模式自動切換）
         separator.boxType = .separator
 
@@ -33,6 +41,7 @@ final class StatusBarView: NSView {
             label.textColor = NSColor.secondaryLabelColor
             label.alignment = .center
             label.lineBreakMode = .byClipping
+            label.backgroundColor = .clear  // 確保透明背景
         }
 
         // 加入 subviews

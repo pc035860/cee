@@ -304,7 +304,9 @@ class ImageScrollView: NSScrollView {
     private func panUp() {
         let clip = contentView
         guard let docView = documentView else { return }
-        let maxY = max(docView.frame.height - clip.bounds.height, 0)
+        let insets = contentInsets
+        // .top = visual top → 加到 maxY
+        let maxY = max(docView.frame.height - clip.bounds.height + insets.top, -insets.bottom)
         let newY = min(clip.bounds.minY + Constants.arrowPanStep, maxY)
         animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
     }
@@ -312,7 +314,10 @@ class ImageScrollView: NSScrollView {
     /// macOS unflipped: visual down = decrease Y
     private func panDown() {
         let clip = contentView
-        let newY = max(clip.bounds.minY - Constants.arrowPanStep, 0)
+        let insets = contentInsets
+        // .bottom = visual bottom → minY = -bottom
+        let minY = -insets.bottom
+        let newY = max(clip.bounds.minY - Constants.arrowPanStep, minY)
         animateScroll(to: NSPoint(x: clip.bounds.minX, y: newY))
     }
 
@@ -668,8 +673,10 @@ class ImageScrollView: NSScrollView {
         var newX = clip.bounds.origin.x - deltaX
         var newY = clip.bounds.origin.y - deltaY
 
-        newX = max(0, min(newX, docSize.width - clipSize.width))
-        newY = max(0, min(newY, docSize.height - clipSize.height))
+        let insets = contentInsets
+        newX = max(-insets.left, min(newX, docSize.width - clipSize.width + insets.right))
+        // .bottom = visual bottom (minY), .top = visual top (maxY)
+        newY = max(-insets.bottom, min(newY, docSize.height - clipSize.height + insets.top))
 
         clip.scroll(to: NSPoint(x: newX, y: newY))
         reflectScrolledClipView(clip)
@@ -782,17 +789,25 @@ class ImageScrollView: NSScrollView {
     // MARK: - Scroll Helpers
 
     /// 切換圖片後回到頂部（macOS 座標系：maxY = 頂部）
+    /// 使用 contentInsets 計算正確的最大 Y 位置，避免黑邊
     func scrollToTop() {
         guard let docView = documentView else { return }
-        let maxY = max(docView.frame.height - contentView.bounds.height, 0)
-        let topPoint = NSPoint(x: 0, y: maxY)
+        let insets = contentInsets
+        let clipSize = contentView.bounds.size
+        // .top = visual top → 加到 maxY
+        let maxY = max(docView.frame.height - clipSize.height + insets.top, -insets.bottom)
+        let topPoint = NSPoint(x: contentView.bounds.origin.x, y: maxY)
         contentView.scroll(to: topPoint)
         reflectScrolledClipView(contentView)
     }
 
     /// 切換圖片後跳到底部
+    /// 使用 contentInsets 計算正確的最小 Y 位置，避免被 status bar 遮擋
     func scrollToBottom() {
-        contentView.scroll(to: .zero)
+        let insets = contentInsets
+        let minY = -insets.bottom
+        let bottomPoint = NSPoint(x: contentView.bounds.origin.x, y: minY)
+        contentView.scroll(to: bottomPoint)
         reflectScrolledClipView(contentView)
     }
 }

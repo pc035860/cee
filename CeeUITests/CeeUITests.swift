@@ -196,8 +196,9 @@ final class CeeUITests: XCTestCase {
         let windowTitle = window.title
         XCTAssertTrue(windowTitle.contains("001-landscape.jpg"),
             "Window title should contain filename, got: \(windowTitle)")
-        XCTAssertTrue(windowTitle.contains("/3"),
-            "Window title should show total count of 3, got: \(windowTitle)")
+        // 當 showStatusBar = true（預設）時，標題不顯示索引（索引在 status bar 顯示）
+        XCTAssertFalse(windowTitle.contains("/"),
+            "Window title should NOT show index when statusBar is visible, got: \(windowTitle)")
     }
 
     func testWindowHasUsableSizeAfterLaunch() throws {
