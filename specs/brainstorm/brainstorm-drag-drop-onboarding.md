@@ -266,3 +266,40 @@ static func openEmpty() {
 - [Approachable Concurrency in Swift 6.2](https://www.avanderlee.com/concurrency/approachable-concurrency-in-swift-6-2-a-clear-guide/)
 - [NSView Animation Guide](https://www.advancedswift.com/nsview-animations-guide/)
 - [Programmatic macOS App Setup](https://sarunw.com/posts/how-to-create-macos-app-without-storyboard/)
+
+---
+
+## Implementation Progress
+
+### Phase 1 — ✅ Completed (2026-03-03)
+
+**Commits:**
+- `feat(onboarding): add empty state with drag-drop support (Phase 1)`
+- `refactor: unify file type checking and optimize drag performance`
+
+**Implementation Summary:**
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `EmptyStateView.swift` | ✅ | Icon + text + dashed border highlight |
+| `ImageWindowController.openEmpty()` | ✅ | Static method for empty state launch |
+| `AppDelegate.applicationOpenUntitledFile` | ✅ | System callback for app launch without file |
+| `ImageViewController.folder` optional | ✅ | ~17 methods updated with guard let |
+| Drag-and-drop on EmptyStateView | ✅ | URL caching for performance |
+| `ImageFolder.isSupported(url:)` | ✅ | Shared file type checking logic |
+| Menu item validation | ✅ | Navigation items disabled when folder is nil |
+| Unit tests | ✅ | 19/19 passed |
+| E2E tests | ⚠️ | Environment issue (no GUI), not code issue |
+
+**Key Design Decisions:**
+1. Used `ImageFolder.isSupported(url:)` static method for file type filtering (uses explicit `supportedTypes` set instead of generic `.image` conformance)
+2. Added `cachedValidURLs` in EmptyStateView to avoid repeated pasteboard reads during `draggingUpdated`
+3. EmptyStateView as overlay in container (not scrollView) - mutual exclusion with ErrorPlaceholderView
+
+### Phase 2 — 🔲 Pending
+
+Browse-mode drag-drop on ImageScrollView.
+
+### Phase 3 — 🔲 Pending
+
+Polish: animations, recent files list (optional).
