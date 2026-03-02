@@ -300,7 +300,10 @@
 **實作備註（2026-03-03）**：
 - 使用 `pb.writeObjects([url, image])` 單次呼叫同時寫入 URL 和 NSImage
 - 無快捷鍵（⌘C 衝突，MVP 暫不設）
-- 雙頁模式下只複製 leading page（MVP 行為）
+- PDF 頁面：只寫 NSImage（NSURL 指向整個 PDF 檔案，跳過避免貼出整個 PDF）
+- 雙頁模式：根據右鍵點擊位置 hit-test 判斷 leading/trailing page，複製對應頁面
+- `contextMenuTarget` 為單一 tuple `(page, item)`，消費型 `resolvedTarget()` 自動清除
+- File menu 路徑 fallback 到 `folder.currentImage` + `contentView`（leading page）
 
 ---
 
