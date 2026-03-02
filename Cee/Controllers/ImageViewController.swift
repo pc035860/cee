@@ -5,7 +5,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var folder: ImageFolder
     private let loader = ImageLoader()
     private var scrollView: ImageScrollView!
-    private var contentView: ImageContentView!
+    private var dualPageView: DualPageContentView!
+    /// Convenience: always the leading page (replaces old stored contentView)
+    private var contentView: ImageContentView { dualPageView.leadingPage }
     private var statusBarView: StatusBarView!
     private var statusBarHeightConstraint: NSLayoutConstraint!
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
@@ -31,8 +33,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             height: scrollView.bounds.height - effectiveStatusBarHeight
         )
     }
+    private var imageSizeCache: [Int: CGSize] = [:]
     private enum InitialScrollPosition { case preserve, top, bottom }
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+
+    /// Unified document size — uses compositeSize in dual mode, single image size otherwise.
+    private var currentDocumentSize: NSSize? {
+        let size = dualPageView.compositeSize
+        guard size.width > 0, size.height > 0 else { return nil }
+        return size
+    }
 
     init(folder: ImageFolder) {
         self.folder = folder
@@ -42,9 +52,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
     override func loadView() {
-        contentView = ImageContentView()
+        dualPageView = DualPageContentView()
         scrollView = ImageScrollView(frame: .zero)
-        scrollView.documentView = contentView
+        scrollView.documentView = dualPageView
         scrollView.scrollDelegate = self
 
         statusBarView = StatusBarView()
@@ -80,7 +90,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     override func viewDidAppear() {
         super.viewDidAppear()
         applySettings()
-        loadCurrentImage(initialScroll: .top)
+        loadFolderDualPageSettings()
+        if settings.dualPageEnabled {
+            rebuildSpreadsAndReload()
+        } else {
+            loadCurrentImage(initialScroll: .top)
+        }
         view.window?.makeFirstResponder(scrollView)
         // 視窗重新取得 key window 時自動回到 scrollView
         view.window?.initialFirstResponder = scrollView
@@ -95,7 +110,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     func loadFolder(_ newFolder: ImageFolder) {
         Task { await loader.cancelAllPrefetchTasks() }
         self.folder = newFolder
-        loadCurrentImage(initialScroll: .top)
+        imageSizeCache.removeAll()
+        loadFolderDualPageSettings()
+        if settings.dualPageEnabled {
+            rebuildSpreadsAndReload()
+        } else {
+            loadCurrentImage(initialScroll: .top)
+        }
         view.window?.makeFirstResponder(scrollView)
     }
 
@@ -104,6 +125,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applySettings() {
         updateScalingQuality()
         applyScrollSensitivity()
+        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
         if settings.floatOnTop { view.window?.level = .floating }
         applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
@@ -132,39 +154,56 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func updateStatusBar() {
         guard let image = contentView.image else { return }
-        let index = folder.currentIndex + 1
         let total = folder.images.count
         let zoom = scrollView.magnification
         let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
 
-        statusBarView.update(
-            index: index,
-            total: total,
-            zoom: zoom,
-            imageSize: image.size,
-            isFitting: isFitting
-        )
+        if settings.dualPageEnabled, let spread = folder.currentSpread {
+            // Dual mode: "5-6 / 100" for double, "5 / 100" for single spread
+            let pageNums = spread.indices.map { String($0 + 1) }.joined(separator: "-")
+            let indexText = "\(pageNums) / \(total)"
+            // Show leading page size (composite size would be confusing)
+            statusBarView.update(
+                index: folder.currentIndex + 1,
+                total: total,
+                zoom: zoom,
+                imageSize: image.size,
+                isFitting: isFitting,
+                indexOverride: indexText
+            )
+        } else {
+            statusBarView.update(
+                index: folder.currentIndex + 1,
+                total: total,
+                zoom: zoom,
+                imageSize: image.size,
+                isFitting: isFitting
+            )
+        }
     }
 
     private func updateScalingQuality() {
         // GPU layer filters — no needsDisplay, no CPU redraw.
         let showPixels = settings.showPixelsWhenZoomingIn && scrollView.magnification > 1.0
+        let magFilter: CALayerContentsFilter
+        let minFilter: CALayerContentsFilter
         if showPixels {
-            contentView.layerScalingFilter = .nearest
-            contentView.layerMinificationFilter = .nearest
+            magFilter = .nearest
+            minFilter = .nearest
         } else {
             switch settings.scalingQuality {
             case .low:
-                contentView.layerScalingFilter = .nearest
-                contentView.layerMinificationFilter = .linear
+                magFilter = .nearest
+                minFilter = .linear
             case .medium:
-                contentView.layerScalingFilter = .linear
-                contentView.layerMinificationFilter = .linear
+                magFilter = .linear
+                minFilter = .linear
             case .high:
-                contentView.layerScalingFilter = .linear
-                contentView.layerMinificationFilter = .trilinear
+                magFilter = .linear
+                minFilter = .trilinear
             }
         }
+        dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
     }
 
     private func showErrorPlaceholder(_ show: Bool) {
@@ -202,47 +241,92 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return
         }
 
-        guard let item = folder.currentImage else { return }
+        if settings.dualPageEnabled, let spread = folder.currentSpread {
+            loadSpread(spread, initialScroll: initialScroll)
+        } else if let item = folder.currentImage {
+            // Non-dual mode: wrap as single spread for unified loading path
+            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll)
+        }
+    }
+
+    private func loadSpread(_ spread: PageSpread, initialScroll: InitialScrollPosition) {
         let requestID = UUID()
         currentLoadRequestID = requestID
-        showErrorPlaceholder(false)  // 立即隱藏舊 error placeholder
-        contentView.loadingState = .loading  // Phase 6: accessibility state tracking
+        showErrorPlaceholder(false)
+        contentView.loadingState = .loading
 
         currentLoadTask?.cancel()
         currentLoadTask = Task {
-            // PDF 或一般圖片走不同載入路徑
-            let image: NSImage?
-            if let pageIndex = item.pdfPageIndex {
-                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
-            } else {
-                image = await loader.loadImage(at: item.url)
-            }
-
-            guard let image else {
-                // Phase 5: 載入失敗（檔案缺失 / 格式不支援）
+            switch spread {
+            case .single(let index, let item):
+                let image = await loadImageForItem(item)
                 guard currentLoadRequestID == requestID else { return }
-                contentView.image = nil
-                contentView.loadingState = .error
-                showErrorPlaceholder(true)
-                return
-            }
-            guard currentLoadRequestID == requestID else { return }
+                guard let image else {
+                    contentView.image = nil
+                    contentView.loadingState = .error
+                    showErrorPlaceholder(true)
+                    return
+                }
 
-            contentView.image = image
-            contentView.loadingState = .loaded
-            contentView.setAccessibilityLabel(item.fileName)  // Phase 6: for test assertions
-            applyFitting(for: image.size)
+                contentView.image = image
+                contentView.loadingState = .loaded
+                contentView.setAccessibilityLabel(item.fileName)
+                imageSizeCache[index] = image.size
+                dualPageView.configureSingle(imageSize: image.size)
+
+            case .double(let leadingIndex, let leading, let trailingIndex, let trailing):
+                async let leadingImage = loadImageForItem(leading)
+                async let trailingImage = loadImageForItem(trailing)
+                let (lImg, tImg) = await (leadingImage, trailingImage)
+                guard currentLoadRequestID == requestID else { return }
+
+                guard let lImg else {
+                    contentView.image = nil
+                    contentView.loadingState = .error
+                    showErrorPlaceholder(true)
+                    return
+                }
+
+                contentView.image = lImg
+                contentView.loadingState = .loaded
+                contentView.setAccessibilityLabel(leading.fileName)
+                imageSizeCache[leadingIndex] = lImg.size
+
+                if let tImg {
+                    imageSizeCache[trailingIndex] = tImg.size
+                    dualPageView.configureDouble(
+                        leadingSize: lImg.size,
+                        trailingSize: tImg.size,
+                        isRTL: settings.readingDirection.isRTL
+                    )
+                    dualPageView.trailingPage?.image = tImg
+                    dualPageView.trailingPage?.loadingState = .loaded
+                    dualPageView.trailingPage?.setAccessibilityLabel(trailing.fileName)
+                } else {
+                    // Trailing image failed — fall back to single
+                    dualPageView.configureSingle(imageSize: lImg.size)
+                }
+            }
+
+            applyFitting(for: dualPageView.compositeSize)
             applyInitialScrollPosition(initialScroll)
-            applyCenteringInsetsIfNeeded(reason: "loadCurrentImage")
-            updateStatusBar()  // Status Bar 更新
+            applyCenteringInsetsIfNeeded(reason: "loadSpread")
+            updateStatusBar()
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
                 items: folder.images
             )
-
-            // 儲存 PDF 頁碼（用於下次開啟時恢復）
             savePDFLastViewedPage()
+        }
+    }
+
+    /// Extract image loading to reusable helper
+    private func loadImageForItem(_ item: ImageItem) async -> NSImage? {
+        if let pageIndex = item.pdfPageIndex {
+            return await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+        } else {
+            return await loader.loadImage(at: item.url)
         }
     }
 
@@ -254,10 +338,40 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         UserDefaults.standard.set(pageIndex, forKey: key)
     }
 
+    // MARK: - Per-Folder Dual Page Settings
+
+    private struct FolderDualPageSettings: Codable {
+        var dualPageEnabled: Bool
+        var firstPageIsCover: Bool
+        var readingDirection: ViewerSettings.ReadingDirection
+    }
+
+    private func saveFolderDualPageSettings() {
+        let key = "dualPage.settings.\(folder.folderURL.path)"
+        let folderSettings = FolderDualPageSettings(
+            dualPageEnabled: settings.dualPageEnabled,
+            firstPageIsCover: settings.firstPageIsCover,
+            readingDirection: settings.readingDirection
+        )
+        if let data = try? JSONEncoder().encode(folderSettings) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private func loadFolderDualPageSettings() {
+        let key = "dualPage.settings.\(folder.folderURL.path)"
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let folderSettings = try? JSONDecoder().decode(FolderDualPageSettings.self, from: data)
+        else { return }
+        settings.dualPageEnabled = folderSettings.dualPageEnabled
+        settings.firstPageIsCover = folderSettings.firstPageIsCover
+        settings.readingDirection = folderSettings.readingDirection
+        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
+    }
+
     private func applyFitting(for imageSize: NSSize) {
         guard imageSize.width > 0, imageSize.height > 0 else { return }
-        // documentView frame 必須設定為圖片原始尺寸，magnification 才有東西可縮放
-        contentView.frame = NSRect(origin: .zero, size: imageSize)
+        // documentView frame is now set by DualPageContentView.configureSingle/configureDouble
         // 計算有效 viewport：scrollView 現在填滿 container，需扣除覆蓋的 statusBar 高度
         let viewport = effectiveScrollViewport
         guard viewport.width > 0, viewport.height > 0 else {
@@ -342,7 +456,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func scrollRange(for insets: NSEdgeInsets) -> ScrollRange? {
         let clipView = scrollView.contentView
         let visibleSize = clipView.bounds.size
-        let docSize = contentView.frame.size
+        let docSize = dualPageView.frame.size
 
         guard visibleSize.width > 0, visibleSize.height > 0,
               docSize.width > 0, docSize.height > 0 else { return nil }
@@ -397,9 +511,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func applyCenteringInsetsIfNeeded(reason: String = "unspecified") {
         let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        guard let imageSize = contentView.image?.size,
-              imageSize.width > 0,
-              imageSize.height > 0 else {
+        guard let imageSize = currentDocumentSize else {
             if !insetsNearlyEqual(scrollView.contentInsets, zeroInsets) {
                 scrollView.contentInsets = zeroInsets
             }
@@ -419,8 +531,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
 
         // 重要：contentInsets / clip origin / document frame 都在文件座標系。
-        // 這裡必須用 clipView.bounds.size 與 contentView.frame.size 計算，避免縮放時座標系混用。
-        let documentSize = contentView.frame.size
+        // 這裡必須用 clipView.bounds.size 與 dualPageView.frame.size 計算，避免縮放時座標系混用。
+        let documentSize = dualPageView.frame.size
         let insetX = max((clipSize.width - documentSize.width) / 2.0, 0)
         // NSScrollView contentInsets 以視覺邊緣為語意：.top = visual top, .bottom = visual bottom。
         // statusBar 在 visual bottom → statusBarH 加到 .bottom。
@@ -529,27 +641,43 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Navigation
 
     @objc func goToNextImage() {
-        guard folder.goNext() else { return }
+        if settings.dualPageEnabled {
+            guard folder.goNextSpread() else { return }
+        } else {
+            guard folder.goNext() else { return }
+        }
         loadCurrentImage(initialScroll: .top)
         updateWindowTitle()
     }
 
     @objc func goToPreviousImage() {
-        guard folder.goPrevious() else { return }
+        if settings.dualPageEnabled {
+            guard folder.goPreviousSpread() else { return }
+        } else {
+            guard folder.goPrevious() else { return }
+        }
         loadCurrentImage(initialScroll: .bottom)
         updateWindowTitle()
     }
 
     @objc func goToFirstImage() {
         guard !folder.images.isEmpty else { return }
-        folder.currentIndex = 0
+        if settings.dualPageEnabled {
+            folder.goToFirstSpread()
+        } else {
+            folder.currentIndex = 0
+        }
         loadCurrentImage(initialScroll: .top)
         updateWindowTitle()
     }
 
     @objc func goToLastImage() {
         guard !folder.images.isEmpty else { return }
-        folder.currentIndex = folder.images.count - 1
+        if settings.dualPageEnabled {
+            folder.goToLastSpread()
+        } else {
+            folder.currentIndex = folder.images.count - 1
+        }
         loadCurrentImage(initialScroll: .top)
         updateWindowTitle()
     }
@@ -617,7 +745,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func fitOnScreen(_ sender: Any? = nil) {
         settings.isManualZoom = false
-        if let imageSize = contentView.image?.size {
+        if let imageSize = currentDocumentSize {
             applyFitting(for: imageSize)
         }
         settings.save()
@@ -642,7 +770,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             settings.isManualZoom = false
         }
         settings.save()
-        if let imageSize = contentView.image?.size { applyFitting(for: imageSize) }
+        if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
     }
 
     @objc func toggleShowPixels(_ sender: Any? = nil) {
@@ -674,6 +802,47 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateWindowTitle()  // 切換 Status Bar 後更新標題列顯示
     }
 
+    @objc func toggleDualPage(_ sender: Any? = nil) {
+        settings.dualPageEnabled.toggle()
+        settings.save()
+        saveFolderDualPageSettings()
+        if settings.dualPageEnabled {
+            rebuildSpreadsAndReload()
+        } else {
+            loadCurrentImage(initialScroll: .preserve)
+        }
+    }
+
+    @objc func togglePageOffset(_ sender: Any? = nil) {
+        settings.firstPageIsCover.toggle()
+        settings.save()
+        saveFolderDualPageSettings()
+        if settings.dualPageEnabled {
+            rebuildSpreadsAndReload()
+        }
+    }
+
+    private func rebuildSpreadsAndReload() {
+        folder.rebuildSpreads(
+            firstPageIsCover: settings.firstPageIsCover,
+            imageSizeProvider: { [weak self] index in
+                self?.imageSizeCache[index]
+            }
+        )
+        loadCurrentImage(initialScroll: .preserve)
+    }
+
+    @objc func toggleReadingDirection(_ sender: Any? = nil) {
+        settings.readingDirection = (settings.readingDirection == .leftToRight)
+            ? .rightToLeft : .leftToRight
+        settings.save()
+        saveFolderDualPageSettings()
+        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
+        if settings.dualPageEnabled {
+            loadCurrentImage(initialScroll: .preserve)
+        }
+    }
+
     @objc func toggleFullScreen(_ sender: Any? = nil) {
         let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
         DebugCentering.log(
@@ -694,7 +863,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         // Re-apply AutoFit if in auto-fit mode (not manual zoom)
         if !settings.isManualZoom && settings.alwaysFitOnOpen {
-            if let imageSize = contentView.image?.size {
+            if let imageSize = currentDocumentSize {
                 applyFitting(for: imageSize)
             }
         }
@@ -713,25 +882,25 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func toggleShrinkH(_ sender: Any? = nil) {
         settings.fittingOptions.shrinkHorizontally.toggle()
         settings.save()
-        if let imageSize = contentView.image?.size { applyFitting(for: imageSize) }
+        if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
     }
 
     @objc func toggleShrinkV(_ sender: Any? = nil) {
         settings.fittingOptions.shrinkVertically.toggle()
         settings.save()
-        if let imageSize = contentView.image?.size { applyFitting(for: imageSize) }
+        if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
     }
 
     @objc func toggleStretchH(_ sender: Any? = nil) {
         settings.fittingOptions.stretchHorizontally.toggle()
         settings.save()
-        if let imageSize = contentView.image?.size { applyFitting(for: imageSize) }
+        if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
     }
 
     @objc func toggleStretchV(_ sender: Any? = nil) {
         settings.fittingOptions.stretchVertically.toggle()
         settings.save()
-        if let imageSize = contentView.image?.size { applyFitting(for: imageSize) }
+        if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
     }
 
     // MARK: - Scaling Quality (@objc)
@@ -839,9 +1008,26 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(toggleStatusBar(_:)):
             menuItem.title = settings.showStatusBar ? "Hide Status Bar" : "Show Status Bar"
             return true
+        case #selector(toggleDualPage(_:)):
+            menuItem.state = settings.dualPageEnabled ? .on : .off
+            return true
+        case #selector(togglePageOffset(_:)):
+            menuItem.state = settings.firstPageIsCover ? .on : .off
+            return settings.dualPageEnabled  // Only enabled when dual page is on
+        case #selector(toggleReadingDirection(_:)):
+            let isRTL = settings.readingDirection.isRTL
+            menuItem.state = isRTL ? .on : .off
+            menuItem.title = isRTL ? "Reading: Right to Left" : "Reading: Left to Right"
+            return settings.dualPageEnabled
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"
+            return true
+        case #selector(goToNextImage):
+            menuItem.title = settings.dualPageEnabled ? "Next Spread" : "Next Image"
+            return true
+        case #selector(goToPreviousImage):
+            menuItem.title = settings.dualPageEnabled ? "Previous Spread" : "Previous Image"
             return true
         default:
             return true
@@ -868,7 +1054,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard shouldResizeWindowToMatchImage(),
               let window = view.window,
               !window.styleMask.contains(.fullScreen),
-              let imageSize = contentView.image?.size else { return }
+              let imageSize = currentDocumentSize else { return }
 
         let anchorPoint = viewportCenterInDocumentCoordinates()
         let statusBarH = effectiveStatusBarHeight

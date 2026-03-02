@@ -8,9 +8,9 @@ Replaces XEE. Core flow: Finder right-click → Open With → folder browse → 
 ```bash
 xcodegen generate          # regenerate .xcodeproj after project.yml changes
 xcodebuild -project Cee.xcodeproj -scheme Cee -configuration Debug build
-./scripts/test-e2e.sh      # run full XCUITest suite
+xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS' -only-testing:CeeTests  # unit tests
+./scripts/test-e2e.sh      # run full XCUITest suite (E2E)
 xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,arch=arm64' -only-testing:CeeUITests/CeeUITests/testSmoke_AppLaunchesAndDisplaysImage
-xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS' -only-testing:CeeUITests/CeeUITests/testFullscreenZoom_RemainsHorizontallyCentered
 ```
 
 Runtime debug toggles:
@@ -27,6 +27,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Entry point** — `main.swift` (not `@main`/`@NSApplicationMain`).
 - **Single window reuse** — `ImageWindowController.shared` prevents ARC release and reuses the window.
 - **project.yml** — source of truth for Xcode project. `.xcodeproj` is gitignored. Re-run `xcodegen generate` after structural changes.
+- **Test targets** — `CeeTests` (unit tests, pure logic) and `CeeUITests` (E2E). Unit tests focus on non-UI modules (SpreadManager, ImageFolder navigation). Use temp directories with minimal PNG files for ImageFolder tests that need real file system.
 
 ## Swift 6 Gotchas
 
@@ -38,6 +39,11 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **NSScrollView `contentInsets` uses visual semantics** — `.top` = visual top (high Y), `.bottom` = visual bottom (low Y), regardless of unflipped coordinate system. In `scrollRange`: `minY = -insets.bottom`, `maxY = docH - clipH + insets.top`. Getting this backwards causes asymmetric scroll range bugs.
 - **CALayer y-axis is flipped in layer-backed NSView.** `wantsLayer = true` → AppKit sets `layer.isGeometryFlipped = true` → `y=0` is visual top. Opposite of raw Core Animation.
 - **`deinit` cannot access stored properties** in strict concurrency. Use notification-based cleanup instead.
+
+## XcodeGen Gotchas
+
+- **Unit test bundle type is `bundle.unit-test`**, not `bundle.unit-testing`. UI test is `bundle.ui-testing`.
+- **`GENERATE_INFOPLIST_FILE: YES`** required for test targets without a custom Info.plist. Without it, code signing fails with "target does not have an Info.plist file".
 
 ## Window Sizing Gotchas
 
@@ -126,11 +132,26 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Zoom display** — "Fit" when `!isManualZoom && alwaysFitOnOpen`; "100%" when zoom=1.0 in manual mode; otherwise percentage.
 - **Settings persistence** — `ViewerSettings.showStatusBar` defaults to `true`. New fields are backward-compatible via Codable default values.
 
+## Dual Page View
+
+- **Architecture**: `DualPageContentView` is the permanent `scrollView.documentView`. Contains 1–2 `ImageContentView` children. NSScrollView magnification auto-applies to all children — zoom/pan works identically to single page.
+- **`contentView` is a computed property** — `dualPageView.leadingPage`. Minimized diff when adding dual page support. Use `currentDocumentSize` (returns `dualPageView.compositeSize`) instead of `contentView.image?.size` for fitting/centering calculations.
+- **Spread model**: `PageSpread` enum (`.single`/`.double`) + `SpreadManager` (pure static `Sendable` struct). Wide page detection: `width > height` → auto-single. Cover mode: first page alone when `firstPageIsCover`.
+- **Navigation is spread-aware**: When `settings.dualPageEnabled`, all nav methods (goNext/goPrev/Home/End) use spread stepping. `ImageFolder.goNext()`/`goPrevious()` auto-call `syncSpreadIndex()`.
+- **Height normalization**: Different-resolution pages are scaled proportionally so both render at the same visual height (`maxH`). Without this, pages appear mismatched.
+- **RTL support**: Three layers — `DualPageContentView.configureDouble(isRTL:)` swaps page positions, `ImageScrollView.isRTLNavigation` reverses arrow keys, `ViewerSettings.readingDirection` persists setting.
+- **Unified loading path**: All image loading (single and dual mode) goes through `loadSpread`. Non-dual mode wraps current image as `.single` spread. No separate `loadSingleImage` method.
+- **Per-folder persistence**: `FolderDualPageSettings` Codable struct in UserDefaults at `dualPage.settings.\(folderURL.path)`. Loaded on both `viewDidAppear()` and `loadFolder()`, saved on toggle.
+- **Menu shortcuts**: ⌘K (dual page), ⌘⇧O (cover mode), ⌘⇧K (reading direction). Go menu shows "Next Spread"/"Previous Spread" dynamically.
+- **`imageSizeCache`**: Keyed by flat image index. `imageSizeProvider` is index-based `(Int) -> CGSize?` (not item-based) for O(1) lookup. Unknown sizes default to portrait (paired). Cache cleared on folder change.
+- **`ReadingDirection.isRTL`**: Computed property on the enum. Use this instead of `== .rightToLeft` comparisons.
+- **`PageSpread.containsPage(_:)`**: Zero-allocation check. Use instead of `indices.contains()` on hot paths.
+
 ## Recent Significant Changes
 
-- **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` + `NSImage.draw(in:)` to GPU `layer.contents = cgImage`. Eliminates per-frame CPU resample during zoom (was ~33M pixels/frame for 4K Retina). Scaling quality now uses `CALayer` filters instead of `CGContext.interpolationQuality`.
-- **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.
-- **Fullscreen hardening:** migrated from delay-based sync to notification-driven transition handling. AutoFit now re-applies after fullscreen transition when in auto-fit mode.
-- **Smooth arrow pan:** arrow key scrolling now uses `NSAnimationContext` for 0.1s smooth animation instead of instant jump.
-- **Simplified navigation:** up/down arrows only scroll, never navigate images. Left/right arrows retain edge navigation.
-- **Status bar overlay with material effect:** StatusBarView migrated to `NSVisualEffectView` with `.titlebar` material. ScrollView now fills entire container; status bar overlays at bottom with `contentInsets`-based padding. Fixed `scrollRange` Y-axis semantics (`.top`=visual top, `.bottom`=visual bottom) to match NSScrollView's native scroll bounds.
+- **Unit test target:** `CeeTests` with SpreadManager and ImageFolder navigation tests. Pure logic, no UI dependencies.
+- **Dual page view:** `DualPageContentView` container with spread-aware navigation, RTL support, per-folder settings persistence. PDF pages participate in spread pairing natively. See "Dual Page View" section.
+- **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` to GPU `layer.contents = cgImage`. Scaling quality uses `CALayer` filters.
+- **Zoom viewport-center preservation:** zoom keeps user's pan position. Dynamic min magnification prevents window-resize desync drift.
+- **Fullscreen hardening:** notification-driven transition handling. AutoFit re-applies after fullscreen transition.
+- **Status bar overlay with material effect:** `NSVisualEffectView` with `.titlebar` material. `contentInsets`-based padding.

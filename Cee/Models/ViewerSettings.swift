@@ -49,6 +49,18 @@ struct ViewerSettings: Codable {
     // MARK: - UI
     var showStatusBar: Bool = true
 
+    // MARK: - Dual Page
+    var dualPageEnabled: Bool = false
+    var firstPageIsCover: Bool = false  // true = first page displayed solo (cover mode)
+
+    enum ReadingDirection: String, Codable, Sendable {
+        case leftToRight
+        case rightToLeft
+
+        var isRTL: Bool { self == .rightToLeft }
+    }
+    var readingDirection: ReadingDirection = .rightToLeft
+
     // MARK: - Persistence
     private static let key = "CeeViewerSettings"
 
