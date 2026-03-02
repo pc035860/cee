@@ -969,12 +969,20 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard let item = folder.currentImage else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
-        // Write file URL + image data in single call
-        // NSURL provides file paste in Finder; NSImage provides TIFF for image editors
-        if let image = contentView.image {
-            pb.writeObjects([item.url as NSURL, image])
+        if item.isPDF {
+            // PDF page: skip URL (it points to the whole file, not this page).
+            // If image not yet loaded, do nothing — no meaningful fallback for PDF pages.
+            if let image = contentView.image {
+                pb.writeObjects([image])
+            }
         } else {
-            pb.writeObjects([item.url as NSURL])
+            // Regular image: write both file URL and image data
+            // NSURL provides file paste in Finder; NSImage provides TIFF for image editors
+            if let image = contentView.image {
+                pb.writeObjects([item.url as NSURL, image])
+            } else {
+                pb.writeObjects([item.url as NSURL])
+            }
         }
     }
 
