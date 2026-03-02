@@ -8,9 +8,9 @@ Replaces XEE. Core flow: Finder right-click → Open With → folder browse → 
 ```bash
 xcodegen generate          # regenerate .xcodeproj after project.yml changes
 xcodebuild -project Cee.xcodeproj -scheme Cee -configuration Debug build
-./scripts/test-e2e.sh      # run full XCUITest suite
+xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS' -only-testing:CeeTests  # unit tests
+./scripts/test-e2e.sh      # run full XCUITest suite (E2E)
 xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS,arch=arm64' -only-testing:CeeUITests/CeeUITests/testSmoke_AppLaunchesAndDisplaysImage
-xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS' -only-testing:CeeUITests/CeeUITests/testFullscreenZoom_RemainsHorizontallyCentered
 ```
 
 Runtime debug toggles:
@@ -27,6 +27,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Entry point** — `main.swift` (not `@main`/`@NSApplicationMain`).
 - **Single window reuse** — `ImageWindowController.shared` prevents ARC release and reuses the window.
 - **project.yml** — source of truth for Xcode project. `.xcodeproj` is gitignored. Re-run `xcodegen generate` after structural changes.
+- **Test targets** — `CeeTests` (unit tests, pure logic) and `CeeUITests` (E2E). Unit tests focus on non-UI modules (SpreadManager, ImageFolder navigation). Use temp directories with minimal PNG files for ImageFolder tests that need real file system.
 
 ## Swift 6 Gotchas
 
@@ -38,6 +39,11 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **NSScrollView `contentInsets` uses visual semantics** — `.top` = visual top (high Y), `.bottom` = visual bottom (low Y), regardless of unflipped coordinate system. In `scrollRange`: `minY = -insets.bottom`, `maxY = docH - clipH + insets.top`. Getting this backwards causes asymmetric scroll range bugs.
 - **CALayer y-axis is flipped in layer-backed NSView.** `wantsLayer = true` → AppKit sets `layer.isGeometryFlipped = true` → `y=0` is visual top. Opposite of raw Core Animation.
 - **`deinit` cannot access stored properties** in strict concurrency. Use notification-based cleanup instead.
+
+## XcodeGen Gotchas
+
+- **Unit test bundle type is `bundle.unit-test`**, not `bundle.unit-testing`. UI test is `bundle.ui-testing`.
+- **`GENERATE_INFOPLIST_FILE: YES`** required for test targets without a custom Info.plist. Without it, code signing fails with "target does not have an Info.plist file".
 
 ## Window Sizing Gotchas
 
@@ -140,6 +146,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 
 ## Recent Significant Changes
 
+- **Unit test target:** `CeeTests` with SpreadManager and ImageFolder navigation tests. Pure logic, no UI dependencies.
 - **Dual page view:** `DualPageContentView` container with spread-aware navigation, RTL support, per-folder settings persistence. PDF pages participate in spread pairing natively. See "Dual Page View" section.
 - **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` to GPU `layer.contents = cgImage`. Scaling quality uses `CALayer` filters.
 - **Zoom viewport-center preservation:** zoom keeps user's pan position. Dynamic min magnification prevents window-resize desync drift.
