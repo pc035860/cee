@@ -110,6 +110,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         Task { await loader.cancelAllPrefetchTasks() }
         self.folder = newFolder
         imageSizeCache.removeAll()
+        loadFolderDualPageSettings()
         if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         } else {
@@ -376,6 +377,37 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
               let pageIndex = item.pdfPageIndex else { return }
         let key = "pdf.lastPage.\(item.url.path)"
         UserDefaults.standard.set(pageIndex, forKey: key)
+    }
+
+    // MARK: - Per-Folder Dual Page Settings
+
+    private struct FolderDualPageSettings: Codable {
+        var dualPageEnabled: Bool
+        var firstPageIsCover: Bool
+        var readingDirection: ViewerSettings.ReadingDirection
+    }
+
+    private func saveFolderDualPageSettings() {
+        let key = "dualPage.settings.\(folder.folderURL.path)"
+        let folderSettings = FolderDualPageSettings(
+            dualPageEnabled: settings.dualPageEnabled,
+            firstPageIsCover: settings.firstPageIsCover,
+            readingDirection: settings.readingDirection
+        )
+        if let data = try? JSONEncoder().encode(folderSettings) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private func loadFolderDualPageSettings() {
+        let key = "dualPage.settings.\(folder.folderURL.path)"
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let folderSettings = try? JSONDecoder().decode(FolderDualPageSettings.self, from: data)
+        else { return }
+        settings.dualPageEnabled = folderSettings.dualPageEnabled
+        settings.firstPageIsCover = folderSettings.firstPageIsCover
+        settings.readingDirection = folderSettings.readingDirection
+        scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
     }
 
     private func applyFitting(for imageSize: NSSize) {
@@ -814,6 +846,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func toggleDualPage(_ sender: Any? = nil) {
         settings.dualPageEnabled.toggle()
         settings.save()
+        saveFolderDualPageSettings()
         if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         } else {
@@ -824,6 +857,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func togglePageOffset(_ sender: Any? = nil) {
         settings.firstPageIsCover.toggle()
         settings.save()
+        saveFolderDualPageSettings()
         if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         }
@@ -845,6 +879,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.readingDirection = (settings.readingDirection == .leftToRight)
             ? .rightToLeft : .leftToRight
         settings.save()
+        saveFolderDualPageSettings()
         scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
         if settings.dualPageEnabled {
             loadCurrentImage(initialScroll: .preserve)
