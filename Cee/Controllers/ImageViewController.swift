@@ -963,6 +963,26 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         applyScrollSensitivity()
     }
 
+    // MARK: - File Actions
+
+    @objc func copyImage(_ sender: Any? = nil) {
+        guard let item = folder.currentImage else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        // Write file URL + image data in single call
+        // NSURL provides file paste in Finder; NSImage provides TIFF for image editors
+        if let image = contentView.image {
+            pb.writeObjects([item.url as NSURL, image])
+        } else {
+            pb.writeObjects([item.url as NSURL])
+        }
+    }
+
+    @objc func revealInFinder(_ sender: Any? = nil) {
+        guard let item = folder.currentImage else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([item.url])
+    }
+
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -1029,6 +1049,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(goToPreviousImage):
             menuItem.title = settings.dualPageEnabled ? "Previous Spread" : "Previous Image"
             return true
+        case #selector(copyImage(_:)), #selector(revealInFinder(_:)):
+            return folder.currentImage != nil
         default:
             return true
         }
@@ -1248,6 +1270,12 @@ extension ImageViewController: ImageScrollViewDelegate {
         menu.addItem(makeFittingOptionsSubmenu())
         menu.addItem(makeDualPageSubmenu())
         menu.addItem(makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:))))
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Group 3: File Actions
+        menu.addItem(makeContextItem("Copy Image", action: #selector(copyImage(_:))))
+        menu.addItem(makeContextItem("Reveal in Finder", action: #selector(revealInFinder(_:))))
 
         return menu
     }

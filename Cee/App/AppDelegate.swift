@@ -62,6 +62,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         openItem.target = self
         fileMenu.addItem(openItem)
         fileMenu.addItem(.separator())
+        fileMenu.addItem(makeItem("Copy Image", action: #selector(ImageViewController.copyImage(_:)), key: ""))
+        fileMenu.addItem(makeItem("Reveal in Finder", action: #selector(ImageViewController.revealInFinder(_:)), key: ""))
+        fileMenu.addItem(.separator())
         fileMenu.addItem(NSMenuItem(title: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
 
         // ── View Menu ───────────────────────────────────────────────────
