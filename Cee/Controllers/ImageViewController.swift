@@ -1227,4 +1227,60 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView) { scrollPageUpOrPrev() }
+
+    // MARK: - Context Menu
+
+    func contextMenu(for scrollView: ImageScrollView) -> NSMenu? {
+        buildContextMenu()
+    }
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu(title: "Context")
+
+        // Group 1: Zoom
+        menu.addItem(makeContextItem("Fit on Screen", action: #selector(fitOnScreen(_:))))
+        menu.addItem(makeContextItem("Actual Size", action: #selector(actualSize(_:))))
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Group 2: Display Mode
+        let alwaysFitItem = makeContextItem("Always Fit on Open", action: #selector(toggleAlwaysFit(_:)))
+        menu.addItem(alwaysFitItem)
+
+        // Dual Page submenu
+        let dualPageSubmenuItem = makeDualPageSubmenu()
+        menu.addItem(dualPageSubmenuItem)
+
+        let floatItem = makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:)))
+        menu.addItem(floatItem)
+
+        return menu
+    }
+
+    private func makeContextItem(_ title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = nil  // 走 first responder chain
+        return item
+    }
+
+    private func makeDualPageSubmenu() -> NSMenuItem {
+        let submenu = NSMenu(title: "Dual Page")
+
+        // Main toggle
+        let toggleItem = makeContextItem("Dual Page", action: #selector(toggleDualPage(_:)))
+        submenu.addItem(toggleItem)
+
+        submenu.addItem(NSMenuItem.separator())
+
+        // Sub-options (disabled when dual page is off)
+        let coverItem = makeContextItem("First Page as Cover", action: #selector(togglePageOffset(_:)))
+        submenu.addItem(coverItem)
+
+        let directionItem = makeContextItem("Reading: Right to Left", action: #selector(toggleReadingDirection(_:)))
+        submenu.addItem(directionItem)
+
+        let submenuItem = NSMenuItem(title: "Dual Page", action: nil, keyEquivalent: "")
+        submenuItem.submenu = submenu
+        return submenuItem
+    }
 }

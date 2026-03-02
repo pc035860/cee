@@ -18,6 +18,13 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView)
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView)
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView)
+    /// 請求 context menu（右鍵選單）
+    func contextMenu(for scrollView: ImageScrollView) -> NSMenu?
+}
+
+// MARK: - Default Implementation
+extension ImageScrollViewDelegate {
+    func contextMenu(for scrollView: ImageScrollView) -> NSMenu? { nil }
 }
 
 // MARK: - ImageScrollView
@@ -268,6 +275,17 @@ class ImageScrollView: NSScrollView {
             NSCursor.pop()
         }
         super.mouseUp(with: event)
+    }
+
+    // MARK: - Context Menu
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        // 確保 first responder
+        if window?.firstResponder !== self {
+            window?.makeFirstResponder(self)
+        }
+        // 向 scrollDelegate 請求選單
+        return scrollDelegate?.contextMenu(for: self)
     }
 
     // MARK: - Viewport Overflow Detection
