@@ -56,6 +56,8 @@ struct ViewerSettings: Codable {
     enum ReadingDirection: String, Codable, Sendable {
         case leftToRight
         case rightToLeft
+
+        var isRTL: Bool { self == .rightToLeft }
     }
     var readingDirection: ReadingDirection = .rightToLeft
 

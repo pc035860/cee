@@ -116,7 +116,7 @@ class ImageFolder {
 
     /// Rebuild spreads with current settings.
     /// Call when: dual mode toggled, offset toggled, folder loaded, image sizes become known.
-    func rebuildSpreads(firstPageIsCover: Bool, imageSizeProvider: (ImageItem) -> CGSize?) {
+    func rebuildSpreads(firstPageIsCover: Bool, imageSizeProvider: (Int) -> CGSize?) {
         spreads = SpreadManager.buildSpreads(
             from: images,
             firstPageIsCover: firstPageIsCover,

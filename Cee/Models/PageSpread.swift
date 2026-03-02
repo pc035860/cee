@@ -36,4 +36,14 @@ enum PageSpread: Sendable, Equatable {
         case .double(let li, _, let ti, _): return [li, ti]
         }
     }
+
+    /// Check if this spread contains the given page index (no allocation).
+    func containsPage(_ pageIndex: Int) -> Bool {
+        switch self {
+        case .single(let index, _):
+            return index == pageIndex
+        case .double(let li, _, let ti, _):
+            return li == pageIndex || ti == pageIndex
+        }
+    }
 }

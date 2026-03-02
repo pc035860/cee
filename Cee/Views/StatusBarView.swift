@@ -86,12 +86,11 @@ final class StatusBarView: NSVisualEffectView {
     /// 更新所有顯示內容
     /// - Parameter `isFitting`: 當圖片處於 fitting 模式時為 true
     /// - Parameter `indexOverride`: 自訂頁碼文字（例如雙頁模式 "5-6 / 100"），nil 時使用預設格式
-    /// - Parameter `sizeText`: 自訂尺寸文字，nil 時使用 imageSize 格式
     func update(index: Int, total: Int, zoom: CGFloat, imageSize: NSSize, isFitting: Bool,
-                indexOverride: String? = nil, sizeText: String? = nil) {
+                indexOverride: String? = nil) {
         indexLabel.stringValue = indexOverride ?? "\(index) / \(total)"
         zoomLabel.stringValue = zoomText(for: zoom, isFitting: isFitting)
-        sizeLabel.stringValue = sizeText ?? "\(Int(imageSize.width)) × \(Int(imageSize.height))"
+        sizeLabel.stringValue = "\(Int(imageSize.width)) × \(Int(imageSize.height))"
     }
 
     /// 僅更新縮放

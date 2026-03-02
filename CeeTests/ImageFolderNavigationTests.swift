@@ -50,8 +50,8 @@ final class ImageFolderNavigationTests: XCTestCase {
         return Data(bytes)
     }
 
-    /// Portrait size provider (all items are portrait).
-    private func allPortrait(_ item: ImageItem) -> CGSize? {
+    /// Portrait size provider (all indices are portrait).
+    private func allPortrait(_ index: Int) -> CGSize? {
         CGSize(width: 800, height: 1200)
     }
 

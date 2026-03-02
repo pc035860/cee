@@ -140,9 +140,12 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Navigation is spread-aware**: When `settings.dualPageEnabled`, all nav methods (goNext/goPrev/Home/End) use spread stepping. `ImageFolder.goNext()`/`goPrevious()` auto-call `syncSpreadIndex()`.
 - **Height normalization**: Different-resolution pages are scaled proportionally so both render at the same visual height (`maxH`). Without this, pages appear mismatched.
 - **RTL support**: Three layers — `DualPageContentView.configureDouble(isRTL:)` swaps page positions, `ImageScrollView.isRTLNavigation` reverses arrow keys, `ViewerSettings.readingDirection` persists setting.
-- **Per-folder persistence**: `FolderDualPageSettings` Codable struct in UserDefaults at `dualPage.settings.\(folderURL.path)`. Loaded on `loadFolder()`, saved on toggle.
+- **Unified loading path**: All image loading (single and dual mode) goes through `loadSpread`. Non-dual mode wraps current image as `.single` spread. No separate `loadSingleImage` method.
+- **Per-folder persistence**: `FolderDualPageSettings` Codable struct in UserDefaults at `dualPage.settings.\(folderURL.path)`. Loaded on both `viewDidAppear()` and `loadFolder()`, saved on toggle.
 - **Menu shortcuts**: ⌘K (dual page), ⌘⇧O (cover mode), ⌘⇧K (reading direction). Go menu shows "Next Spread"/"Previous Spread" dynamically.
-- **`imageSizeCache`**: Keyed by flat image index. Used by `rebuildSpreads` for wide page detection. Unknown sizes default to portrait (paired). Cache cleared on folder change.
+- **`imageSizeCache`**: Keyed by flat image index. `imageSizeProvider` is index-based `(Int) -> CGSize?` (not item-based) for O(1) lookup. Unknown sizes default to portrait (paired). Cache cleared on folder change.
+- **`ReadingDirection.isRTL`**: Computed property on the enum. Use this instead of `== .rightToLeft` comparisons.
+- **`PageSpread.containsPage(_:)`**: Zero-allocation check. Use instead of `indices.contains()` on hot paths.
 
 ## Recent Significant Changes
 

@@ -12,26 +12,25 @@ final class SpreadManagerTests: XCTestCase {
         }
     }
 
-    /// Size provider that returns portrait for all items.
-    private func allPortrait(_ item: ImageItem) -> CGSize? {
+    /// Size provider that returns portrait for all indices.
+    private func allPortrait(_ index: Int) -> CGSize? {
         CGSize(width: 800, height: 1200)
     }
 
-    /// Size provider that returns wide for all items.
-    private func allWide(_ item: ImageItem) -> CGSize? {
+    /// Size provider that returns wide for all indices.
+    private func allWide(_ index: Int) -> CGSize? {
         CGSize(width: 1600, height: 900)
     }
 
-    /// Size provider that returns nil (unknown) for all items.
-    private func allUnknown(_ item: ImageItem) -> CGSize? {
+    /// Size provider that returns nil (unknown) for all indices.
+    private func allUnknown(_ index: Int) -> CGSize? {
         nil
     }
 
     /// Build a provider that returns wide for specific indices.
-    private func wideAt(_ wideIndices: Set<Int>, items: [ImageItem]) -> (ImageItem) -> CGSize? {
-        { item in
-            guard let idx = items.firstIndex(of: item) else { return nil }
-            if wideIndices.contains(idx) {
+    private func wideAt(_ wideIndices: Set<Int>) -> (Int) -> CGSize? {
+        { index in
+            if wideIndices.contains(index) {
                 return CGSize(width: 1600, height: 900)
             }
             return CGSize(width: 800, height: 1200)
@@ -71,7 +70,7 @@ final class SpreadManagerTests: XCTestCase {
     func testWidePage_getsSingleSpread() {
         // portrait, wide, portrait → single, single, single
         let items = makeItems(3)
-        let provider = wideAt([1], items: items)
+        let provider = wideAt([1])
         let result = SpreadManager.buildSpreads(from: items, firstPageIsCover: false, imageSizeProvider: provider)
         XCTAssertEqual(result.count, 3)
         XCTAssertEqual(result[0], .single(index: 0, item: items[0]))  // portrait before wide → solo
@@ -118,7 +117,7 @@ final class SpreadManagerTests: XCTestCase {
     func testMixedWidePortrait_interleaved() {
         // p, w, p, p, w, p → single(0), single(1), double(2,3), single(4), single(5)
         let items = makeItems(6)
-        let provider = wideAt([1, 4], items: items)
+        let provider = wideAt([1, 4])
         let result = SpreadManager.buildSpreads(from: items, firstPageIsCover: false, imageSizeProvider: provider)
         XCTAssertEqual(result.count, 5)
         XCTAssertEqual(result[0], .single(index: 0, item: items[0]))   // portrait before wide

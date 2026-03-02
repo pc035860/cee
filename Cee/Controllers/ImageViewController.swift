@@ -90,6 +90,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     override func viewDidAppear() {
         super.viewDidAppear()
         applySettings()
+        loadFolderDualPageSettings()
         if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         } else {
@@ -124,7 +125,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applySettings() {
         updateScalingQuality()
         applyScrollSensitivity()
-        scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
+        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
         if settings.floatOnTop { view.window?.level = .floating }
         applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
@@ -242,47 +243,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         if settings.dualPageEnabled, let spread = folder.currentSpread {
             loadSpread(spread, initialScroll: initialScroll)
-        } else {
-            loadSingleImage(initialScroll: initialScroll)
-        }
-    }
-
-    private func loadSingleImage(initialScroll: InitialScrollPosition) {
-        guard let item = folder.currentImage else { return }
-        let requestID = UUID()
-        currentLoadRequestID = requestID
-        showErrorPlaceholder(false)
-        contentView.loadingState = .loading
-
-        currentLoadTask?.cancel()
-        currentLoadTask = Task {
-            let image = await loadImageForItem(item)
-
-            guard let image else {
-                guard currentLoadRequestID == requestID else { return }
-                contentView.image = nil
-                contentView.loadingState = .error
-                showErrorPlaceholder(true)
-                return
-            }
-            guard currentLoadRequestID == requestID else { return }
-
-            contentView.image = image
-            contentView.loadingState = .loaded
-            contentView.setAccessibilityLabel(item.fileName)
-            cacheImageSize(image.size, forIndex: folder.currentIndex)
-            dualPageView.configureSingle(imageSize: image.size)
-
-            applyFitting(for: dualPageView.compositeSize)
-            applyInitialScrollPosition(initialScroll)
-            applyCenteringInsetsIfNeeded(reason: "loadSingleImage")
-            updateStatusBar()
-
-            await loader.updateCache(
-                currentIndex: folder.currentIndex,
-                items: folder.images
-            )
-            savePDFLastViewedPage()
+        } else if let item = folder.currentImage {
+            // Non-dual mode: wrap as single spread for unified loading path
+            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll)
         }
     }
 
@@ -308,7 +271,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 contentView.image = image
                 contentView.loadingState = .loaded
                 contentView.setAccessibilityLabel(item.fileName)
-                cacheImageSize(image.size, forIndex: index)
+                imageSizeCache[index] = image.size
                 dualPageView.configureSingle(imageSize: image.size)
 
             case .double(let leadingIndex, let leading, let trailingIndex, let trailing):
@@ -327,14 +290,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 contentView.image = lImg
                 contentView.loadingState = .loaded
                 contentView.setAccessibilityLabel(leading.fileName)
-                cacheImageSize(lImg.size, forIndex: leadingIndex)
+                imageSizeCache[leadingIndex] = lImg.size
 
                 if let tImg {
-                    cacheImageSize(tImg.size, forIndex: trailingIndex)
+                    imageSizeCache[trailingIndex] = tImg.size
                     dualPageView.configureDouble(
                         leadingSize: lImg.size,
                         trailingSize: tImg.size,
-                        isRTL: settings.readingDirection == .rightToLeft
+                        isRTL: settings.readingDirection.isRTL
                     )
                     dualPageView.trailingPage?.image = tImg
                     dualPageView.trailingPage?.loadingState = .loaded
@@ -365,10 +328,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             return await loader.loadImage(at: item.url)
         }
-    }
-
-    private func cacheImageSize(_ size: CGSize, forIndex index: Int) {
-        imageSizeCache[index] = size
     }
 
     /// 儲存當前 PDF 頁碼到 UserDefaults
@@ -407,7 +366,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.dualPageEnabled = folderSettings.dualPageEnabled
         settings.firstPageIsCover = folderSettings.firstPageIsCover
         settings.readingDirection = folderSettings.readingDirection
-        scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
+        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
     }
 
     private func applyFitting(for imageSize: NSSize) {
@@ -866,10 +825,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func rebuildSpreadsAndReload() {
         folder.rebuildSpreads(
             firstPageIsCover: settings.firstPageIsCover,
-            imageSizeProvider: { [weak self] item in
-                guard let self,
-                      let index = self.folder.images.firstIndex(of: item) else { return nil }
-                return self.imageSizeCache[index]
+            imageSizeProvider: { [weak self] index in
+                self?.imageSizeCache[index]
             }
         )
         loadCurrentImage(initialScroll: .preserve)
@@ -880,7 +837,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             ? .rightToLeft : .leftToRight
         settings.save()
         saveFolderDualPageSettings()
-        scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
+        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
         if settings.dualPageEnabled {
             loadCurrentImage(initialScroll: .preserve)
         }
@@ -1058,7 +1015,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.firstPageIsCover ? .on : .off
             return settings.dualPageEnabled  // Only enabled when dual page is on
         case #selector(toggleReadingDirection(_:)):
-            let isRTL = settings.readingDirection == .rightToLeft
+            let isRTL = settings.readingDirection.isRTL
             menuItem.state = isRTL ? .on : .off
             menuItem.title = isRTL ? "Reading: Right to Left" : "Reading: Left to Right"
             return settings.dualPageEnabled
