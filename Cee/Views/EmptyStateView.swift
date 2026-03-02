@@ -163,10 +163,6 @@ final class EmptyStateView: NSView {
         ) as? [URL] else {
             return []
         }
-        return urls.filter { isSupported($0) }
-    }
-
-    private func isSupported(_ url: URL) -> Bool {
-        ImageFolder.isSupported(url: url)
+        return URLFilter.filterImageURLs(urls, isSupported: ImageFolder.isSupported(url:))
     }
 }
