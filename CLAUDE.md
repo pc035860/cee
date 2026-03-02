@@ -156,4 +156,4 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Zoom viewport-center preservation:** zoom keeps user's pan position. Dynamic min magnification prevents window-resize desync drift.
 - **Fullscreen hardening:** notification-driven transition handling. AutoFit re-applies after fullscreen transition.
 - **Status bar overlay with material effect:** `NSVisualEffectView` with `.titlebar` material. `contentInsets`-based padding.
-- **Context menu (Phase 1):** Right-click menu with zoom actions and display toggles. Delegate pattern via `ImageScrollViewDelegate.contextMenu(for:)`. Dual Page submenu with conditional enable/disable.
+- **Context menu (Phase 1+2):** Right-click menu with zoom actions, display toggles, and file actions (Copy Image, Reveal in Finder). Delegate pattern via `ImageScrollViewDelegate.contextMenu(for:)`. Dual Page submenu with conditional enable/disable. File actions in both context menu and File menu bar (HIG compliance).
