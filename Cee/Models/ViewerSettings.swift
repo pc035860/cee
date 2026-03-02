@@ -49,6 +49,10 @@ struct ViewerSettings: Codable {
     // MARK: - UI
     var showStatusBar: Bool = true
 
+    // MARK: - Dual Page
+    var dualPageEnabled: Bool = false
+    var firstPageIsCover: Bool = false  // true = first page displayed solo (cover mode)
+
     // MARK: - Persistence
     private static let key = "CeeViewerSettings"
 

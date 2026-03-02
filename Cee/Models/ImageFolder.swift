@@ -92,6 +92,7 @@ class ImageFolder {
     var hasNext: Bool { currentIndex < images.count - 1 }
     var hasPrevious: Bool { currentIndex > 0 }
 
+    /// ⚠️ In dual-page mode, call `syncSpreadIndex()` after this to keep spread index consistent.
     @discardableResult
     func goNext() -> Bool {
         guard hasNext else { return false }
@@ -99,10 +100,71 @@ class ImageFolder {
         return true
     }
 
+    /// ⚠️ In dual-page mode, call `syncSpreadIndex()` after this to keep spread index consistent.
     @discardableResult
     func goPrevious() -> Bool {
         guard hasPrevious else { return false }
         currentIndex -= 1
         return true
+    }
+
+    // MARK: - Spread Navigation
+
+    /// Cached spread list, rebuilt when dual mode or offset changes.
+    private(set) var spreads: [PageSpread] = []
+    private(set) var currentSpreadIndex: Int = 0
+
+    /// Rebuild spreads with current settings.
+    /// Call when: dual mode toggled, offset toggled, folder loaded, image sizes become known.
+    func rebuildSpreads(firstPageIsCover: Bool, imageSizeProvider: (ImageItem) -> CGSize?) {
+        spreads = SpreadManager.buildSpreads(
+            from: images,
+            firstPageIsCover: firstPageIsCover,
+            imageSizeProvider: imageSizeProvider
+        )
+        currentSpreadIndex = SpreadManager.spreadIndex(for: currentIndex, in: spreads)
+    }
+
+    var currentSpread: PageSpread? { spreads[safe: currentSpreadIndex] }
+    var hasNextSpread: Bool { currentSpreadIndex < spreads.count - 1 }
+    var hasPreviousSpread: Bool { currentSpreadIndex > 0 }
+
+    @discardableResult
+    func goNextSpread() -> Bool {
+        guard hasNextSpread else { return false }
+        currentSpreadIndex += 1
+        if let spread = currentSpread {
+            currentIndex = spread.leadingIndex
+        }
+        return true
+    }
+
+    @discardableResult
+    func goPreviousSpread() -> Bool {
+        guard hasPreviousSpread else { return false }
+        currentSpreadIndex -= 1
+        if let spread = currentSpread {
+            currentIndex = spread.leadingIndex
+        }
+        return true
+    }
+
+    func goToFirstSpread() {
+        currentSpreadIndex = 0
+        if let spread = currentSpread {
+            currentIndex = spread.leadingIndex
+        }
+    }
+
+    func goToLastSpread() {
+        currentSpreadIndex = max(0, spreads.count - 1)
+        if let spread = currentSpread {
+            currentIndex = spread.leadingIndex
+        }
+    }
+
+    /// Sync spread index after single-page navigation (goNext/goPrevious).
+    func syncSpreadIndex() {
+        currentSpreadIndex = SpreadManager.spreadIndex(for: currentIndex, in: spreads)
     }
 }
