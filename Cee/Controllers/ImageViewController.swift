@@ -827,6 +827,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func rebuildSpreadsAndReload() {
+        prepopulatePDFPageSizes()
         folder.rebuildSpreads(
             firstPageIsCover: settings.firstPageIsCover,
             imageSizeProvider: { [weak self] index in
@@ -834,6 +835,38 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             }
         )
         loadCurrentImage(initialScroll: .preserve)
+    }
+
+    /// Pre-populate imageSizeCache with PDF page dimensions from metadata (no rendering needed).
+    /// This ensures SpreadManager.isWidePage() has accurate data on first build.
+    private func prepopulatePDFPageSizes() {
+        var pdfDocCache: [URL: CGPDFDocument] = [:]
+        for (index, item) in folder.images.enumerated() {
+            guard imageSizeCache[index] == nil,
+                  let pageIndex = item.pdfPageIndex else { continue }
+
+            let doc: CGPDFDocument
+            if let cached = pdfDocCache[item.url] {
+                doc = cached
+            } else {
+                guard let newDoc = CGPDFDocument(item.url as CFURL) else { continue }
+                pdfDocCache[item.url] = newDoc
+                doc = newDoc
+            }
+
+            // CGPDFDocument pages are 1-based
+            guard let page = doc.page(at: pageIndex + 1) else { continue }
+            let cropBox = page.getBoxRect(.cropBox)
+            let rotation = page.rotationAngle
+
+            let pointSize: CGSize
+            if rotation == 90 || rotation == 270 {
+                pointSize = CGSize(width: cropBox.height, height: cropBox.width)
+            } else {
+                pointSize = cropBox.size
+            }
+            imageSizeCache[index] = pointSize
+        }
     }
 
     @objc func toggleReadingDirection(_ sender: Any? = nil) {
