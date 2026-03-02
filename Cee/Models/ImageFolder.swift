@@ -92,19 +92,19 @@ class ImageFolder {
     var hasNext: Bool { currentIndex < images.count - 1 }
     var hasPrevious: Bool { currentIndex > 0 }
 
-    /// ⚠️ In dual-page mode, call `syncSpreadIndex()` after this to keep spread index consistent.
     @discardableResult
     func goNext() -> Bool {
         guard hasNext else { return false }
         currentIndex += 1
+        if !spreads.isEmpty { syncSpreadIndex() }
         return true
     }
 
-    /// ⚠️ In dual-page mode, call `syncSpreadIndex()` after this to keep spread index consistent.
     @discardableResult
     func goPrevious() -> Bool {
         guard hasPrevious else { return false }
         currentIndex -= 1
+        if !spreads.isEmpty { syncSpreadIndex() }
         return true
     }
 
