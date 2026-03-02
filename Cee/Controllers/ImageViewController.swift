@@ -19,10 +19,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     private var activeMagnifyAnchor: NSPoint?
     private var isZooming = false
-    /// The page view targeted by the most recent right-click (for Copy Image in dual page mode).
-    private var contextMenuTargetPage: ImageContentView?
-    /// The image item targeted by the most recent right-click.
-    private var contextMenuTargetItem: ImageItem?
+    /// The page targeted by the most recent right-click (for Copy Image / Reveal in dual page mode).
+    private var contextMenuTarget: (page: ImageContentView, item: ImageItem)?
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
 
     /// StatusBar 佔用的實際高度（隱藏時為 0）
@@ -254,7 +252,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func loadSpread(_ spread: PageSpread, initialScroll: InitialScrollPosition) {
-        clearContextMenuTarget()
+        contextMenuTarget = nil
 
         let requestID = UUID()
         currentLoadRequestID = requestID
@@ -972,25 +970,22 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - File Actions
 
     @objc func copyImage(_ sender: Any? = nil) {
-        // Use context menu target if set (right-click), otherwise fall back to current
-        let targetItem = contextMenuTargetItem ?? folder.currentImage
-        let targetPage = contextMenuTargetPage ?? contentView
-        clearContextMenuTarget()
-        guard let item = targetItem else { return }
+        let (item, page) = resolvedTarget()
+        guard let item else { return }
 
         // Build payload first, then clear+write only if we have something to write.
         // Avoids emptying the clipboard when there's nothing to paste.
         let pb = NSPasteboard.general
         if item.isPDF {
             // PDF page: only write rendered image (URL points to whole PDF file).
-            guard let image = targetPage.image else { return }
+            guard let image = page.image else { return }
             pb.clearContents()
             pb.writeObjects([image])
         } else {
             // Regular image: write both file URL and image data
             // NSURL provides file paste in Finder; NSImage provides TIFF for image editors
             pb.clearContents()
-            if let image = targetPage.image {
+            if let image = page.image {
                 pb.writeObjects([item.url as NSURL, image])
             } else {
                 pb.writeObjects([item.url as NSURL])
@@ -999,17 +994,20 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func revealInFinder(_ sender: Any? = nil) {
-        // Use context menu target if set (right-click), otherwise fall back to current
-        let targetItem = contextMenuTargetItem ?? folder.currentImage
-        clearContextMenuTarget()
-        guard let item = targetItem else { return }
+        let (item, _) = resolvedTarget()
+        guard let item else { return }
         NSWorkspace.shared.activateFileViewerSelecting([item.url])
     }
 
-    /// Clear stale context menu target after action or navigation.
-    private func clearContextMenuTarget() {
-        contextMenuTargetPage = nil
-        contextMenuTargetItem = nil
+    /// Resolve the target for file actions: use context menu target if set, otherwise current image.
+    /// Consumes (clears) the context menu target to prevent stale state.
+    private func resolvedTarget() -> (item: ImageItem?, page: ImageContentView) {
+        let result = (
+            item: contextMenuTarget?.item ?? folder.currentImage,
+            page: contextMenuTarget?.page ?? contentView
+        )
+        contextMenuTarget = nil
+        return result
     }
 
     // MARK: - Menu Validation
@@ -1287,13 +1285,13 @@ extension ImageViewController: ImageScrollViewDelegate {
     }
 
     /// Determine which page the user right-clicked in dual page mode.
-    /// Clears stale state first so File menu path falls back to current image.
     private func resolveContextMenuTarget(event: NSEvent) {
-        clearContextMenuTarget()
-
         // Default to leading page
-        contextMenuTargetPage = contentView
-        contextMenuTargetItem = folder.currentImage
+        guard let item = folder.currentImage else {
+            contextMenuTarget = nil
+            return
+        }
+        contextMenuTarget = (page: contentView, item: item)
 
         // In dual page mode, check if trailing page was clicked
         guard settings.dualPageEnabled,
@@ -1303,8 +1301,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
         let point = dualPageView.convert(event.locationInWindow, from: nil)
         if trailing.frame.contains(point) {
-            contextMenuTargetPage = trailing
-            contextMenuTargetItem = trailingItem
+            contextMenuTarget = (page: trailing, item: trailingItem)
         }
     }
 
