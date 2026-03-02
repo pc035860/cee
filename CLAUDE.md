@@ -148,8 +148,18 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **`ReadingDirection.isRTL`**: Computed property on the enum. Use this instead of `== .rightToLeft` comparisons.
 - **`PageSpread.containsPage(_:)`**: Zero-allocation check. Use instead of `indices.contains()` on hot paths.
 
+## Empty State & Drag-Drop Onboarding
+
+- **Launch without file**: `applicationOpenUntitledFile(_:)` callback opens empty state window via `ImageWindowController.openEmpty()`.
+- **`EmptyStateView`**: Overlay view with SF Symbol icon, hint text, and dashed border highlight during drag. Mutual exclusion with `ErrorPlaceholderView`.
+- **`ImageViewController.folder` is optional**: ~17 methods updated with `guard let folder` checks. Navigation menu items disabled when `folder == nil`.
+- **Drag-and-drop on EmptyStateView**: `NSDraggingDestination` protocol, `.fileURL` type, UTType filtering via `ImageFolder.isSupported(url:)`.
+- **URL caching**: `cachedValidURLs` property avoids repeated pasteboard reads during `draggingUpdated` (performance optimization).
+- **`ImageFolder.isSupported(url:)`**: Static method for file type checking using `supportedTypes` set (not generic `.image` conformance).
+
 ## Recent Significant Changes
 
+- **Empty state with drag-drop onboarding (Phase 1):** `EmptyStateView` overlay, `ImageWindowController.openEmpty()`, optional folder handling, drag-drop support with dashed border highlight.
 - **Unit test target:** `CeeTests` with SpreadManager and ImageFolder navigation tests. Pure logic, no UI dependencies.
 - **Dual page view:** `DualPageContentView` container with spread-aware navigation, RTL support, per-folder settings persistence. PDF pages participate in spread pairing natively. See "Dual Page View" section.
 - **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` to GPU `layer.contents = cgImage`. Scaling quality uses `CALayer` filters.

@@ -12,6 +12,12 @@ class ImageFolder {
         .jpeg, .png, .tiff, .heic, .heif, .gif, .webP, .bmp, .pdf
     ]
 
+    /// Check if a file URL is a supported image or PDF type
+    static func isSupported(url: URL) -> Bool {
+        guard let uttype = UTType(filenameExtension: url.pathExtension) else { return false }
+        return supportedTypes.contains { uttype.conforms(to: $0) }
+    }
+
     init(containing fileURL: URL) {
         self.folderURL = fileURL.deletingLastPathComponent()
         self.images = scanFolder()

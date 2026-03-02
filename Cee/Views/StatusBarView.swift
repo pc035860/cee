@@ -113,4 +113,11 @@ final class StatusBarView: NSVisualEffectView {
     func updateIndex(current: Int, total: Int) {
         indexLabel.stringValue = "\(current) / \(total)"
     }
+
+    /// 清空所有顯示內容（用於 empty state）
+    func clear() {
+        sizeLabel.stringValue = ""
+        indexLabel.stringValue = ""
+        zoomLabel.stringValue = ""
+    }
 }

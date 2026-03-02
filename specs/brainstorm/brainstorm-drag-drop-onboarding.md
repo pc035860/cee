@@ -266,3 +266,51 @@ static func openEmpty() {
 - [Approachable Concurrency in Swift 6.2](https://www.avanderlee.com/concurrency/approachable-concurrency-in-swift-6-2-a-clear-guide/)
 - [NSView Animation Guide](https://www.advancedswift.com/nsview-animations-guide/)
 - [Programmatic macOS App Setup](https://sarunw.com/posts/how-to-create-macos-app-without-storyboard/)
+
+---
+
+## Implementation Progress
+
+### Phase 1 — ✅ Completed (2026-03-03)
+
+**Commits:**
+- `feat(onboarding): add empty state with drag-drop support (Phase 1)`
+- `refactor: unify file type checking and optimize drag performance`
+- `test: add unit tests for EmptyStateView and ImageFolder.isSupported`
+
+**Implementation Summary:**
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `EmptyStateView.swift` | ✅ | Icon + text + dashed border highlight |
+| `ImageWindowController.openEmpty()` | ✅ | Static method for empty state launch |
+| `AppDelegate.applicationOpenUntitledFile` | ✅ | System callback for app launch without file |
+| `ImageViewController.folder` optional | ✅ | ~17 methods updated with guard let |
+| Drag-and-drop on EmptyStateView | ✅ | URL caching for performance |
+| `ImageFolder.isSupported(url:)` | ✅ | Shared file type checking logic |
+| `URLFilter` helper | ✅ | Pure logic for testable URL filtering |
+| Menu item validation | ✅ | Navigation items disabled when folder is nil |
+| Unit tests | ✅ | 41/41 passed (SpreadManager + ImageFolder + URLFilter) |
+| E2E tests | ⚠️ | Environment issue (no GUI), not code issue |
+
+**Key Design Decisions:**
+1. Used `ImageFolder.isSupported(url:)` static method for file type filtering (uses explicit `supportedTypes` set instead of generic `.image` conformance)
+2. Added `cachedValidURLs` in EmptyStateView to avoid repeated pasteboard reads during `draggingUpdated`
+3. EmptyStateView as overlay in container (not scrollView) - mutual exclusion with ErrorPlaceholderView
+4. **URLFilter** kept for testability - provides clear test boundary and integration test coverage (Gemini review 2026-03-03)
+5. **Type checking inconsistency** accepted - `isSupported` uses extension-based check (faster for drag), `scanFolder` uses system contentType (more accurate). Documented as intentional trade-off.
+
+**Code Review Notes (Gemini 2026-03-03):**
+- No blocking issues found
+- Suggestions: URLFilter over-design (kept per user decision), type checking inconsistency (accepted as trade-off)
+- Folder drag-drop deferred to Phase 2
+
+### Phase 2 — 🔲 Pending
+
+1. **Browse-mode drag-drop on ImageScrollView** — 拖入新圖片切換資料夾
+2. **Folder drag-drop support** — 拖曳資料夾直接開啟（需修改 `ImageFolder` 建構子邏輯）
+3. **Visual drag feedback** — highlight border overlay on ImageScrollView
+
+### Phase 3 — 🔲 Pending
+
+Polish: animations, recent files list (optional).
