@@ -1366,6 +1366,24 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView) { scrollPageUpOrPrev() }
 
+    // MARK: - Drag and Drop (Phase 2: Browse Mode)
+
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {
+        guard let url = urls.first else { return }
+        let newFolder = ImageFolder(containing: url)
+
+        // If dropping image from same folder, just navigate to it
+        if let currentFolder = folder, currentFolder.folderURL == newFolder.folderURL {
+            if let index = newFolder.images.firstIndex(where: { $0.url == url }) {
+                newFolder.currentIndex = index
+            }
+        }
+
+        loadFolder(newFolder)
+        (view.window?.windowController as? ImageWindowController)?
+            .updateTitle(folder: newFolder)
+    }
+
     // MARK: - Context Menu
 
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? {

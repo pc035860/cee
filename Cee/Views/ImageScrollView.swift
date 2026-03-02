@@ -20,11 +20,14 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView)
     /// 請求 context menu（右鍵選單）
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu?
+    /// Called when files are dropped onto the scroll view (Phase 2: browse-mode drag-drop)
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
 }
 
 // MARK: - Default Implementation
 extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
 }
 
 // MARK: - ImageScrollView
@@ -65,6 +68,13 @@ class ImageScrollView: NSScrollView {
     // Mouse drag pan state
     private var isMouseDragging = false
     private var lastDragPoint: NSPoint = .zero
+
+    // MARK: - Drag and Drop (Phase 2: Browse Mode)
+    // URL extraction must happen synchronously because NSDraggingInfo is not Sendable
+    // and cannot cross actor boundaries.
+    // cachedValidURLs is only accessed on @MainActor (ImageScrollView is @MainActor isolated).
+    private var cachedValidURLs: [URL] = []
+    private var isDragOver = false  // Hook for visual feedback work unit
 
     // 邊緣翻頁進度視覺提示
     private enum Edge { case top, bottom, left, right }
@@ -117,6 +127,9 @@ class ImageScrollView: NSScrollView {
             name: NSWindow.didResignKeyNotification,
             object: nil
         )
+
+        // Phase 2: Register for drag-drop (browse mode)
+        registerForDraggedTypes([.fileURL])
     }
 
     deinit {
@@ -842,5 +855,50 @@ class ImageScrollView: NSScrollView {
         let bottomPoint = NSPoint(x: contentView.bounds.origin.x, y: yBounds.min)
         contentView.scroll(to: bottomPoint)
         reflectScrolledClipView(contentView)
+    }
+
+    // MARK: - Drag and Drop (Phase 2: Browse Mode)
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        cachedValidURLs = extractImageURLs(from: sender.draggingPasteboard)
+        isDragOver = !cachedValidURLs.isEmpty
+        return cachedValidURLs.isEmpty ? [] : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return cachedValidURLs.isEmpty ? [] : .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isDragOver = false
+        // Don't clear cachedValidURLs here - could be followed by another enter
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return !cachedValidURLs.isEmpty
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = cachedValidURLs
+        guard !urls.isEmpty else { return false }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.scrollDelegate?.scrollViewDidReceiveDrop(self, urls: urls)
+        }
+        return true
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        isDragOver = false
+        cachedValidURLs = []
+    }
+
+    private func extractImageURLs(from pasteboard: NSPasteboard) -> [URL] {
+        guard let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] else { return [] }
+        return URLFilter.filterImageURLs(urls, isSupported: ImageFolder.isSupported(url:))
     }
 }
