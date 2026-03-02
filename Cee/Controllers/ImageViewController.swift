@@ -19,6 +19,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     private var activeMagnifyAnchor: NSPoint?
     private var isZooming = false
+    /// The page view targeted by the most recent right-click (for Copy Image in dual page mode).
+    private var contextMenuTargetPage: ImageContentView?
+    /// The image item targeted by the most recent right-click.
+    private var contextMenuTargetItem: ImageItem?
     var settings = ViewerSettings.load()     // Phase 3: var (struct mutates)
 
     /// StatusBar 佔用的實際高度（隱藏時為 0）
@@ -250,6 +254,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func loadSpread(_ spread: PageSpread, initialScroll: InitialScrollPosition) {
+        // Clear stale context menu target on page navigation
+        contextMenuTargetPage = nil
+        contextMenuTargetItem = nil
+
         let requestID = UUID()
         currentLoadRequestID = requestID
         showErrorPlaceholder(false)
@@ -966,19 +974,23 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - File Actions
 
     @objc func copyImage(_ sender: Any? = nil) {
-        guard let item = folder.currentImage else { return }
+        // Use context menu target if set (right-click), otherwise fall back to current
+        let targetItem = contextMenuTargetItem ?? folder.currentImage
+        let targetPage = contextMenuTargetPage ?? contentView
+        guard let item = targetItem else { return }
+
         let pb = NSPasteboard.general
         pb.clearContents()
         if item.isPDF {
             // PDF page: skip URL (it points to the whole file, not this page).
             // If image not yet loaded, do nothing — no meaningful fallback for PDF pages.
-            if let image = contentView.image {
+            if let image = targetPage.image {
                 pb.writeObjects([image])
             }
         } else {
             // Regular image: write both file URL and image data
             // NSURL provides file paste in Finder; NSImage provides TIFF for image editors
-            if let image = contentView.image {
+            if let image = targetPage.image {
                 pb.writeObjects([item.url as NSURL, image])
             } else {
                 pb.writeObjects([item.url as NSURL])
@@ -987,7 +999,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func revealInFinder(_ sender: Any? = nil) {
-        guard let item = folder.currentImage else { return }
+        // Use context menu target if set (right-click), otherwise fall back to current
+        let targetItem = contextMenuTargetItem ?? folder.currentImage
+        guard let item = targetItem else { return }
         NSWorkspace.shared.activateFileViewerSelecting([item.url])
     }
 
@@ -1260,8 +1274,33 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     // MARK: - Context Menu
 
-    func contextMenu(for scrollView: ImageScrollView) -> NSMenu? {
-        buildContextMenu()
+    func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? {
+        resolveContextMenuTarget(event: event)
+        return buildContextMenu()
+    }
+
+    /// Determine which page the user right-clicked in dual page mode.
+    /// Clears stale state first so File menu path falls back to current image.
+    private func resolveContextMenuTarget(event: NSEvent) {
+        // Reset — ensures File menu path (which doesn't call this) uses nil fallback
+        contextMenuTargetPage = nil
+        contextMenuTargetItem = nil
+
+        // Default to leading page
+        contextMenuTargetPage = contentView
+        contextMenuTargetItem = folder.currentImage
+
+        // In dual page mode, check if trailing page was clicked
+        guard settings.dualPageEnabled,
+              let trailing = dualPageView.trailingPage,
+              let spread = folder.currentSpread,
+              case .double(_, _, _, let trailingItem) = spread else { return }
+
+        let point = dualPageView.convert(event.locationInWindow, from: nil)
+        if trailing.frame.contains(point) {
+            contextMenuTargetPage = trailing
+            contextMenuTargetItem = trailingItem
+        }
     }
 
     private func buildContextMenu() -> NSMenu {
