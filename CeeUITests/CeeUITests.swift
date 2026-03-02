@@ -232,8 +232,7 @@ final class CeeUITests: XCTestCase {
         let title = window.title
         XCTAssertTrue(title.contains("002-portrait.png"),
             "Title should show second image, got: \(title)")
-        XCTAssertTrue(title.contains("2/3"),
-            "Title should show position 2/3, got: \(title)")
+        // Index position shown in status bar, not title (showStatusBar=true by default)
     }
 
     func testSmoke_NavigateToPreviousImage() throws {
@@ -258,8 +257,7 @@ final class CeeUITests: XCTestCase {
         let window = app.windows["imageWindow"]
         XCTAssertTrue(window.title.contains("001-landscape.jpg"),
             "Should be back at first image, got: \(window.title)")
-        XCTAssertTrue(window.title.contains("1/3"),
-            "Should show position 1/3, got: \(window.title)")
+        // Index position shown in status bar, not title (showStatusBar=true by default)
     }
 
     func testSmoke_KeyboardZoom() throws {
@@ -550,8 +548,7 @@ final class CeeUITests: XCTestCase {
         let title = window.title
         XCTAssertTrue(title.contains("001-landscape.jpg"),
                       "Should be back at first image after zoom cycles, got: \(title)")
-        XCTAssertTrue(title.contains("1/3"),
-                      "Should show position 1/3, got: \(title)")
+        // Index position shown in status bar, not title (showStatusBar=true by default)
         assertImageOverlapsViewport(in: window)
     }
 
