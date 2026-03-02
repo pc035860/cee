@@ -74,7 +74,14 @@ class ImageScrollView: NSScrollView {
     // and cannot cross actor boundaries.
     // cachedValidURLs is only accessed on @MainActor (ImageScrollView is @MainActor isolated).
     private var cachedValidURLs: [URL] = []
-    private var isDragOver = false  // Hook for visual feedback work unit
+    private var isDragOver = false {  // Hook for visual feedback work unit
+        didSet {
+            updateDragHighlight()
+        }
+    }
+
+    // Drag highlight layer (Phase 2: Visual Feedback)
+    private lazy var dragHighlightLayer = CAShapeLayer()
 
     // 邊緣翻頁進度視覺提示
     private enum Edge { case top, bottom, left, right }
@@ -130,10 +137,22 @@ class ImageScrollView: NSScrollView {
 
         // Phase 2: Register for drag-drop (browse mode)
         registerForDraggedTypes([.fileURL])
+
+        // Phase 2: Setup drag highlight layer
+        setupDragHighlightLayer()
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    private func setupDragHighlightLayer() {
+        dragHighlightLayer.fillColor = nil
+        dragHighlightLayer.strokeColor = NSColor.controlAccentColor.cgColor
+        dragHighlightLayer.lineWidth = 2
+        dragHighlightLayer.lineDashPattern = [8, 4]
+        dragHighlightLayer.isHidden = true
+        dragHighlightLayer.zPosition = 1000  // Same as edge indicators
     }
 
     // MARK: - Window Notifications
@@ -511,6 +530,40 @@ class ImageScrollView: NSScrollView {
     override func layout() {
         super.layout()
         layoutEdgeIndicators()
+        updateDragHighlightPath()  // Always update for consistency with EmptyStateView
+    }
+
+    // MARK: - Drag Highlight (Phase 2: Visual Feedback)
+
+    private func updateDragHighlight() {
+        ensureDragHighlightAttached()
+        updateDragHighlightPath()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.allowsImplicitAnimation = true
+            dragHighlightLayer.isHidden = !isDragOver
+        }
+        // Note: didSet will also trigger when isDragOver is set in
+        // draggingExited or concludeDragOperation, ensuring proper cleanup
+    }
+
+    private func ensureDragHighlightAttached() {
+        wantsLayer = true
+        guard let root = layer, dragHighlightLayer.superlayer == nil else { return }
+        root.addSublayer(dragHighlightLayer)  // Lazy attachment on first drag
+    }
+
+    private func updateDragHighlightPath() {
+        let inset: CGFloat = 8
+        let rect = bounds.insetBy(dx: inset, dy: inset)
+        dragHighlightLayer.frame = bounds
+        dragHighlightLayer.path = CGPath(
+            roundedRect: rect,
+            cornerWidth: 8,
+            cornerHeight: 8,
+            transform: nil
+        )
     }
 
     // MARK: - Arrow Key Edge Press
