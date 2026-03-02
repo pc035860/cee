@@ -19,12 +19,12 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView)
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView)
     /// 請求 context menu（右鍵選單）
-    func contextMenu(for scrollView: ImageScrollView) -> NSMenu?
+    func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu?
 }
 
 // MARK: - Default Implementation
 extension ImageScrollViewDelegate {
-    func contextMenu(for scrollView: ImageScrollView) -> NSMenu? { nil }
+    func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
 }
 
 // MARK: - ImageScrollView
@@ -284,8 +284,8 @@ class ImageScrollView: NSScrollView {
         if window?.firstResponder !== self {
             window?.makeFirstResponder(self)
         }
-        // 向 scrollDelegate 請求選單
-        return scrollDelegate?.contextMenu(for: self)
+        // 向 scrollDelegate 請求選單（傳遞 event 供 hit-test 判斷雙頁模式下的點擊目標）
+        return scrollDelegate?.contextMenu(for: self, event: event)
     }
 
     // MARK: - Viewport Overflow Detection

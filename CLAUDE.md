@@ -73,7 +73,7 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Cmd-shortcuts vs keyDown — no duplication.** `performKeyEquivalent` fires before `keyDown`. Rule: Cmd-modified → menu items only; bare keys → `ImageScrollView.keyDown` only.
 - **Go menu** — Cmd+]/[ for Next/Prev (reliable in XCUITest). Bare arrow/Space/Home/End in keyDown only.
 - **`NSMenuItemValidation`** — protocol conformance, not `override`. NSViewController has no such method.
-- **Context menu** — `ImageScrollView.menu(for:)` delegates to `ImageViewController.buildContextMenu()`. Items use `target = nil` (first responder chain). Menu rebuilt each right-click (standard AppKit). Initial labels must match AppDelegate's menu bar — `validateMenuItem` dynamically updates titles/checkmarks/enabled state for both.
+- **Context menu** — `ImageScrollView.menu(for: event)` passes `NSEvent` to `ImageScrollViewDelegate.contextMenu(for:event:)`. In dual page mode, `resolveContextMenuTarget` hit-tests the click position against `dualPageView` to determine leading vs trailing page. `contextMenuTarget` tuple `(page, item)` consumed by `resolvedTarget()` which clears after use. File menu path falls back to `folder.currentImage`. Items use `target = nil` (first responder chain). Initial labels must match AppDelegate's menu bar — `validateMenuItem` dynamically updates titles/checkmarks/enabled state for both.
 
 ## AppKit Key Event Gotcha
 
@@ -156,4 +156,4 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Zoom viewport-center preservation:** zoom keeps user's pan position. Dynamic min magnification prevents window-resize desync drift.
 - **Fullscreen hardening:** notification-driven transition handling. AutoFit re-applies after fullscreen transition.
 - **Status bar overlay with material effect:** `NSVisualEffectView` with `.titlebar` material. `contentInsets`-based padding.
-- **Context menu (Phase 1):** Right-click menu with zoom actions and display toggles. Delegate pattern via `ImageScrollViewDelegate.contextMenu(for:)`. Dual Page submenu with conditional enable/disable.
+- **Context menu (Phase 1+2):** Right-click menu with zoom actions, display toggles, and file actions (Copy Image, Reveal in Finder). Delegate pattern via `ImageScrollViewDelegate.contextMenu(for:event:)`. Dual page hit-test for Copy Image targets correct page. PDF Copy Image writes only rendered NSImage (skips NSURL). File actions in both context menu and File menu bar (HIG compliance).

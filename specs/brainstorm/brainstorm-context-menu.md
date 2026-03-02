@@ -2,7 +2,7 @@
 
 **日期**：2026-03-02
 **參與角色**：competitor-analyst、hig-researcher、usage-analyst、structure-researcher（4 人平行研究）
-**實作進度**：Phase 1 完成
+**實作進度**：Phase 1 完成、Phase 2 完成
 
 ---
 
@@ -291,11 +291,19 @@
    ```
 
 **驗收條件**：
-- [ ] Copy Image 後可在 Finder 貼上檔案、在圖片編輯器貼上圖片
-- [ ] PDF 頁面的 Copy Image 正確複製當前頁的渲染結果
-- [ ] Reveal in Finder 開啟 Finder 並選中當前檔案
-- [ ] 無圖片時兩項都 disabled
-- [ ] Menu bar File menu 也有對應項目
+- [x] Copy Image 後可在 Finder 貼上檔案、在圖片編輯器貼上圖片
+- [x] PDF 頁面的 Copy Image 正確複製當前頁的渲染結果
+- [x] Reveal in Finder 開啟 Finder 並選中當前檔案
+- [x] 無圖片時兩項都 disabled
+- [x] Menu bar File menu 也有對應項目
+
+**實作備註（2026-03-03）**：
+- 使用 `pb.writeObjects([url, image])` 單次呼叫同時寫入 URL 和 NSImage
+- 無快捷鍵（⌘C 衝突，MVP 暫不設）
+- PDF 頁面：只寫 NSImage（NSURL 指向整個 PDF 檔案，跳過避免貼出整個 PDF）
+- 雙頁模式：根據右鍵點擊位置 hit-test 判斷 leading/trailing page，複製對應頁面
+- `contextMenuTarget` 為單一 tuple `(page, item)`，消費型 `resolvedTarget()` 自動清除
+- File menu 路徑 fallback 到 `folder.currentImage` + `contentView`（leading page）
 
 ---
 
