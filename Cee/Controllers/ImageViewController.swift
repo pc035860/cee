@@ -1393,14 +1393,24 @@ extension ImageViewController: ImageScrollViewDelegate {
             return
         }
 
-        // File: use existing logic with same-folder optimization
-        let newFolder = ImageFolder(containing: url)
-        if let currentFolder = folder, currentFolder.folderURL == newFolder.folderURL {
-            if let index = newFolder.images.firstIndex(where: { $0.url == url }) {
-                newFolder.currentIndex = index
+        // File: check for same-folder optimization
+        let targetFolderURL = url.deletingLastPathComponent()
+        if let currentFolder = folder, currentFolder.folderURL == targetFolderURL {
+            // Same folder: try to navigate without reloading
+            if let index = currentFolder.images.firstIndex(where: { $0.url == url }) {
+                currentFolder.currentIndex = index
+                // Sync spread index and reload current image (no folder scan needed)
+                if settings.dualPageEnabled {
+                    currentFolder.syncSpreadIndex()
+                }
+                loadCurrentImage(initialScroll: .top)
+                return  // Only return on successful optimization
             }
+            // If not found, fall through to reload folder (new file case)
         }
 
+        // Different folder or new file in same folder: create new folder and load
+        let newFolder = imageFolderFromDrop(url: url)
         loadFolder(newFolder)
         (view.window?.windowController as? ImageWindowController)?
             .updateTitle(folder: newFolder)
