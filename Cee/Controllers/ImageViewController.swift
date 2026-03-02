@@ -1227,4 +1227,46 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView) { scrollPageUpOrPrev() }
+
+    // MARK: - Context Menu
+
+    func contextMenu(for scrollView: ImageScrollView) -> NSMenu? {
+        buildContextMenu()
+    }
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu(title: "Context")
+
+        // Group 1: Zoom
+        menu.addItem(makeContextItem("Fit on Screen", action: #selector(fitOnScreen(_:))))
+        menu.addItem(makeContextItem("Actual Size", action: #selector(actualSize(_:))))
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Group 2: Display Mode
+        menu.addItem(makeContextItem("Always Fit on Open", action: #selector(toggleAlwaysFit(_:))))
+        menu.addItem(makeDualPageSubmenu())
+        menu.addItem(makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:))))
+
+        return menu
+    }
+
+    private func makeContextItem(_ title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = nil  // 走 first responder chain
+        return item
+    }
+
+    private func makeDualPageSubmenu() -> NSMenuItem {
+        let submenu = NSMenu(title: "Dual Page")
+        submenu.addItem(makeContextItem("Dual Page", action: #selector(toggleDualPage(_:))))
+        submenu.addItem(NSMenuItem.separator())
+        submenu.addItem(makeContextItem("First Page as Cover", action: #selector(togglePageOffset(_:))))
+        // Initial label matches AppDelegate; validateMenuItem dynamically updates it
+        submenu.addItem(makeContextItem("Reading: Left to Right", action: #selector(toggleReadingDirection(_:))))
+
+        let item = NSMenuItem(title: "Dual Page", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
 }
