@@ -1066,6 +1066,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"
             return true
+        case #selector(goToNextImage):
+            menuItem.title = settings.dualPageEnabled ? "Next Spread" : "Next Image"
+            return true
+        case #selector(goToPreviousImage):
+            menuItem.title = settings.dualPageEnabled ? "Previous Spread" : "Previous Image"
+            return true
         default:
             return true
         }
