@@ -157,8 +157,18 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **URL caching**: `cachedValidURLs` property avoids repeated pasteboard reads during `draggingUpdated` (performance optimization).
 - **`ImageFolder.isSupported(url:)`**: Static method for file type checking using `supportedTypes` set (not generic `.image` conformance).
 
+## Browse-Mode Drag-Drop (Phase 2)
+
+- **ImageScrollView drag-drop**: `NSDraggingDestination` protocol on ImageScrollView allows dropping files/folders while browsing. Uses same `cachedValidURLs` pattern as EmptyStateView.
+- **Folder drag-drop**: `URLFilter.isDirectory(url:)` detects folders via resource values. Folders open directly via `appendingPathComponent(".")` workaround (tricks `ImageFolder(containing:)` into scanning the folder itself).
+- **Same-folder optimization**: When dropping a file from the current folder, directly updates `currentIndex` and reloads image without rescanning. Calls `updateWindowTitle()` to sync UI.
+- **`URLFilter.filterImageAndFolderURLs`**: Combined filter with short-circuit evaluation — `isSupported(url)` (memory) before `isDirectory(url)` (file system).
+- **Visual drag feedback**: `CAShapeLayer` dashed border on ImageScrollView with `NSAnimationContext` fade. `layout()` only updates path when layer visible (efficiency).
+- **State cleanup**: Both `draggingExited` and `concludeDragOperation` clear `cachedValidURLs` for consistency with EmptyStateView.
+
 ## Recent Significant Changes
 
+- **Browse-mode drag-drop (Phase 2):** ImageScrollView drag-drop support for files and folders, same-folder optimization, visual feedback with dashed border. Folder URL workaround via `appendingPathComponent(".")`.
 - **Empty state with drag-drop onboarding (Phase 1):** `EmptyStateView` overlay, `ImageWindowController.openEmpty()`, optional folder handling, drag-drop support with dashed border highlight.
 - **Unit test target:** `CeeTests` with SpreadManager and ImageFolder navigation tests. Pure logic, no UI dependencies.
 - **Dual page view:** `DualPageContentView` container with spread-aware navigation, RTL support, per-folder settings persistence. PDF pages participate in spread pairing natively. See "Dual Page View" section.
