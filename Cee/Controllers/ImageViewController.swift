@@ -1381,15 +1381,19 @@ extension ImageViewController: ImageScrollViewDelegate {
         }
     }
 
+    /// Load a folder and update window title (reduces code duplication)
+    private func loadFolderAndSetTitle(_ folder: ImageFolder) {
+        loadFolder(folder)
+        (view.window?.windowController as? ImageWindowController)?
+            .updateTitle(folder: folder)
+    }
+
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {
         guard let url = urls.first else { return }  // Use first item
 
         // Folders always open fresh (no same-folder optimization)
         if URLFilter.isDirectory(url) {
-            let newFolder = imageFolderFromDrop(url: url)
-            loadFolder(newFolder)
-            (view.window?.windowController as? ImageWindowController)?
-                .updateTitle(folder: newFolder)
+            loadFolderAndSetTitle(imageFolderFromDrop(url: url))
             return
         }
 
@@ -1404,16 +1408,14 @@ extension ImageViewController: ImageScrollViewDelegate {
                     currentFolder.syncSpreadIndex()
                 }
                 loadCurrentImage(initialScroll: .top)
+                updateWindowTitle()
                 return  // Only return on successful optimization
             }
             // If not found, fall through to reload folder (new file case)
         }
 
         // Different folder or new file in same folder: create new folder and load
-        let newFolder = imageFolderFromDrop(url: url)
-        loadFolder(newFolder)
-        (view.window?.windowController as? ImageWindowController)?
-            .updateTitle(folder: newFolder)
+        loadFolderAndSetTitle(imageFolderFromDrop(url: url))
     }
 
     // MARK: - Context Menu
@@ -1505,9 +1507,6 @@ extension ImageViewController: ImageScrollViewDelegate {
 extension ImageViewController: EmptyStateView.Delegate {
     func emptyStateViewDidReceiveDrop(_ view: EmptyStateView, urls: [URL]) {
         guard let url = urls.first else { return }  // Use first item
-        let newFolder = imageFolderFromDrop(url: url)
-        loadFolder(newFolder)
-        (view.window?.windowController as? ImageWindowController)?
-            .updateTitle(folder: newFolder)
+        loadFolderAndSetTitle(imageFolderFromDrop(url: url))
     }
 }

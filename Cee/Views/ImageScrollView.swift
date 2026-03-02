@@ -530,7 +530,10 @@ class ImageScrollView: NSScrollView {
     override func layout() {
         super.layout()
         layoutEdgeIndicators()
-        updateDragHighlightPath()  // Always update for consistency with EmptyStateView
+        // Only update drag highlight path if visible (efficiency optimization)
+        if !dragHighlightLayer.isHidden {
+            updateDragHighlightPath()
+        }
     }
 
     // MARK: - Drag Highlight (Phase 2: Visual Feedback)
@@ -924,7 +927,7 @@ class ImageScrollView: NSScrollView {
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         isDragOver = false
-        // Don't clear cachedValidURLs here - could be followed by another enter
+        cachedValidURLs = []
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {

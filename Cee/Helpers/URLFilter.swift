@@ -30,7 +30,8 @@ struct URLFilter {
     /// - Returns: Array of URLs (folders or supported files)
     static func filterImageAndFolderURLs(_ urls: [URL], isSupported: (URL) -> Bool) -> [URL] {
         urls.filter { url in
-            isDirectory(url) || isSupported(url)
+            // Check isSupported first (pure memory operation) to avoid unnecessary file system access
+            isSupported(url) || isDirectory(url)
         }
     }
 }
