@@ -1244,15 +1244,9 @@ extension ImageViewController: ImageScrollViewDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // Group 2: Display Mode
-        let alwaysFitItem = makeContextItem("Always Fit on Open", action: #selector(toggleAlwaysFit(_:)))
-        menu.addItem(alwaysFitItem)
-
-        // Dual Page submenu
-        let dualPageSubmenuItem = makeDualPageSubmenu()
-        menu.addItem(dualPageSubmenuItem)
-
-        let floatItem = makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:)))
-        menu.addItem(floatItem)
+        menu.addItem(makeContextItem("Always Fit on Open", action: #selector(toggleAlwaysFit(_:))))
+        menu.addItem(makeDualPageSubmenu())
+        menu.addItem(makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:))))
 
         return menu
     }
@@ -1265,22 +1259,14 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     private func makeDualPageSubmenu() -> NSMenuItem {
         let submenu = NSMenu(title: "Dual Page")
-
-        // Main toggle
-        let toggleItem = makeContextItem("Dual Page", action: #selector(toggleDualPage(_:)))
-        submenu.addItem(toggleItem)
-
+        submenu.addItem(makeContextItem("Dual Page", action: #selector(toggleDualPage(_:))))
         submenu.addItem(NSMenuItem.separator())
+        submenu.addItem(makeContextItem("First Page as Cover", action: #selector(togglePageOffset(_:))))
+        // Initial label matches AppDelegate; validateMenuItem dynamically updates it
+        submenu.addItem(makeContextItem("Reading: Left to Right", action: #selector(toggleReadingDirection(_:))))
 
-        // Sub-options (disabled when dual page is off)
-        let coverItem = makeContextItem("First Page as Cover", action: #selector(togglePageOffset(_:)))
-        submenu.addItem(coverItem)
-
-        let directionItem = makeContextItem("Reading: Right to Left", action: #selector(toggleReadingDirection(_:)))
-        submenu.addItem(directionItem)
-
-        let submenuItem = NSMenuItem(title: "Dual Page", action: nil, keyEquivalent: "")
-        submenuItem.submenu = submenu
-        return submenuItem
+        let item = NSMenuItem(title: "Dual Page", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
     }
 }

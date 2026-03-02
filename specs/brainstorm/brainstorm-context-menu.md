@@ -2,7 +2,7 @@
 
 **日期**：2026-03-02
 **參與角色**：competitor-analyst、hig-researcher、usage-analyst、structure-researcher（4 人平行研究）
-**實作進度**：未開始
+**實作進度**：Phase 1 完成
 
 ---
 
@@ -221,11 +221,11 @@
    - Reading Direction label 動態切換：「Right to Left」↔「Left to Right」（已有邏輯）
 
 **驗收條件**：
-- [ ] 右鍵點圖片出現選單
-- [ ] Fit on Screen / Actual Size 正常運作
-- [ ] Always Fit、Dual Page、Float on Top 的 checkmark 正確反映狀態
-- [ ] Dual Page submenu 展開，子項目在 dual page 關閉時為灰色
-- [ ] 選單項目不顯示快捷鍵（符合 HIG）
+- [x] 右鍵點圖片出現選單
+- [x] Fit on Screen / Actual Size 正常運作
+- [x] Always Fit、Dual Page、Float on Top 的 checkmark 正確反映狀態
+- [x] Dual Page submenu 展開，子項目在 dual page 關閉時為灰色
+- [x] 選單項目不顯示快捷鍵（符合 HIG）
 
 ---
 
