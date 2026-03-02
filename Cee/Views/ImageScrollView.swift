@@ -899,6 +899,6 @@ class ImageScrollView: NSScrollView {
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL] else { return [] }
-        return URLFilter.filterImageURLs(urls, isSupported: ImageFolder.isSupported(url:))
+        return URLFilter.filterImageAndFolderURLs(urls, isSupported: ImageFolder.isSupported(url:))
     }
 }

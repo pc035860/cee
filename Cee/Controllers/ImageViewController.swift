@@ -1368,11 +1368,33 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     // MARK: - Drag and Drop (Phase 2: Browse Mode)
 
-    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {
-        guard let url = urls.first else { return }
-        let newFolder = ImageFolder(containing: url)
+    /// Create ImageFolder from a dropped URL (handles both file and folder)
+    private func imageFolderFromDrop(url: URL) -> ImageFolder {
+        if URLFilter.isDirectory(url) {
+            // Folder: use workaround to pass folder URL directly
+            // "." is a no-op path component that gets stripped by deletingLastPathComponent()
+            // Result: folderURL scanned, currentIndex = 0 (first image or empty)
+            return ImageFolder(containing: url.appendingPathComponent("."))
+        } else {
+            // File: use existing logic
+            return ImageFolder(containing: url)
+        }
+    }
 
-        // If dropping image from same folder, just navigate to it
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {
+        guard let url = urls.first else { return }  // Use first item
+
+        // Folders always open fresh (no same-folder optimization)
+        if URLFilter.isDirectory(url) {
+            let newFolder = imageFolderFromDrop(url: url)
+            loadFolder(newFolder)
+            (view.window?.windowController as? ImageWindowController)?
+                .updateTitle(folder: newFolder)
+            return
+        }
+
+        // File: use existing logic with same-folder optimization
+        let newFolder = ImageFolder(containing: url)
         if let currentFolder = folder, currentFolder.folderURL == newFolder.folderURL {
             if let index = newFolder.images.firstIndex(where: { $0.url == url }) {
                 newFolder.currentIndex = index
@@ -1472,9 +1494,8 @@ extension ImageViewController: ImageScrollViewDelegate {
 
 extension ImageViewController: EmptyStateView.Delegate {
     func emptyStateViewDidReceiveDrop(_ view: EmptyStateView, urls: [URL]) {
-        guard let url = urls.first else { return }
-        // Use existing load flow
-        let newFolder = ImageFolder(containing: url)
+        guard let url = urls.first else { return }  // Use first item
+        let newFolder = imageFolderFromDrop(url: url)
         loadFolder(newFolder)
         (view.window?.windowController as? ImageWindowController)?
             .updateTitle(folder: newFolder)
