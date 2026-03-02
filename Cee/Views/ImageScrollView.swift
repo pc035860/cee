@@ -26,6 +26,8 @@ class ImageScrollView: NSScrollView {
     weak var scrollDelegate: ImageScrollViewDelegate?
     var trackpadOverscrollThreshold: CGFloat = 130  // VC updates from settings
     var wheelOverscrollThreshold: CGFloat = 20      // VC updates from settings
+    /// When true, left/right arrow navigation is reversed (RTL manga reading order).
+    var isRTLNavigation = false
 
     private var isAtBottom = false
     private var isAtTop = false
@@ -517,37 +519,47 @@ class ImageScrollView: NSScrollView {
 
         switch event.keyCode {
         case 124: // → RightArrow
+            let rightAction: () -> Void = { [weak self] in
+                guard let self else { return }
+                if self.isRTLNavigation {
+                    self.scrollDelegate?.scrollViewRequestPreviousImage(self)
+                } else {
+                    self.scrollDelegate?.scrollViewRequestNextImage(self)
+                }
+            }
             if overflow.horizontal {
                 if !isAtRight {
                     panRight()
                     edgePressCount = 0
                     hideEdgeIndicators()
                 } else {
-                    handleEdgePress(keyCode: 124) { [weak self] in
-                        guard let self else { return }
-                        scrollDelegate?.scrollViewRequestNextImage(self)
-                    }
+                    handleEdgePress(keyCode: 124, navigateAction: rightAction)
                 }
             } else {
                 resetEdgeState()
-                scrollDelegate?.scrollViewRequestNextImage(self)
+                rightAction()
             }
 
         case 123: // ← LeftArrow
+            let leftAction: () -> Void = { [weak self] in
+                guard let self else { return }
+                if self.isRTLNavigation {
+                    self.scrollDelegate?.scrollViewRequestNextImage(self)
+                } else {
+                    self.scrollDelegate?.scrollViewRequestPreviousImage(self)
+                }
+            }
             if overflow.horizontal {
                 if !isAtLeft {
                     panLeft()
                     edgePressCount = 0
                     hideEdgeIndicators()
                 } else {
-                    handleEdgePress(keyCode: 123) { [weak self] in
-                        guard let self else { return }
-                        scrollDelegate?.scrollViewRequestPreviousImage(self)
-                    }
+                    handleEdgePress(keyCode: 123, navigateAction: leftAction)
                 }
             } else {
                 resetEdgeState()
-                scrollDelegate?.scrollViewRequestPreviousImage(self)
+                leftAction()
             }
 
         case 125: // ↓ DownArrow

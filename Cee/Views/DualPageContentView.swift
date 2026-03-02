@@ -27,7 +27,8 @@ class DualPageContentView: NSView {
 
     /// Configure for double spread with two pages side by side.
     /// Shorter page is vertically centered against the taller one.
-    func configureDouble(leadingSize: NSSize, trailingSize: NSSize) {
+    /// When `isRTL` is true, trailing page is placed on the left (manga reading order).
+    func configureDouble(leadingSize: NSSize, trailingSize: NSSize, isRTL: Bool = false) {
         if leadingPage.superview == nil { addSubview(leadingPage) }
         if trailingPage == nil {
             let tv = ImageContentView()
@@ -42,14 +43,27 @@ class DualPageContentView: NSView {
         let leadingY = (maxH - leadingSize.height) / 2.0
         let trailingY = (maxH - trailingSize.height) / 2.0
 
-        leadingPage.frame = NSRect(
-            x: 0, y: leadingY,
-            width: leadingSize.width, height: leadingSize.height
-        )
-        trailingPage!.frame = NSRect(
-            x: leadingSize.width, y: trailingY,
-            width: trailingSize.width, height: trailingSize.height
-        )
+        if isRTL {
+            // RTL: trailing page on the left, leading page on the right
+            trailingPage!.frame = NSRect(
+                x: 0, y: trailingY,
+                width: trailingSize.width, height: trailingSize.height
+            )
+            leadingPage.frame = NSRect(
+                x: trailingSize.width, y: leadingY,
+                width: leadingSize.width, height: leadingSize.height
+            )
+        } else {
+            // LTR: leading page on the left, trailing page on the right
+            leadingPage.frame = NSRect(
+                x: 0, y: leadingY,
+                width: leadingSize.width, height: leadingSize.height
+            )
+            trailingPage!.frame = NSRect(
+                x: leadingSize.width, y: trailingY,
+                width: trailingSize.width, height: trailingSize.height
+            )
+        }
         self.frame = NSRect(origin: .zero, size: NSSize(width: totalW, height: maxH))
     }
 

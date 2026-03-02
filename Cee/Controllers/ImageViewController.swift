@@ -123,6 +123,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applySettings() {
         updateScalingQuality()
         applyScrollSensitivity()
+        scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
         if settings.floatOnTop { view.window?.level = .floating }
         applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
@@ -329,7 +330,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
                 if let tImg {
                     cacheImageSize(tImg.size, forIndex: trailingIndex)
-                    dualPageView.configureDouble(leadingSize: lImg.size, trailingSize: tImg.size)
+                    dualPageView.configureDouble(
+                        leadingSize: lImg.size,
+                        trailingSize: tImg.size,
+                        isRTL: settings.readingDirection == .rightToLeft
+                    )
                     dualPageView.trailingPage?.image = tImg
                     dualPageView.trailingPage?.loadingState = .loaded
                     dualPageView.trailingPage?.setAccessibilityLabel(trailing.fileName)
@@ -836,6 +841,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         loadCurrentImage(initialScroll: .preserve)
     }
 
+    @objc func toggleReadingDirection(_ sender: Any? = nil) {
+        settings.readingDirection = (settings.readingDirection == .leftToRight)
+            ? .rightToLeft : .leftToRight
+        settings.save()
+        scrollView.isRTLNavigation = (settings.readingDirection == .rightToLeft)
+        if settings.dualPageEnabled {
+            loadCurrentImage(initialScroll: .preserve)
+        }
+    }
+
     @objc func toggleFullScreen(_ sender: Any? = nil) {
         let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
         DebugCentering.log(
@@ -1007,6 +1022,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(togglePageOffset(_:)):
             menuItem.state = settings.firstPageIsCover ? .on : .off
             return settings.dualPageEnabled  // Only enabled when dual page is on
+        case #selector(toggleReadingDirection(_:)):
+            let isRTL = settings.readingDirection == .rightToLeft
+            menuItem.state = isRTL ? .on : .off
+            menuItem.title = isRTL ? "Reading: Right to Left" : "Reading: Left to Right"
+            return settings.dualPageEnabled
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"

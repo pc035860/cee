@@ -132,6 +132,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let offsetItem = makeItem("First Page as Cover",         action: #selector(ImageViewController.togglePageOffset(_:)),           key: "o")
         offsetItem.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(offsetItem)
+        let rtlItem = makeItem("Reading: Left to Right",       action: #selector(ImageViewController.toggleReadingDirection(_:)),     key: "k")
+        rtlItem.keyEquivalentModifierMask = [.command, .shift]
+        viewMenu.addItem(rtlItem)
 
         // ── Go Menu ─────────────────────────────────────────────────────
         // Bare arrow/Home/End keys are handled by ImageScrollView.keyDown.
