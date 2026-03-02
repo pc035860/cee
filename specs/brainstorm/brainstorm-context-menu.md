@@ -77,7 +77,7 @@
 | Actual Size | 高 | 每張圖操作 | ⌘1 | ✅ Yes | 核心 zoom 動作 |
 | Zoom In/Out | 中 | 每次操作 | ⌘+/⌘-、pinch | ❌ No | Pinch/scroll 已夠快 |
 | Always Fit on Open | 中 | 切換模式 | ⌘* | ✅ Yes | 瀏覽中會切換 |
-| Fitting Options | 低 | 設一次 | 無 | ❌ No | 偏好設定，極少更改 |
+| Fitting Options | 低 | 設一次 | 無 | ✅ Yes（submenu） | 與 Always Fit 搭配使用，右鍵快速切換 |
 | Scaling Quality | 低 | 設一次 | 無 | ❌ No | 技術性設定 |
 | Trackpad/Wheel Sensitivity | 低 | 設一次 | 無 | ❌ No | 偏好設定 |
 | Resize Window Auto | 低 | 切換模式 | 無 | ❌ No | 低頻切換 |
@@ -111,6 +111,11 @@
 │ Actual Size                 │
 │ ─────────────────────────── │
 │ ✓ Always Fit on Open        │  ← Group 2: Display Mode
+│   Fitting Options          ▸ │  ← submenu（4 個 fitting toggle）
+│   ├ ✓ Shrink to Fit H       │
+│   ├ ✓ Shrink to Fit V       │
+│   ├   Stretch to Fit H      │
+│   └   Stretch to Fit V      │
 │ ✓ Dual Page               ▸ │  ← submenu（包含子設定）
 │   ├ ✓ Dual Page             │
 │   ├ ─────────────────────── │
@@ -201,6 +206,11 @@
    │ Actual Size                 │
    │ ─────────────────────────── │
    │ ✓ Always Fit on Open        │  ← Group 2: Display Mode
+   │   Fitting Options          ▸ │  ← submenu
+   │   ├ ✓ Shrink to Fit H       │
+   │   ├ ✓ Shrink to Fit V       │
+   │   ├   Stretch to Fit H      │
+   │   └   Stretch to Fit V      │
    │ ✓ Dual Page               ▸ │  ← submenu
    │   ├ ✓ Dual Page             │
    │   ├ ─────────────────────── │
@@ -345,6 +355,7 @@
    │ Actual Size                 │
    │ ─────────────────────────── │
    │ ✓ Always Fit on Open        │
+   │   Fitting Options          ▸ │
    │   Dual Page               ▸ │
    │ ✓ Float on Top              │
    │ ─────────────────────────── │

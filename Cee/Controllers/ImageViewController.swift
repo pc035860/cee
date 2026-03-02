@@ -1245,6 +1245,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
         // Group 2: Display Mode
         menu.addItem(makeContextItem("Always Fit on Open", action: #selector(toggleAlwaysFit(_:))))
+        menu.addItem(makeFittingOptionsSubmenu())
         menu.addItem(makeDualPageSubmenu())
         menu.addItem(makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:))))
 
@@ -1254,6 +1255,18 @@ extension ImageViewController: ImageScrollViewDelegate {
     private func makeContextItem(_ title: String, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = nil  // 走 first responder chain
+        return item
+    }
+
+    private func makeFittingOptionsSubmenu() -> NSMenuItem {
+        let submenu = NSMenu(title: "Fitting Options")
+        submenu.addItem(makeContextItem("Shrink to Fit Horizontally", action: #selector(toggleShrinkH(_:))))
+        submenu.addItem(makeContextItem("Shrink to Fit Vertically", action: #selector(toggleShrinkV(_:))))
+        submenu.addItem(makeContextItem("Stretch to Fit Horizontally", action: #selector(toggleStretchH(_:))))
+        submenu.addItem(makeContextItem("Stretch to Fit Vertically", action: #selector(toggleStretchV(_:))))
+
+        let item = NSMenuItem(title: "Fitting Options", action: nil, keyEquivalent: "")
+        item.submenu = submenu
         return item
     }
 
