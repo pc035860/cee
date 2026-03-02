@@ -126,11 +126,22 @@ CEE_DEBUG_CENTERING=1 /path/to/Cee.app/Contents/MacOS/Cee
 - **Zoom display** — "Fit" when `!isManualZoom && alwaysFitOnOpen`; "100%" when zoom=1.0 in manual mode; otherwise percentage.
 - **Settings persistence** — `ViewerSettings.showStatusBar` defaults to `true`. New fields are backward-compatible via Codable default values.
 
+## Dual Page View
+
+- **Architecture**: `DualPageContentView` is the permanent `scrollView.documentView`. Contains 1–2 `ImageContentView` children. NSScrollView magnification auto-applies to all children — zoom/pan works identically to single page.
+- **`contentView` is a computed property** — `dualPageView.leadingPage`. Minimized diff when adding dual page support. Use `currentDocumentSize` (returns `dualPageView.compositeSize`) instead of `contentView.image?.size` for fitting/centering calculations.
+- **Spread model**: `PageSpread` enum (`.single`/`.double`) + `SpreadManager` (pure static `Sendable` struct). Wide page detection: `width > height` → auto-single. Cover mode: first page alone when `firstPageIsCover`.
+- **Navigation is spread-aware**: When `settings.dualPageEnabled`, all nav methods (goNext/goPrev/Home/End) use spread stepping. `ImageFolder.goNext()`/`goPrevious()` auto-call `syncSpreadIndex()`.
+- **Height normalization**: Different-resolution pages are scaled proportionally so both render at the same visual height (`maxH`). Without this, pages appear mismatched.
+- **RTL support**: Three layers — `DualPageContentView.configureDouble(isRTL:)` swaps page positions, `ImageScrollView.isRTLNavigation` reverses arrow keys, `ViewerSettings.readingDirection` persists setting.
+- **Per-folder persistence**: `FolderDualPageSettings` Codable struct in UserDefaults at `dualPage.settings.\(folderURL.path)`. Loaded on `loadFolder()`, saved on toggle.
+- **Menu shortcuts**: ⌘K (dual page), ⌘⇧O (cover mode), ⌘⇧K (reading direction). Go menu shows "Next Spread"/"Previous Spread" dynamically.
+- **`imageSizeCache`**: Keyed by flat image index. Used by `rebuildSpreads` for wide page detection. Unknown sizes default to portrait (paired). Cache cleared on folder change.
+
 ## Recent Significant Changes
 
-- **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` + `NSImage.draw(in:)` to GPU `layer.contents = cgImage`. Eliminates per-frame CPU resample during zoom (was ~33M pixels/frame for 4K Retina). Scaling quality now uses `CALayer` filters instead of `CGContext.interpolationQuality`.
-- **Zoom viewport-center preservation:** zoom now keeps the user's pan position instead of snapping back to image center. Dynamic min magnification prevents window-resize desync drift.
-- **Fullscreen hardening:** migrated from delay-based sync to notification-driven transition handling. AutoFit now re-applies after fullscreen transition when in auto-fit mode.
-- **Smooth arrow pan:** arrow key scrolling now uses `NSAnimationContext` for 0.1s smooth animation instead of instant jump.
-- **Simplified navigation:** up/down arrows only scroll, never navigate images. Left/right arrows retain edge navigation.
-- **Status bar overlay with material effect:** StatusBarView migrated to `NSVisualEffectView` with `.titlebar` material. ScrollView now fills entire container; status bar overlays at bottom with `contentInsets`-based padding. Fixed `scrollRange` Y-axis semantics (`.top`=visual top, `.bottom`=visual bottom) to match NSScrollView's native scroll bounds.
+- **Dual page view:** `DualPageContentView` container with spread-aware navigation, RTL support, per-folder settings persistence. PDF pages participate in spread pairing natively. See "Dual Page View" section.
+- **GPU-accelerated rendering:** `ImageContentView` migrated from CPU `draw()` to GPU `layer.contents = cgImage`. Scaling quality uses `CALayer` filters.
+- **Zoom viewport-center preservation:** zoom keeps user's pan position. Dynamic min magnification prevents window-resize desync drift.
+- **Fullscreen hardening:** notification-driven transition handling. AutoFit re-applies after fullscreen transition.
+- **Status bar overlay with material effect:** `NSVisualEffectView` with `.titlebar` material. `contentInsets`-based padding.
