@@ -151,18 +151,32 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func updateStatusBar() {
         guard let image = contentView.image else { return }
-        let index = folder.currentIndex + 1
         let total = folder.images.count
         let zoom = scrollView.magnification
         let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
 
-        statusBarView.update(
-            index: index,
-            total: total,
-            zoom: zoom,
-            imageSize: image.size,
-            isFitting: isFitting
-        )
+        if settings.dualPageEnabled, let spread = folder.currentSpread {
+            // Dual mode: "5-6 / 100" for double, "5 / 100" for single spread
+            let pageNums = spread.indices.map { String($0 + 1) }.joined(separator: "-")
+            let indexText = "\(pageNums) / \(total)"
+            // Show leading page size (composite size would be confusing)
+            statusBarView.update(
+                index: folder.currentIndex + 1,
+                total: total,
+                zoom: zoom,
+                imageSize: image.size,
+                isFitting: isFitting,
+                indexOverride: indexText
+            )
+        } else {
+            statusBarView.update(
+                index: folder.currentIndex + 1,
+                total: total,
+                zoom: zoom,
+                imageSize: image.size,
+                isFitting: isFitting
+            )
+        }
     }
 
     private func updateScalingQuality() {
