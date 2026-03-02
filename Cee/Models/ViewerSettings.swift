@@ -57,7 +57,7 @@ struct ViewerSettings: Codable {
         case leftToRight
         case rightToLeft
     }
-    var readingDirection: ReadingDirection = .leftToRight
+    var readingDirection: ReadingDirection = .rightToLeft
 
     // MARK: - Persistence
     private static let key = "CeeViewerSettings"
