@@ -9,6 +9,46 @@ class ImageWindowController: NSWindowController {
     private var resizeSaveTask: DispatchWorkItem?
     private var isTransitioningFullScreen = false
 
+    // MARK: - Empty State Launch
+
+    /// Open empty state window (for drag-drop onboarding)
+    static func openEmpty() {
+        // Reuse existing window
+        if let existing = shared {
+            existing.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // Create new window with empty state
+        let windowSize = savedOrDefaultWindowSize()
+        let viewController = ImageViewController(folder: nil)  // nil = empty state
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.minSize = NSSize(
+            width: Constants.minWindowContentWidth,
+            height: Constants.minWindowContentHeight
+        )
+        window.isRestorable = false
+        window.contentViewController = viewController
+        window.center()
+        window.setAccessibilityIdentifier("imageWindow")
+
+        let controller = ImageWindowController(window: window)
+        shared = controller
+        controller.showWindow(nil)
+        controller.ensureUsableWindowSize()
+        controller.setupResizeObserver()
+
+        // Empty state title
+        controller.window?.title = "Cee"
+        controller.window?.subtitle = ""
+    }
+
     static func open(with url: URL) {
         let folder = ImageFolder(containing: url)
 
@@ -194,7 +234,12 @@ class ImageWindowController: NSWindowController {
 
     // MARK: - Window Title
 
-    func updateTitle(folder: ImageFolder) {
+    func updateTitle(folder: ImageFolder?) {
+        guard let folder else {
+            window?.title = "Cee"
+            window?.subtitle = ""
+            return
+        }
         guard let item = folder.currentImage else {
             window?.title = "Cee"
             window?.subtitle = ""

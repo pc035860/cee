@@ -27,6 +27,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ImageWindowController.open(with: url)
     }
 
+    // MARK: - Empty State Launch
+
+    /// Called by macOS when app is launched/activated without a document
+    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        ImageWindowController.openEmpty()
+        return true
+    }
+
     // MARK: - Open File Dialog
 
     @MainActor @objc func openFile(_ sender: Any) {

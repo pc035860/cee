@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 class ImageViewController: NSViewController, NSMenuItemValidation {
-    private var folder: ImageFolder
+    private var folder: ImageFolder?  // Modified: now optional for empty state
     private let loader = ImageLoader()
     private var scrollView: ImageScrollView!
     private var dualPageView: DualPageContentView!
@@ -13,6 +13,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var errorPlaceholderView: ErrorPlaceholderView?
+    private var emptyStateView: EmptyStateView?  // New: empty state overlay
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
@@ -46,7 +47,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         return size
     }
 
-    init(folder: ImageFolder) {
+    init(folder: ImageFolder? = nil) {
         self.folder = folder
         super.init(nibName: nil, bundle: nil)
     }
@@ -92,6 +93,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     override func viewDidAppear() {
         super.viewDidAppear()
         applySettings()
+
+        // CRITICAL: Handle nil folder first (empty state)
+        guard folder != nil else {
+            showEmptyState(true)
+            view.window?.makeFirstResponder(scrollView)
+            view.window?.initialFirstResponder = scrollView
+            return
+        }
+
         loadFolderDualPageSettings()
         if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
@@ -111,6 +121,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     /// 視窗重用時載入新資料夾
     func loadFolder(_ newFolder: ImageFolder) {
         Task { await loader.cancelAllPrefetchTasks() }
+        showEmptyState(false)  // Hide empty state when loading folder
+        showErrorPlaceholder(false)  // Also hide error placeholder
         self.folder = newFolder
         imageSizeCache.removeAll()
         loadFolderDualPageSettings()
@@ -155,7 +167,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func updateStatusBar() {
-        guard let image = contentView.image else { return }
+        guard let folder, let image = contentView.image else {
+            statusBarView.clear()
+            return
+        }
         let total = folder.images.count
         let zoom = scrollView.magnification
         let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
@@ -228,6 +243,33 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
+    private func showEmptyState(_ show: Bool) {
+        // Ensure mutual exclusion with error placeholder
+        if show {
+            showErrorPlaceholder(false)
+        }
+
+        if show {
+            if emptyStateView == nil {
+                let view = EmptyStateView()
+                view.delegate = self
+                view.translatesAutoresizingMaskIntoConstraints = false
+                // Add to container (same level as statusBarView), not scrollView
+                self.view.addSubview(view)
+                NSLayoutConstraint.activate([
+                    view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                    view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                    view.topAnchor.constraint(equalTo: self.view.topAnchor),
+                    view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
+                ])
+                emptyStateView = view
+            }
+            emptyStateView?.isHidden = false
+        } else {
+            emptyStateView?.isHidden = true
+        }
+    }
+
     private func shouldResizeWindowToMatchImage() -> Bool {
         settings.resizeWindowAutomatically || settings.alwaysFitOnOpen
     }
@@ -235,6 +277,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Image Loading
 
     private func loadCurrentImage(initialScroll: InitialScrollPosition = .preserve) {
+        // CRITICAL: Handle nil folder first (empty state)
+        guard let folder else {
+            showEmptyState(true)
+            return
+        }
+
         // Phase 5: 空資料夾處理
         guard !folder.images.isEmpty else {
             contentView.image = nil
@@ -252,6 +300,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func loadSpread(_ spread: PageSpread, initialScroll: InitialScrollPosition) {
+        guard let folder else { return }  // Required for cache update
         contextMenuTarget = nil
 
         let requestID = UUID()
@@ -336,7 +385,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// 儲存當前 PDF 頁碼到 UserDefaults
     private func savePDFLastViewedPage() {
-        guard let item = folder.currentImage,
+        guard let folder,
+              let item = folder.currentImage,
               let pageIndex = item.pdfPageIndex else { return }
         let key = "pdf.lastPage.\(item.url.path)"
         UserDefaults.standard.set(pageIndex, forKey: key)
@@ -351,6 +401,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func saveFolderDualPageSettings() {
+        guard let folder else { return }
         let key = "dualPage.settings.\(folder.folderURL.path)"
         let folderSettings = FolderDualPageSettings(
             dualPageEnabled: settings.dualPageEnabled,
@@ -363,6 +414,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func loadFolderDualPageSettings() {
+        guard let folder else { return }
         let key = "dualPage.settings.\(folder.folderURL.path)"
         guard let data = UserDefaults.standard.data(forKey: key),
               let folderSettings = try? JSONDecoder().decode(FolderDualPageSettings.self, from: data)
@@ -645,6 +697,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Navigation
 
     @objc func goToNextImage() {
+        guard let folder else { return }
         if settings.dualPageEnabled {
             guard folder.goNextSpread() else { return }
         } else {
@@ -655,6 +708,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func goToPreviousImage() {
+        guard let folder else { return }
         if settings.dualPageEnabled {
             guard folder.goPreviousSpread() else { return }
         } else {
@@ -665,7 +719,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func goToFirstImage() {
-        guard !folder.images.isEmpty else { return }
+        guard let folder, !folder.images.isEmpty else { return }
         if settings.dualPageEnabled {
             folder.goToFirstSpread()
         } else {
@@ -676,7 +730,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func goToLastImage() {
-        guard !folder.images.isEmpty else { return }
+        guard let folder, !folder.images.isEmpty else { return }
         if settings.dualPageEnabled {
             folder.goToLastSpread()
         } else {
@@ -827,6 +881,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func rebuildSpreadsAndReload() {
+        guard let folder else { return }
         prepopulatePDFPageSizes()
         folder.rebuildSpreads(
             firstPageIsCover: settings.firstPageIsCover,
@@ -840,6 +895,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     /// Pre-populate imageSizeCache with PDF page dimensions from metadata (no rendering needed).
     /// This ensures SpreadManager.isWidePage() has accurate data on first build.
     private func prepopulatePDFPageSizes() {
+        guard let folder else { return }
         var pdfDocCache: [URL: CGPDFDocument] = [:]
         for (index, item) in folder.images.enumerated() {
             guard imageSizeCache[index] == nil,
@@ -1036,7 +1092,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     /// Consumes (clears) the context menu target to prevent stale state.
     private func resolvedTarget() -> (item: ImageItem?, page: ImageContentView) {
         let result = (
-            item: contextMenuTarget?.item ?? folder.currentImage,
+            item: contextMenuTarget?.item ?? folder?.currentImage,
             page: contextMenuTarget?.page ?? contentView
         )
         contextMenuTarget = nil
@@ -1105,12 +1161,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return true
         case #selector(goToNextImage):
             menuItem.title = settings.dualPageEnabled ? "Next Spread" : "Next Image"
-            return true
+            return folder != nil
         case #selector(goToPreviousImage):
             menuItem.title = settings.dualPageEnabled ? "Previous Spread" : "Previous Image"
-            return true
+            return folder != nil
         case #selector(copyImage(_:)), #selector(revealInFinder(_:)):
-            return folder.currentImage != nil
+            return folder?.currentImage != nil
         default:
             return true
         }
@@ -1320,7 +1376,7 @@ extension ImageViewController: ImageScrollViewDelegate {
     /// Determine which page the user right-clicked in dual page mode.
     private func resolveContextMenuTarget(event: NSEvent) {
         // Default to leading page
-        guard let item = folder.currentImage else {
+        guard let folder, let item = folder.currentImage else {
             contextMenuTarget = nil
             return
         }
@@ -1391,5 +1447,18 @@ extension ImageViewController: ImageScrollViewDelegate {
         let item = NSMenuItem(title: "Dual Page", action: nil, keyEquivalent: "")
         item.submenu = submenu
         return item
+    }
+}
+
+// MARK: - EmptyStateViewDelegate
+
+extension ImageViewController: EmptyStateView.Delegate {
+    func emptyStateViewDidReceiveDrop(_ view: EmptyStateView, urls: [URL]) {
+        guard let url = urls.first else { return }
+        // Use existing load flow
+        let newFolder = ImageFolder(containing: url)
+        loadFolder(newFolder)
+        (view.window?.windowController as? ImageWindowController)?
+            .updateTitle(folder: newFolder)
     }
 }
