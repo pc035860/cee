@@ -30,6 +30,9 @@ final class EmptyStateView: NSView {
         }
     }
 
+    /// Cache for valid URLs during drag operation (performance optimization)
+    private var cachedValidURLs: [URL] = []
+
     // MARK: - Initialization
 
     override init(frame frameRect: NSRect) {
@@ -124,23 +127,24 @@ final class EmptyStateView: NSView {
     // MARK: - Drag and Drop
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let urls = extractImageURLs(from: sender.draggingPasteboard)
-        isDragOver = !urls.isEmpty
-        return urls.isEmpty ? [] : .copy
+        cachedValidURLs = extractImageURLs(from: sender.draggingPasteboard)
+        isDragOver = !cachedValidURLs.isEmpty
+        return cachedValidURLs.isEmpty ? [] : .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let urls = extractImageURLs(from: sender.draggingPasteboard)
-        return urls.isEmpty ? [] : .copy
+        return cachedValidURLs.isEmpty ? [] : .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         isDragOver = false
+        cachedValidURLs = []
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         isDragOver = false
-        let urls = extractImageURLs(from: sender.draggingPasteboard)
+        let urls = cachedValidURLs
+        cachedValidURLs = []
         guard !urls.isEmpty else { return false }
 
         Task { @MainActor [weak self] in
@@ -163,9 +167,6 @@ final class EmptyStateView: NSView {
     }
 
     private func isSupported(_ url: URL) -> Bool {
-        guard let uttype = UTType(filenameExtension: url.pathExtension) else {
-            return false
-        }
-        return uttype.conforms(to: .image) || uttype.conforms(to: .pdf)
+        ImageFolder.isSupported(url: url)
     }
 }
