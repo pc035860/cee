@@ -22,6 +22,8 @@ enum Constants {
 
     // Quick Grid
     static let quickGridCellSize: CGFloat = 120
+    static let quickGridMinCellSize: CGFloat = 80
+    static let quickGridMaxCellSize: CGFloat = 200
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
 

@@ -135,4 +135,46 @@ final class QuickGridViewTests: XCTestCase {
         delegate.quickGridView(grid, didReceiveDrop: testURLs)
         XCTAssertEqual(delegate.droppedURLs, testURLs)
     }
+
+    // MARK: - Cell Size Resize
+
+    func testApplyItemSize_clampsToMinimum() {
+        let grid = QuickGridView()
+        grid.applyItemSize(50)
+        XCTAssertEqual(grid.currentCellSize, Constants.quickGridMinCellSize,
+                       "Cell size below minimum should clamp to \(Constants.quickGridMinCellSize)")
+    }
+
+    func testApplyItemSize_clampsToMaximum() {
+        let grid = QuickGridView()
+        grid.applyItemSize(300)
+        XCTAssertEqual(grid.currentCellSize, Constants.quickGridMaxCellSize,
+                       "Cell size above maximum should clamp to \(Constants.quickGridMaxCellSize)")
+    }
+
+    func testApplyItemSize_withinRange() {
+        let grid = QuickGridView()
+        grid.applyItemSize(150)
+        XCTAssertEqual(grid.currentCellSize, 150,
+                       "Cell size within range should be applied as-is")
+    }
+
+    func testApplyItemSize_noOpWhenSameSize() {
+        let grid = QuickGridView()
+        // Default is 120, applying 120 should be a no-op
+        let initialSize = grid.currentCellSize
+        grid.applyItemSize(initialSize)
+        XCTAssertEqual(grid.currentCellSize, initialSize,
+                       "Applying same size should not change currentCellSize")
+    }
+
+    func testApplyItemSize_consecutiveResizes() {
+        let grid = QuickGridView()
+        grid.applyItemSize(100)
+        XCTAssertEqual(grid.currentCellSize, 100)
+        grid.applyItemSize(180)
+        XCTAssertEqual(grid.currentCellSize, 180)
+        grid.applyItemSize(80)
+        XCTAssertEqual(grid.currentCellSize, 80)
+    }
 }
