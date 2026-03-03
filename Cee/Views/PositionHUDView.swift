@@ -1,8 +1,11 @@
 import AppKit
 
 /// 畫面中央的位置 HUD，在 Option+scroll 快速切圖時顯示 "42 / 1000"
-/// 類似 macOS 音量 HUD 的設計：毛玻璃背景 + 圓角 + 自動淡出
-final class PositionHUDView: NSVisualEffectView {
+/// 類似 macOS 音量 HUD 的設計：深色半透明背景 + 圓角 + 自動淡出
+///
+/// 使用純色半透明背景而非 NSVisualEffectView，因為 NSVisualEffectView
+/// 的 material 合成在 alpha 動畫時會先變深再淡出（即使用 wrapper 也一樣）。
+final class PositionHUDView: NSView {
 
     /// HUD 淡出完成後呼叫（可選的外部通知回呼）
     var onFadeOut: (() -> Void)?
@@ -22,12 +25,8 @@ final class PositionHUDView: NSVisualEffectView {
     }
 
     private func setup() {
-        // 毛玻璃效果（HUD 風格）
-        material = .hudWindow
-        blendingMode = .behindWindow
-        state = .active
-        appearance = NSAppearance(named: .darkAqua)
         wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.82).cgColor
         layer?.cornerRadius = 16
 
         // 標籤
@@ -47,6 +46,13 @@ final class PositionHUDView: NSVisualEffectView {
         // 初始隱藏
         alphaValue = 0
         isHidden = true
+    }
+
+    // MARK: - Hit Testing
+
+    /// HUD 純顯示用，所有滑鼠事件穿透到下層 view
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil
     }
 
     // MARK: - Public API

@@ -90,6 +90,13 @@ final class EmptyStateView: NSView {
             stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -40),
         ])
 
+        // 讓所有子 view 退出 drag 系統，確保 drag 事件穿透到 EmptyStateView
+        // NSImageView 可能預設註冊圖片 drag types，會攔截 file drag 事件
+        for child in stackView.arrangedSubviews {
+            child.unregisterDraggedTypes()
+        }
+        stackView.unregisterDraggedTypes()
+
         // Dashed border layer (initially hidden)
         DragHighlightStyle.apply(to: dashedBorderLayer)
         layer?.addSublayer(dashedBorderLayer)

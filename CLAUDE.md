@@ -62,6 +62,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Never put `keyDown(with:)` on NSViewController when NSScrollView is first responder.** NSScrollView intercepts arrow/Space/PageUp/PageDown. Override on NSScrollView subclass, delegate via protocol.
 - **`NSMenuItemValidation`** — protocol conformance, not `override`.
 - **Context menu** — `menu(for: event)` → delegate. Dual page mode hit-tests click position for correct page target. Labels must match AppDelegate's menu bar; `validateMenuItem` updates dynamically.
+- **Overlay event passthrough** — display-only overlays (e.g. HUD) override `hitTest` → `nil`. For drag-drop containers, child views (especially `NSImageView`) must call `unregisterDraggedTypes()` to prevent intercepting parent's drag session — AppKit drag destination resolution doesn't purely use `hitTest`.
+- **NSVisualEffectView + alpha animation** — animating `alphaValue` (directly or via wrapper parent) causes material compositing flash (darkens before fading). Use plain `layer.backgroundColor` with semi-transparent color instead.
 
 ## XCUITest Gotchas
 
