@@ -19,4 +19,9 @@ enum Constants {
 
     // Status Bar
     static let statusBarHeight: CGFloat = 22
+
+    // Quick Grid
+    static let quickGridCellSize: CGFloat = 120
+    static let quickGridSpacing: CGFloat = 4
+    static let quickGridInset: CGFloat = 8
 }
