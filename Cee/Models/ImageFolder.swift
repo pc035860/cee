@@ -67,19 +67,17 @@ class ImageFolder {
             options: .skipsHiddenFiles
         ) else { return [] }
 
-        // Sort files first, then expand PDFs — ensures pages stay grouped after their source file
-        let sortedURLs = contents
-            .filter { url in
-                guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
-                else { return false }
-                return Self.supportedTypes.contains(where: { type.conforms(to: $0) })
-            }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        // Single pass: filter supported files and capture their UTType
+        let supported: [(url: URL, type: UTType)] = contents.compactMap { url in
+            guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
+                  Self.supportedTypes.contains(where: { type.conforms(to: $0) })
+            else { return nil }
+            return (url, type)
+        }
+        .sorted { $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending }
 
-        return sortedURLs.flatMap { url -> [ImageItem] in
-            guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
-            else { return [] }
-
+        // Expand PDFs into per-page items
+        return supported.flatMap { (url, type) -> [ImageItem] in
             if type.conforms(to: .pdf) {
                 let count = Self.pdfPageCount(for: url)
                 guard count > 0 else { return [] }
@@ -102,22 +100,22 @@ class ImageFolder {
         var queue: [(url: URL, depth: Int)] = []
 
         // Seed queue with immediate subdirectories (depth 1)
-        if let children = sortedSubdirectories(of: rootURL, using: fm) {
-            for child in children {
-                queue.append((child, 1))
-            }
+        let (_, rootSubdirs) = scanFolderContents(rootURL, using: fm)
+        for child in rootSubdirs {
+            queue.append((child, 1))
         }
 
         while !queue.isEmpty {
             let (currentURL, depth) = queue.removeFirst()
 
-            if folderContainsSupportedImages(currentURL, using: fm) {
+            let (hasImages, subdirs) = scanFolderContents(currentURL, using: fm)
+            if hasImages {
                 return currentURL
             }
 
             // Enqueue deeper subdirectories if within depth limit
-            if depth < maxDepth, let children = sortedSubdirectories(of: currentURL, using: fm) {
-                for child in children {
+            if depth < maxDepth {
+                for child in subdirs {
                     queue.append((child, depth + 1))
                 }
             }
@@ -126,39 +124,33 @@ class ImageFolder {
         return nil
     }
 
-    /// Returns sorted subdirectories of a folder, skipping hidden files and packages.
-    private static func sortedSubdirectories(of url: URL, using fm: FileManager) -> [URL]? {
+    /// Single-pass scan: checks for supported images AND collects sorted subdirectories.
+    /// Reads directory contents once with all needed resource keys to avoid redundant I/O.
+    private static func scanFolderContents(_ url: URL, using fm: FileManager) -> (hasImages: Bool, subdirs: [URL]) {
         guard let contents = try? fm.contentsOfDirectory(
             at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .contentTypeKey],
             options: .skipsHiddenFiles
-        ) else { return nil }
+        ) else { return (false, []) }
 
-        let dirs = contents.filter { child in
-            guard let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]),
-                  values.isDirectory == true,
-                  values.isPackage != true
-            else { return false }
-            return true
+        var hasImages = false
+        var subdirs: [URL] = []
+
+        for child in contents {
+            guard let values = try? child.resourceValues(
+                forKeys: [.isDirectoryKey, .isPackageKey, .contentTypeKey]
+            ) else { continue }
+
+            if values.isDirectory == true && values.isPackage != true {
+                subdirs.append(child)
+            } else if let type = values.contentType,
+                      supportedTypes.contains(where: { type.conforms(to: $0) }) {
+                hasImages = true
+            }
         }
-        .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
 
-        return dirs.isEmpty ? nil : dirs
-    }
-
-    /// Quick check whether a folder contains at least one supported image file.
-    private static func folderContainsSupportedImages(_ folderURL: URL, using fm: FileManager) -> Bool {
-        guard let contents = try? fm.contentsOfDirectory(
-            at: folderURL,
-            includingPropertiesForKeys: [.contentTypeKey],
-            options: .skipsHiddenFiles
-        ) else { return false }
-
-        return contents.contains { url in
-            guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
-            else { return false }
-            return supportedTypes.contains(where: { type.conforms(to: $0) })
-        }
+        subdirs.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        return (hasImages, subdirs)
     }
 
     /// 輕量取 PDF 頁數：Spotlight 元資料 → CGPDFDocument → 0

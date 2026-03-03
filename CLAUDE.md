@@ -20,7 +20,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Entry point** — `main.swift` (not `@main`/`@NSApplicationMain`).
 - **Single window reuse** — `ImageWindowController.shared`.
 - **project.yml** — source of truth for Xcode project. `.xcodeproj` is gitignored.
-- **Test targets** — `CeeTests` (unit, pure logic) and `CeeUITests` (E2E). Unit tests use temp directories with minimal PNG files for ImageFolder tests.
+- **Test targets** — `CeeTests` (unit, pure logic) and `CeeUITests` (E2E). Unit tests use temp directories with minimal PNG files for ImageFolder tests. `TestHelpers.swift` provides shared `minimalPNG()`.
+- **URL comparison gotcha** — `URL ==` can fail between manually constructed URLs (`appendingPathComponent`) and URLs from `contentsOfDirectory`. Use `.path` comparison for reliable matching in tests.
 
 ## Swift 6 Gotchas
 

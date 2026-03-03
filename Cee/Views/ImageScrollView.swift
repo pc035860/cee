@@ -150,11 +150,7 @@ class ImageScrollView: NSScrollView {
     var dragBottomInset: CGFloat = 0
 
     private func setupDragHighlightLayer() {
-        dragHighlightLayer.fillColor = NSColor.black.withAlphaComponent(0.3).cgColor
-        dragHighlightLayer.strokeColor = NSColor.controlAccentColor.cgColor
-        dragHighlightLayer.lineWidth = 2
-        dragHighlightLayer.lineDashPattern = [8, 4]
-        dragHighlightLayer.isHidden = true
+        DragHighlightStyle.apply(to: dragHighlightLayer)
         dragHighlightLayer.zPosition = 1000  // Same as edge indicators
     }
 
@@ -563,11 +559,13 @@ class ImageScrollView: NSScrollView {
     private func updateDragHighlightPath() {
         let inset: CGFloat = 8
         // Asymmetric inset: extra bottom space to avoid status bar overlay
+        let topInset = inset
+        let bottomInset = inset + dragBottomInset
         let rect = CGRect(
             x: bounds.minX + inset,
-            y: bounds.minY + inset,
+            y: bounds.minY + topInset,
             width: bounds.width - inset * 2,
-            height: bounds.height - inset - (inset + dragBottomInset)
+            height: bounds.height - topInset - bottomInset
         )
         dragHighlightLayer.frame = bounds
         dragHighlightLayer.path = CGPath(
@@ -925,7 +923,7 @@ class ImageScrollView: NSScrollView {
     // MARK: - Drag and Drop (Phase 2: Browse Mode)
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        cachedValidURLs = extractImageURLs(from: sender.draggingPasteboard)
+        cachedValidURLs = URLFilter.extractImageURLs(from: sender.draggingPasteboard)
         isDragOver = !cachedValidURLs.isEmpty
         return cachedValidURLs.isEmpty ? [] : .copy
     }
@@ -959,11 +957,4 @@ class ImageScrollView: NSScrollView {
         cachedValidURLs = []
     }
 
-    private func extractImageURLs(from pasteboard: NSPasteboard) -> [URL] {
-        guard let urls = pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [URL] else { return [] }
-        return URLFilter.filterImageAndFolderURLs(urls, isSupported: ImageFolder.isSupported(url:))
-    }
 }

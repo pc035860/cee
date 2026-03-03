@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Pure logic helper for filtering URLs by file type.
@@ -33,5 +34,15 @@ struct URLFilter {
             // Check isSupported first (pure memory operation) to avoid unnecessary file system access
             isSupported(url) || isDirectory(url)
         }
+    }
+
+    /// Extract valid image/folder URLs from a pasteboard.
+    /// Shared by EmptyStateView and ImageScrollView drag-drop handlers.
+    static func extractImageURLs(from pasteboard: NSPasteboard) -> [URL] {
+        guard let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] else { return [] }
+        return filterImageAndFolderURLs(urls, isSupported: ImageFolder.isSupported(url:))
     }
 }
