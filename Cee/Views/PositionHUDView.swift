@@ -4,7 +4,7 @@ import AppKit
 /// 類似 macOS 音量 HUD 的設計：毛玻璃背景 + 圓角 + 自動淡出
 final class PositionHUDView: NSVisualEffectView {
 
-    /// HUD 淡出完成後呼叫，用於重置 isOptionScrolling 等外部狀態
+    /// HUD 淡出完成後呼叫（可選的外部通知回呼）
     var onFadeOut: (() -> Void)?
 
     private let positionLabel = NSTextField(labelWithString: "")

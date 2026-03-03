@@ -1639,7 +1639,6 @@ extension ImageViewController: ImageScrollViewDelegate {
         if positionHUDView == nil {
             let hud = PositionHUDView()
             hud.translatesAutoresizingMaskIntoConstraints = false
-            hud.onFadeOut = nil  // No external state to reset; HUD manages its own lifecycle
             view.addSubview(hud)
             NSLayoutConstraint.activate([
                 hud.centerXAnchor.constraint(equalTo: view.centerXAnchor),
