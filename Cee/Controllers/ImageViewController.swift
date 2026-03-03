@@ -37,6 +37,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         )
     }
     private var imageSizeCache: [Int: CGSize] = [:]
+    private var navigationThrottle = NavigationThrottle(interval: 0.05)
+    private var lastPrefetchDirection: PrefetchDirection = .none
     private enum InitialScrollPosition { case preserve, top, bottom }
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
@@ -378,7 +380,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
             await loader.updateCache(
                 currentIndex: folder.currentIndex,
-                items: folder.images
+                items: folder.images,
+                prefetchDirection: lastPrefetchDirection
             )
             savePDFLastViewedPage()
         }
@@ -708,6 +711,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func goToNextImage() {
         guard let folder else { return }
+        guard navigationThrottle.shouldProceed() else { return }
+        lastPrefetchDirection = .forward
         if settings.dualPageEnabled {
             guard folder.goNextSpread() else { return }
         } else {
@@ -719,6 +724,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func goToPreviousImage() {
         guard let folder else { return }
+        guard navigationThrottle.shouldProceed() else { return }
+        lastPrefetchDirection = .backward
         if settings.dualPageEnabled {
             guard folder.goPreviousSpread() else { return }
         } else {
@@ -730,6 +737,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func goToFirstImage() {
         guard let folder, !folder.images.isEmpty else { return }
+        lastPrefetchDirection = .none
         if settings.dualPageEnabled {
             folder.goToFirstSpread()
         } else {
@@ -741,6 +749,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func goToLastImage() {
         guard let folder, !folder.images.isEmpty else { return }
+        lastPrefetchDirection = .none
         if settings.dualPageEnabled {
             folder.goToLastSpread()
         } else {

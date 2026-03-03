@@ -2,12 +2,21 @@ import AppKit
 import ImageIO
 import PDFKit
 
+/// 方向性 prefetch：往翻頁方向多預載
+enum PrefetchDirection {
+    case none
+    case forward
+    case backward
+}
+
 /// 使用 actor 確保快取的執行緒安全
 actor ImageLoader {
     private var cache: [URL: NSImage] = [:]
+    private var thumbnailCache: [URL: NSImage] = [:]
     private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
+    private let prefetchExtra = Constants.prefetchDirectionExtraCount
 
     // 追蹤預載任務（支援取消）
     private var prefetchTasks: [PDFCacheKey: Task<Void, Never>] = [:]
@@ -17,6 +26,19 @@ actor ImageLoader {
     private struct PDFCacheKey: Hashable {
         let url: URL
         let pageIndex: Int
+    }
+
+    /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
+    /// PDF 不支援，回傳 nil
+    func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> NSImage? {
+        if let cached = thumbnailCache[url] { return cached }
+
+        let image = await Task.detached(priority: .userInitiated) {
+            Self.decodeThumbnail(at: url, maxSize: maxSize)
+        }.value
+
+        if let image { thumbnailCache[url] = image }
+        return image
     }
 
     func loadImage(at url: URL) async -> NSImage? {
@@ -145,6 +167,23 @@ actor ImageLoader {
 
     // MARK: - Image Loading
 
+    /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖（JPEG ~16ms）
+    private static func decodeThumbnail(at url: URL, maxSize: CGFloat) -> NSImage? {
+        guard url.pathExtension.lowercased() != "pdf" else { return nil }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxSize,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(
+            width: cgImage.width,
+            height: cgImage.height
+        ))
+    }
+
     /// 使用 ImageIO 高效解碼（比 NSImage(contentsOf:) 更高效）
     private static func decodeImage(at url: URL) -> NSImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -176,11 +215,33 @@ actor ImageLoader {
         return image
     }
 
+    /// 取消指定 item 的預載任務
+    func cancelLoad(for item: ImageItem) {
+        if let pageIndex = item.pdfPageIndex {
+            let key = PDFCacheKey(url: item.url, pageIndex: pageIndex)
+            prefetchTasks[key]?.cancel()
+            prefetchTasks.removeValue(forKey: key)
+        } else {
+            imagePrefetchTasks[item.url]?.cancel()
+            imagePrefetchTasks.removeValue(forKey: item.url)
+        }
+    }
+
     /// 預載周圍項目（圖片或 PDF 頁面），釋放遠離的快取
+    /// 方向性 prefetch：往 direction 方向多預載 prefetchExtra 張
     /// ⚠️ 接收值型別參數（ImageItem 是 Sendable struct）避免 Swift 6 Sendable 問題
-    func updateCache(currentIndex: Int, items: [ImageItem]) {
+    func updateCache(currentIndex: Int, items: [ImageItem], prefetchDirection: PrefetchDirection = .none) {
         guard !items.isEmpty else { return }
-        let range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
+
+        let range: ClosedRange<Int>
+        switch prefetchDirection {
+        case .forward:
+            range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius + prefetchExtra)
+        case .backward:
+            range = max(0, currentIndex - cacheRadius - prefetchExtra)...min(items.count - 1, currentIndex + cacheRadius)
+        case .none:
+            range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
+        }
 
         // 計算需要的 keys
         let activeImageURLs = Set(items[range].filter { !$0.isPDF }.map(\.url))
