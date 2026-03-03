@@ -16,7 +16,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var emptyStateView: EmptyStateView?  // New: empty state overlay
     private var quickGridView: QuickGridView?
     private var positionHUDView: PositionHUDView?
-    private var isOptionScrolling = false  // Phase 3: force thumbnail during Option+scroll
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
@@ -1598,15 +1597,16 @@ extension ImageViewController: ImageScrollViewDelegate {
     }
 
     func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int) {
-        isOptionScrolling = true
-        optionScrollNavigate(forward: forward, amount: amount)
+        guard optionScrollNavigate(forward: forward, amount: amount) else { return }
         guard let folder else { return }
         showPositionHUD(current: folder.currentIndex + 1, total: folder.images.count)
     }
 
     /// Phase 3: Option+scroll 專用導航，繞過 NavigationThrottle（accumulator 已是速率控制器）
-    private func optionScrollNavigate(forward: Bool, amount: Int) {
-        guard let folder else { return }
+    /// - Returns: 是否有實際移動
+    @discardableResult
+    private func optionScrollNavigate(forward: Bool, amount: Int) -> Bool {
+        guard let folder else { return false }
         let direction: PrefetchDirection = forward ? .forward : .backward
         lastPrefetchDirection = direction
         var moved = false
@@ -1625,11 +1625,12 @@ extension ImageViewController: ImageScrollViewDelegate {
                 }
             }
         }
-        guard moved else { return }
+        guard moved else { return false }
         let scroll: InitialScrollPosition = forward ? .top : .bottom
         loadCurrentImage(initialScroll: scroll, thumbnailOnly: true)
         scheduleFullResLoad()
         updateWindowTitle()
+        return true
     }
 
     // MARK: - Position HUD (Phase 3)
@@ -1638,9 +1639,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         if positionHUDView == nil {
             let hud = PositionHUDView()
             hud.translatesAutoresizingMaskIntoConstraints = false
-            hud.onFadeOut = { [weak self] in
-                self?.isOptionScrolling = false
-            }
+            hud.onFadeOut = nil  // No external state to reset; HUD manages its own lifecycle
             view.addSubview(hud)
             NSLayoutConstraint.activate([
                 hud.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -1657,7 +1656,6 @@ extension ImageViewController: ImageScrollViewDelegate {
         positionHUDView?.dismiss()
         positionHUDView?.removeFromSuperview()
         positionHUDView = nil
-        isOptionScrolling = false
     }
 
     // MARK: - Context Menu
