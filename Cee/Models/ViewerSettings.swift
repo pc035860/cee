@@ -53,6 +53,9 @@ struct ViewerSettings: Codable {
     var lastWindowWidth: CGFloat? = nil   // nil = 未曾儲存，首次啟動使用螢幕 80%
     var lastWindowHeight: CGFloat? = nil  // nil = 未曾儲存，首次啟動使用螢幕 80%
 
+    // MARK: - Quick Grid
+    var quickGridCellSize: CGFloat = 120
+
     // MARK: - UI
     var showStatusBar: Bool = true
 
@@ -94,6 +97,7 @@ struct ViewerSettings: Codable {
         dualPageEnabled = (try? c.decode(Bool.self, forKey: .dualPageEnabled)) ?? d.dualPageEnabled
         firstPageIsCover = (try? c.decode(Bool.self, forKey: .firstPageIsCover)) ?? d.firstPageIsCover
         readingDirection = (try? c.decode(ReadingDirection.self, forKey: .readingDirection)) ?? d.readingDirection
+        quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
     }
 
     // MARK: - Persistence

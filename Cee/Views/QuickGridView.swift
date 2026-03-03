@@ -7,22 +7,74 @@ protocol QuickGridViewDelegate: AnyObject {
     func quickGridViewDidRequestClose(_ view: QuickGridView)
 }
 
+/// NSScrollView subclass that intercepts Cmd+Scroll for grid cell size adjustment.
+/// NSScrollView captures scrollWheel before documentView, so subclassing is required
+/// (same pattern as ImageScrollView).
+private final class GridScrollView: NSScrollView {
+    var onCmdScroll: ((CGFloat) -> Void)?
+    /// Read by scrollWheel to compute delta-based size. Updated by QuickGridView.
+    var currentCellSize: CGFloat = Constants.quickGridCellSize
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        allowsMagnification = false  // defensive: prevent pinch event consumption
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard event.modifierFlags.contains(.command) else {
+            super.scrollWheel(with: event)
+            return
+        }
+        // Cmd+Scroll → adjust grid cell size
+        let delta = event.scrollingDeltaY
+        guard abs(delta) > 0.01 else { return }
+
+        let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.5 : 3.0
+        let newSize = currentCellSize + delta * sensitivity
+        onCmdScroll?(newSize)
+        // Do NOT call super — prevents event leaking to ImageScrollView underneath
+    }
+}
+
 /// NSCollectionView subclass that intercepts Enter/Return at the first responder level.
 /// Without this, Enter events would need to propagate up the responder chain,
 /// which NSCollectionView may not forward reliably.
 private final class GridCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
     var onDismiss: (() -> Void)?
+    /// Unified callback for cell size changes (pinch gesture).
+    var onCellSizeChange: ((CGFloat) -> Void)?
+    /// Current cell size — set by QuickGridView, read for incremental pinch calculation.
+    var currentCellSize: CGFloat = Constants.quickGridCellSize
 
     override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
         switch event.keyCode {
         case 36, 76:  // Return / Numpad Enter
             onReturn?()
-        case 5 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == []:  // bare G
+        case 5 where modifiers == []:  // bare G (dismiss)
             onDismiss?()
+        case 24 where modifiers == .command || modifiers == [.command, .shift]:
+            // Cmd+= or Cmd+Shift+= (Cmd+) — grow by 10pt (ANSI keyCode 24)
+            onCellSizeChange?(currentCellSize + 10)
+        case 27 where modifiers == .command:  // Cmd+- (ANSI keyCode 27) — shrink by 10pt
+            onCellSizeChange?(currentCellSize - 10)
         default:
             super.keyDown(with: event)
         }
+    }
+
+    override func magnify(with event: NSEvent) {
+        // Incremental: newSize = currentSize * (1 + delta)
+        // Matches ImageScrollView pattern (magnification + event.magnification)
+        let newSize = currentCellSize * (1 + event.magnification)
+        onCellSizeChange?(newSize)
+        // Do NOT call super — prevents event propagating to ImageScrollView
     }
 }
 
@@ -32,10 +84,23 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     // MARK: - UI
 
-    private let gridScrollView = NSScrollView()
+    private let gridScrollView = GridScrollView()
     private let collectionView = GridCollectionView()
+    private var flowLayout: NSCollectionViewFlowLayout!
     private var items: [ImageItem] = []
     private var currentIndex: Int = 0
+
+    /// Current grid cell size — single source of truth. Clamped to min/max range.
+    private(set) var currentCellSize: CGFloat = Constants.quickGridCellSize
+
+    // MARK: - Slider
+
+    private let sizeSlider = NSSlider()
+    private let sliderContainer = NSView()
+    private var isUpdatingSliderProgrammatically = false
+
+    /// Called after cell size changes (for persistence).
+    var onCellSizeDidChange: ((CGFloat) -> Void)?
 
     // MARK: - Thumbnail Loading
 
@@ -63,8 +128,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         // Collection view layout
         let layout = NSCollectionViewFlowLayout()
         layout.itemSize = NSSize(
-            width: Constants.quickGridCellSize,
-            height: Constants.quickGridCellSize
+            width: currentCellSize,
+            height: currentCellSize
         )
         layout.minimumInteritemSpacing = Constants.quickGridSpacing
         layout.minimumLineSpacing = Constants.quickGridSpacing
@@ -75,6 +140,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             right: Constants.quickGridInset
         )
 
+        self.flowLayout = layout
         collectionView.collectionViewLayout = layout
         collectionView.dataSource = self
         collectionView.delegate = self
@@ -97,6 +163,28 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self.delegate?.quickGridViewDidRequestClose(self)
         }
 
+        // Wire resize handlers (pinch + Cmd+Scroll)
+        collectionView.onCellSizeChange = { [weak self] newSize in
+            self?.applyItemSize(newSize)
+        }
+        gridScrollView.onCmdScroll = { [weak self] newSize in
+            self?.applyItemSize(newSize)
+        }
+
+        // Size slider (bottom bar)
+        sliderContainer.wantsLayer = true
+        sliderContainer.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        sliderContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        sizeSlider.minValue = Double(Constants.quickGridMinCellSize)
+        sizeSlider.maxValue = Double(Constants.quickGridMaxCellSize)
+        sizeSlider.doubleValue = Double(currentCellSize)
+        sizeSlider.isContinuous = true
+        sizeSlider.target = self
+        sizeSlider.action = #selector(sliderValueChanged(_:))
+        sizeSlider.translatesAutoresizingMaskIntoConstraints = false
+        sliderContainer.addSubview(sizeSlider)
+
         // Scroll view wrapping collection view
         gridScrollView.documentView = collectionView
         gridScrollView.hasVerticalScroller = true
@@ -104,16 +192,61 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridScrollView.drawsBackground = false
         gridScrollView.autohidesScrollers = true
         gridScrollView.translatesAutoresizingMaskIntoConstraints = false
+
         addSubview(gridScrollView)
+        addSubview(sliderContainer)
 
         NSLayoutConstraint.activate([
             gridScrollView.topAnchor.constraint(equalTo: topAnchor),
             gridScrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             gridScrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            gridScrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            gridScrollView.bottomAnchor.constraint(equalTo: sliderContainer.topAnchor),
+
+            sliderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sliderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            sliderContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            sliderContainer.heightAnchor.constraint(equalToConstant: 30),
+
+            sizeSlider.leadingAnchor.constraint(equalTo: sliderContainer.leadingAnchor, constant: 8),
+            sizeSlider.trailingAnchor.constraint(equalTo: sliderContainer.trailingAnchor, constant: -8),
+            sizeSlider.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
         ])
 
         registerForDraggedTypes([.fileURL])
+    }
+
+    // MARK: - Cell Size
+
+    /// Apply a new cell size, clamped to the allowed range.
+    /// Only invalidates layout — does NOT clear the thumbnail cache because
+    /// the 240px source thumbnails are valid for the entire 80–200pt range
+    /// and NSImageView handles the rescaling automatically.
+    func applyItemSize(_ newSize: CGFloat) {
+        let clamped = max(Constants.quickGridMinCellSize,
+                          min(Constants.quickGridMaxCellSize, newSize))
+        guard clamped != currentCellSize else { return }
+        currentCellSize = clamped
+
+        // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
+        flowLayout.itemSize = NSSize(width: clamped, height: clamped)
+        collectionView.collectionViewLayout?.invalidateLayout()
+
+        // Sync current size to subviews for delta calculation
+        collectionView.currentCellSize = clamped
+        gridScrollView.currentCellSize = clamped
+
+        // Sync slider without triggering its action handler
+        isUpdatingSliderProgrammatically = true
+        sizeSlider.doubleValue = Double(clamped)
+        isUpdatingSliderProgrammatically = false
+
+        // Notify for persistence
+        onCellSizeDidChange?(clamped)
+    }
+
+    @objc private func sliderValueChanged(_ sender: NSSlider) {
+        guard !isUpdatingSliderProgrammatically else { return }
+        applyItemSize(CGFloat(sender.doubleValue))
     }
 
     // MARK: - Configuration
@@ -122,6 +255,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         self.items = items
         self.currentIndex = currentIndex
         self.loader = loader
+
+        // Ensure layout uses current cell size (supports re-open with last size in same session)
+        flowLayout.itemSize = NSSize(width: currentCellSize, height: currentCellSize)
+        collectionView.currentCellSize = currentCellSize
+        gridScrollView.currentCellSize = currentCellSize
+
         collectionView.reloadData()
 
         // Scroll to current image and select it

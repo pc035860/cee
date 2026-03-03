@@ -148,9 +148,11 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Overlay pattern** — add to `self.view` (not scrollView), pin all edges, cleanup on dismiss. Same pattern as `EmptyStateView`/`ErrorPlaceholderView`.
 - **Grid accepts drops** — overlay blocks hit-test to views beneath. Grid registers `.fileURL` drag type and forwards drops via delegate. `clearCache()` (light reset, keeps loader) vs `cleanup()` (full teardown, nils loader).
 - **Grid persists across folder changes** — `loadFolder()` refreshes grid via `clearCache()` + `configure()` instead of dismissing. Empty folder → dismiss. Drop handling shared via `handleDrop(urls:)`.
+- **Grid cell resize** — Pinch (`magnify(with:)` on `GridCollectionView`), Cmd+Scroll (`scrollWheel` on `GridScrollView`), Cmd+=/-, and bottom NSSlider. All route through `applyItemSize()` → `invalidateLayout()` only (never `reloadData()`). 240px thumbnails valid for full 80–200pt range — no cache clear on resize. `isUpdatingSliderProgrammatically` flag prevents slider↔applyItemSize feedback loop. Cell size persisted in `ViewerSettings.quickGridCellSize`.
 
 ## Recent Significant Changes
 
+- **Grid thumbnail resize:** Pinch/Cmd+Scroll/Cmd+=/- /Slider for dynamic cell size (80–200pt). `invalidateLayout()` only, no cache clear. Persisted via `ViewerSettings.quickGridCellSize`.
 - **Option+scroll fast nav (Phase 3):** OptionScrollAccumulator, PositionHUDView, dedicated nav path bypassing throttle, momentum capping, Natural Scrolling correction. Mouse sensitivity fix (delta ×10, steps clamped to 1, time-based reset).
 - **Quick Grid (Phase 2):** Thumbnail grid overlay (G key), async loading, grid-local cache, Enter/ESC/G keyboard handling, cache pollution prevention.
 - **Centering/window drift fixes:** Anchor-out-of-bounds → use document center; resizeToFitImage below min → early return to avoid drift.

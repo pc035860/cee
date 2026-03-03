@@ -1043,6 +1043,17 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let grid = QuickGridView()
         grid.delegate = self
         grid.translatesAutoresizingMaskIntoConstraints = false
+
+        // Restore saved cell size
+        grid.applyItemSize(settings.quickGridCellSize)
+
+        // Persist cell size changes
+        grid.onCellSizeDidChange = { [weak self] size in
+            guard let self else { return }
+            self.settings.quickGridCellSize = size
+            self.scheduleDebouncedSettingsSave()
+        }
+
         self.view.addSubview(grid)
 
         NSLayoutConstraint.activate([
