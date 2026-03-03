@@ -1599,9 +1599,12 @@ extension ImageViewController: ImageScrollViewDelegate {
         toggleQuickGrid()
     }
 
+    func scrollViewOptionScrollWillNavigate(_ scrollView: ImageScrollView) {
+        isOptionScrolling = true
+    }
+
     func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView) {
         guard let folder else { return }
-        isOptionScrolling = true
         showPositionHUD(current: folder.currentIndex + 1, total: folder.images.count)
     }
 

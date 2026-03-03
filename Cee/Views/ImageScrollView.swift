@@ -25,7 +25,9 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
     /// Toggle Quick Grid overlay (bare G key)
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView)
-    /// Phase 3: Option+scroll 快速切圖後通知 VC 更新 HUD
+    /// Phase 3: Option+scroll 即將觸發導航（設定 isOptionScrolling flag）
+    func scrollViewOptionScrollWillNavigate(_ scrollView: ImageScrollView)
+    /// Phase 3: Option+scroll 導航完成後更新 HUD
     func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView)
 }
 
@@ -34,6 +36,7 @@ extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {}
+    func scrollViewOptionScrollWillNavigate(_ scrollView: ImageScrollView) {}
     func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView) {}
 }
 
@@ -901,13 +904,19 @@ class ImageScrollView: NSScrollView {
 
         guard steps != 0 else { return }
 
-        // 先通知 VC 設定 isOptionScrolling（force thumbnail），再觸發導航
-        scrollDelegate?.scrollViewOptionScrollDidNavigate(self)
-        if steps > 0 {
-            scrollDelegate?.scrollViewRequestNextImage(self, amount: abs(steps))
-        } else {
-            scrollDelegate?.scrollViewRequestPreviousImage(self, amount: abs(steps))
+        // 1. 設定 isOptionScrolling flag（force thumbnail fallback）
+        scrollDelegate?.scrollViewOptionScrollWillNavigate(self)
+        // 2. 觸發導航（用 amount=1 逐張切換，確保 dual-page 相容）
+        let navCount = abs(steps)
+        for _ in 0..<navCount {
+            if steps > 0 {
+                scrollDelegate?.scrollViewRequestNextImage(self, amount: 1)
+            } else {
+                scrollDelegate?.scrollViewRequestPreviousImage(self, amount: 1)
+            }
         }
+        // 3. 導航完成，更新 HUD（此時 folder.currentIndex 已是最新值）
+        scrollDelegate?.scrollViewOptionScrollDidNavigate(self)
     }
 
     // MARK: - Pinch Zoom
