@@ -38,6 +38,10 @@ class ImageScrollView: NSScrollView {
     var wheelOverscrollThreshold: CGFloat = 20      // VC updates from settings
     /// When true, left/right arrow navigation is reversed (RTL manga reading order).
     var isRTLNavigation = false
+    /// When true, left/right arrows navigate images (pan + edge-press or direct navigate).
+    var arrowLeftRightNavigation = true
+    /// When true, up/down arrows navigate images at edges (pan + edge-press or direct navigate).
+    var arrowUpDownNavigation = false
 
     private var isAtBottom = false
     private var isAtTop = false
@@ -495,7 +499,7 @@ class ImageScrollView: NSScrollView {
     }
 
     /// 重置所有邊緣狀態：隱藏 indicator + 清除計數
-    private func resetEdgeState() {
+    func resetEdgeState() {
         edgeIndicatorFadeTimer?.cancel()
         edgeIndicatorFadeTimer = nil
         edgePressCount = 0
@@ -521,7 +525,7 @@ class ImageScrollView: NSScrollView {
         let b = bounds
         // AppKit layer-backed: y=0 是視覺頂部（flipped）
         topIndicator.frame = CGRect(x: 0, y: 0, width: b.width, height: t)
-        bottomIndicator.frame = CGRect(x: 0, y: b.height - t, width: b.width, height: t)
+        bottomIndicator.frame = CGRect(x: 0, y: b.height - t - dragBottomInset, width: b.width, height: t)
         leftIndicator.frame = CGRect(x: 0, y: 0, width: t, height: b.height)
         rightIndicator.frame = CGRect(x: b.width - t, y: 0, width: t, height: b.height)
     }
@@ -626,10 +630,10 @@ class ImageScrollView: NSScrollView {
                     panRight()
                     edgePressCount = 0
                     hideEdgeIndicators()
-                } else {
+                } else if arrowLeftRightNavigation {
                     handleEdgePress(keyCode: 124, navigateAction: rightAction)
                 }
-            } else {
+            } else if arrowLeftRightNavigation {
                 resetEdgeState()
                 rightAction()
             }
@@ -648,10 +652,10 @@ class ImageScrollView: NSScrollView {
                     panLeft()
                     edgePressCount = 0
                     hideEdgeIndicators()
-                } else {
+                } else if arrowLeftRightNavigation {
                     handleEdgePress(keyCode: 123, navigateAction: leftAction)
                 }
-            } else {
+            } else if arrowLeftRightNavigation {
                 resetEdgeState()
                 leftAction()
             }
@@ -661,16 +665,38 @@ class ImageScrollView: NSScrollView {
                 panDown()
                 edgePressCount = 0
                 hideEdgeIndicators()
+            } else if arrowUpDownNavigation {
+                if overflow.vertical {
+                    // At bottom edge: edge-press to navigate
+                    handleEdgePress(keyCode: 125) { [weak self] in
+                        guard let self else { return }
+                        self.scrollDelegate?.scrollViewRequestNextImage(self)
+                    }
+                } else {
+                    // No vertical overflow: navigate directly
+                    resetEdgeState()
+                    scrollDelegate?.scrollViewRequestNextImage(self)
+                }
             }
-            // Removed: navigation at bottom edge (up/down arrows no longer navigate)
 
         case 126: // ↑ UpArrow
             if overflow.vertical && !isAtTop {
                 panUp()
                 edgePressCount = 0
                 hideEdgeIndicators()
+            } else if arrowUpDownNavigation {
+                if overflow.vertical {
+                    // At top edge: edge-press to navigate
+                    handleEdgePress(keyCode: 126) { [weak self] in
+                        guard let self else { return }
+                        self.scrollDelegate?.scrollViewRequestPreviousImage(self)
+                    }
+                } else {
+                    // No vertical overflow: navigate directly
+                    resetEdgeState()
+                    scrollDelegate?.scrollViewRequestPreviousImage(self)
+                }
             }
-            // Removed: navigation at top edge (up/down arrows no longer navigate)
 
         case 49, 121: // Space / PageDown
             if overflow.vertical && isAtBottom {

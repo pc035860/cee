@@ -17,6 +17,10 @@ struct ViewerSettings: Codable {
     var scalingQuality: ScalingQuality = .medium
     var showPixelsWhenZoomingIn: Bool = true  // Nearest Neighbor when mag > 1.0
 
+    // MARK: - Arrow Key Navigation
+    var arrowLeftRightNavigation: Bool = true   // left/right arrows navigate images
+    var arrowUpDownNavigation: Bool = false      // up/down arrows navigate images at edges
+
     // MARK: - Scroll Sensitivity
     enum ScrollSensitivity: String, Codable {
         case low, medium, high
@@ -60,6 +64,33 @@ struct ViewerSettings: Codable {
         var isRTL: Bool { self == .rightToLeft }
     }
     var readingDirection: ReadingDirection = .rightToLeft
+
+    // MARK: - Codable (backward-compatible decoding)
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let d = ViewerSettings()  // defaults
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        magnification = (try? c.decode(CGFloat.self, forKey: .magnification)) ?? d.magnification
+        isManualZoom = (try? c.decode(Bool.self, forKey: .isManualZoom)) ?? d.isManualZoom
+        alwaysFitOnOpen = (try? c.decode(Bool.self, forKey: .alwaysFitOnOpen)) ?? d.alwaysFitOnOpen
+        fittingOptions = (try? c.decode(FittingOptions.self, forKey: .fittingOptions)) ?? d.fittingOptions
+        scalingQuality = (try? c.decode(ScalingQuality.self, forKey: .scalingQuality)) ?? d.scalingQuality
+        showPixelsWhenZoomingIn = (try? c.decode(Bool.self, forKey: .showPixelsWhenZoomingIn)) ?? d.showPixelsWhenZoomingIn
+        arrowLeftRightNavigation = (try? c.decode(Bool.self, forKey: .arrowLeftRightNavigation)) ?? d.arrowLeftRightNavigation
+        arrowUpDownNavigation = (try? c.decode(Bool.self, forKey: .arrowUpDownNavigation)) ?? d.arrowUpDownNavigation
+        trackpadSensitivity = (try? c.decode(ScrollSensitivity.self, forKey: .trackpadSensitivity)) ?? d.trackpadSensitivity
+        wheelSensitivity = (try? c.decode(ScrollSensitivity.self, forKey: .wheelSensitivity)) ?? d.wheelSensitivity
+        resizeWindowAutomatically = (try? c.decode(Bool.self, forKey: .resizeWindowAutomatically)) ?? d.resizeWindowAutomatically
+        floatOnTop = (try? c.decode(Bool.self, forKey: .floatOnTop)) ?? d.floatOnTop
+        lastWindowWidth = try? c.decode(CGFloat.self, forKey: .lastWindowWidth)
+        lastWindowHeight = try? c.decode(CGFloat.self, forKey: .lastWindowHeight)
+        showStatusBar = (try? c.decode(Bool.self, forKey: .showStatusBar)) ?? d.showStatusBar
+        dualPageEnabled = (try? c.decode(Bool.self, forKey: .dualPageEnabled)) ?? d.dualPageEnabled
+        firstPageIsCover = (try? c.decode(Bool.self, forKey: .firstPageIsCover)) ?? d.firstPageIsCover
+        readingDirection = (try? c.decode(ReadingDirection.self, forKey: .readingDirection)) ?? d.readingDirection
+    }
 
     // MARK: - Persistence
     private static let key = "CeeViewerSettings"

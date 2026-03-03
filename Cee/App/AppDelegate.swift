@@ -133,6 +133,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         viewMenu.addItem(wheelMenuItem)
 
         viewMenu.addItem(.separator())
+        viewMenu.addItem(makeItem("Navigate with Left/Right Arrows", action: #selector(ImageViewController.toggleArrowLeftRightNav(_:)), key: ""))
+        viewMenu.addItem(makeItem("Navigate with Up/Down Arrows",    action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
+        viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Resize Window Automatically", action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
         viewMenu.addItem(makeItem("Enter Full Screen",           action: #selector(ImageViewController.toggleFullScreen(_:)),          key: "f"))
         viewMenu.addItem(makeItem("Float on Top",                action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))

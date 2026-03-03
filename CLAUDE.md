@@ -51,7 +51,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Trackpad vs mouse wheel need separate handling.** Detect via `event.phase != [] || event.momentumPhase != []`. Thresholds: trackpad ~130pt, wheel ~20pt.
 - **Trackpad page-turn: edge-start + accumulate + once-per-gesture.** Without edge-start check, momentum triggers false turns.
 - **Momentum lock after page turn (~1s).** New `.began` unlocks. Prevents double page turn from residual momentum.
-- **Keyboard nav: left/right only.** Up/down only scroll. Left/right: 3 extra presses at edge. PageUp/PageDown/Space: 1 extra press.
+- **Keyboard nav: configurable arrow navigation.** Left/right and up/down arrow navigation are separate toggles in View menu (`arrowLeftRightNavigation`, `arrowUpDownNavigation`). Left/right default on, up/down default off. When enabled: 3 extra presses at edge. PageUp/PageDown/Space: 1 extra press.
 - **Edge indicators** (`CAGradientLayer`, #F97068 coral). `resetEdgeState()` on navigation or direction change.
 
 ## AppKit Gotchas

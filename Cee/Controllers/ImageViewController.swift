@@ -140,6 +140,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateScalingQuality()
         applyScrollSensitivity()
         scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
+        scrollView.arrowLeftRightNavigation = settings.arrowLeftRightNavigation
+        scrollView.arrowUpDownNavigation = settings.arrowUpDownNavigation
         if settings.floatOnTop { view.window?.level = .floating }
         applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
@@ -933,6 +935,20 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
+    @objc func toggleArrowLeftRightNav(_ sender: Any? = nil) {
+        settings.arrowLeftRightNavigation.toggle()
+        settings.save()
+        scrollView.arrowLeftRightNavigation = settings.arrowLeftRightNavigation
+        scrollView.resetEdgeState()
+    }
+
+    @objc func toggleArrowUpDownNav(_ sender: Any? = nil) {
+        settings.arrowUpDownNavigation.toggle()
+        settings.save()
+        scrollView.arrowUpDownNavigation = settings.arrowUpDownNavigation
+        scrollView.resetEdgeState()
+    }
+
     @objc func toggleReadingDirection(_ sender: Any? = nil) {
         settings.readingDirection = (settings.readingDirection == .leftToRight)
             ? .rightToLeft : .leftToRight
@@ -1145,6 +1161,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.wheelSensitivity == .medium ? .on : .off; return true
         case #selector(setWheelHigh(_:)):
             menuItem.state = settings.wheelSensitivity == .high ? .on : .off; return true
+        case #selector(toggleArrowLeftRightNav(_:)):
+            menuItem.state = settings.arrowLeftRightNavigation ? .on : .off; return true
+        case #selector(toggleArrowUpDownNav(_:)):
+            menuItem.state = settings.arrowUpDownNavigation ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):
