@@ -6,6 +6,22 @@ protocol QuickGridViewDelegate: AnyObject {
     func quickGridViewDidRequestClose(_ view: QuickGridView)
 }
 
+/// NSCollectionView subclass that intercepts Enter/Return at the first responder level.
+/// Without this, Enter events would need to propagate up the responder chain,
+/// which NSCollectionView may not forward reliably.
+private final class GridCollectionView: NSCollectionView {
+    var onReturn: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 36, 76:  // Return / Numpad Enter
+            onReturn?()
+        default:
+            super.keyDown(with: event)
+        }
+    }
+}
+
 final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
 
     weak var delegate: QuickGridViewDelegate?
@@ -13,7 +29,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     // MARK: - UI
 
     private let gridScrollView = NSScrollView()
-    private let collectionView = NSCollectionView()
+    private let collectionView = GridCollectionView()
     private var items: [ImageItem] = []
     private var currentIndex: Int = 0
 
@@ -66,6 +82,13 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             forItemWithIdentifier: QuickGridCell.identifier
         )
 
+        // Wire Enter key handler (intercepted at first-responder level by GridCollectionView)
+        collectionView.onReturn = { [weak self] in
+            guard let self,
+                  let index = self.collectionView.selectionIndexPaths.first?.item else { return }
+            self.delegate?.quickGridView(self, didSelectItemAt: index)
+        }
+
         // Scroll view wrapping collection view
         gridScrollView.documentView = collectionView
         gridScrollView.hasVerticalScroller = true
@@ -111,6 +134,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     /// Cancel all pending thumbnail tasks and release cached thumbnails.
+    /// Note: Task.detached inside ImageLoader.loadThumbnail won't propagate cancellation,
+    /// but thumbnail decodes are fast (~16ms for JPEG) so the impact is minimal.
     func cleanup() {
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
@@ -118,21 +143,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         loader = nil
     }
 
-    // MARK: - Keyboard (ESC + Enter via responder chain)
+    // MARK: - Keyboard (ESC via responder chain; Enter handled by GridCollectionView)
 
     override func cancelOperation(_ sender: Any?) {
         delegate?.quickGridViewDidRequestClose(self)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 36, 76:  // Return / Numpad Enter
-            if let index = collectionView.selectionIndexPaths.first?.item {
-                delegate?.quickGridView(self, didSelectItemAt: index)
-            }
-        default:
-            super.keyDown(with: event)
-        }
     }
 
     // MARK: - Thumbnail Loading
@@ -203,6 +217,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         didSelectItemsAt indexPaths: Set<IndexPath>
     ) {
         guard let indexPath = indexPaths.first else { return }
-        delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
+        // Only navigate on mouse click, not keyboard arrow selection.
+        // Keyboard users confirm with Enter (handled in keyDown).
+        if let event = NSApp.currentEvent, event.type == .leftMouseUp {
+            delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
+        }
     }
 }

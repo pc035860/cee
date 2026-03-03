@@ -729,7 +729,8 @@ class ImageScrollView: NSScrollView {
 
         case 115: scrollDelegate?.scrollViewRequestFirstImage(self)     // Home
         case 119: scrollDelegate?.scrollViewRequestLastImage(self)      // End
-        case 5:   scrollDelegate?.scrollViewRequestToggleQuickGrid(self) // G
+        case 5 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == []:  // bare G (no modifiers)
+            scrollDelegate?.scrollViewRequestToggleQuickGrid(self)
         case 53:  // Esc — 退出全螢幕（僅在全螢幕模式下有效）
             if window?.styleMask.contains(.fullScreen) == true {
                 window?.toggleFullScreen(nil)
