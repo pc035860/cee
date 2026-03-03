@@ -162,6 +162,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applyStatusBar() {
         let visible = settings.showStatusBar
         statusBarView.isHidden = !visible
+        scrollView.dragBottomInset = effectiveStatusBarHeight
         // statusBarHeightConstraint 永遠是 22pt，改由 contentInsets 控制可見性
         applyCenteringInsetsIfNeeded(reason: "applyStatusBar")  // 重要：重新計算置中 insets
     }

@@ -91,7 +91,7 @@ final class EmptyStateView: NSView {
         ])
 
         // Dashed border layer (initially hidden)
-        dashedBorderLayer.fillColor = nil
+        dashedBorderLayer.fillColor = NSColor.black.withAlphaComponent(0.3).cgColor
         dashedBorderLayer.strokeColor = NSColor.controlAccentColor.cgColor
         dashedBorderLayer.lineWidth = 2
         dashedBorderLayer.lineDashPattern = [8, 4]

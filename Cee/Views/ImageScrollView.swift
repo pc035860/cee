@@ -146,8 +146,11 @@ class ImageScrollView: NSScrollView {
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// Bottom inset for drag highlight border (matches status bar height when visible)
+    var dragBottomInset: CGFloat = 0
+
     private func setupDragHighlightLayer() {
-        dragHighlightLayer.fillColor = nil
+        dragHighlightLayer.fillColor = NSColor.black.withAlphaComponent(0.3).cgColor
         dragHighlightLayer.strokeColor = NSColor.controlAccentColor.cgColor
         dragHighlightLayer.lineWidth = 2
         dragHighlightLayer.lineDashPattern = [8, 4]
@@ -559,7 +562,13 @@ class ImageScrollView: NSScrollView {
 
     private func updateDragHighlightPath() {
         let inset: CGFloat = 8
-        let rect = bounds.insetBy(dx: inset, dy: inset)
+        // Asymmetric inset: extra bottom space to avoid status bar overlay
+        let rect = CGRect(
+            x: bounds.minX + inset,
+            y: bounds.minY + inset,
+            width: bounds.width - inset * 2,
+            height: bounds.height - inset - (inset + dragBottomInset)
+        )
         dragHighlightLayer.frame = bounds
         dragHighlightLayer.path = CGPath(
             roundedRect: rect,
