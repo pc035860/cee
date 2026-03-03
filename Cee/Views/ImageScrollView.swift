@@ -23,12 +23,15 @@ protocol ImageScrollViewDelegate: AnyObject {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu?
     /// Called when files are dropped onto the scroll view (Phase 2: browse-mode drag-drop)
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
+    /// Toggle Quick Grid overlay (bare G key)
+    func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView)
 }
 
 // MARK: - Default Implementation
 extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
+    func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {}
 }
 
 // MARK: - ImageScrollView
@@ -726,6 +729,8 @@ class ImageScrollView: NSScrollView {
 
         case 115: scrollDelegate?.scrollViewRequestFirstImage(self)     // Home
         case 119: scrollDelegate?.scrollViewRequestLastImage(self)      // End
+        case 5 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == []:  // bare G (no modifiers)
+            scrollDelegate?.scrollViewRequestToggleQuickGrid(self)
         case 53:  // Esc — 退出全螢幕（僅在全螢幕模式下有效）
             if window?.styleMask.contains(.fullScreen) == true {
                 window?.toggleFullScreen(nil)

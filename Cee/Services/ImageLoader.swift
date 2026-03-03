@@ -45,7 +45,9 @@ actor ImageLoader {
             Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
         }.value
 
-        if let result {
+        // Don't cache if caller's Task was cancelled (e.g. Quick Grid dismissed).
+        // Prevents 240px grid thumbnails from polluting 512px fallback cache.
+        if let result, !Task.isCancelled {
             thumbnailCache[url] = ThumbnailEntry(image: result.image, fullSize: result.fullSize)
         }
         return result
@@ -329,6 +331,11 @@ actor ImageLoader {
                 }
             }
         }
+    }
+
+    /// 清空縮圖快取（Quick Grid dismiss 後呼叫，避免 240px 小圖殘留污染主畫面 fallback）
+    func clearThumbnailCache() {
+        thumbnailCache.removeAll()
     }
 
     /// 取消所有預載任務並清空縮圖快取

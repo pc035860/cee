@@ -142,6 +142,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         viewMenu.addItem(makeItem("Float on Top",                action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Show Status Bar",             action: #selector(ImageViewController.toggleStatusBar(_:)),           key: "/"))
+        viewMenu.addItem(makeItem("Quick Grid",                    action: #selector(ImageViewController.toggleQuickGrid(_:)),            key: ""))
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Dual Page",                   action: #selector(ImageViewController.toggleDualPage(_:)),            key: "k"))
         let offsetItem = makeItem("First Page as Cover",         action: #selector(ImageViewController.togglePageOffset(_:)),           key: "o")
