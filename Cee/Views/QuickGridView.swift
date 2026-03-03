@@ -218,7 +218,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     // MARK: - Cell Size
 
     /// Apply a new cell size, clamped to the allowed range.
-    /// Invalidates layout and clears the grid-local thumbnail cache.
+    /// Only invalidates layout — does NOT clear the thumbnail cache because
+    /// the 240px source thumbnails are valid for the entire 80–200pt range
+    /// and NSImageView handles the rescaling automatically.
     func applyItemSize(_ newSize: CGFloat) {
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
@@ -237,16 +239,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         isUpdatingSliderProgrammatically = true
         sizeSlider.doubleValue = Double(clamped)
         isUpdatingSliderProgrammatically = false
-
-        // Clear grid-local thumbnail cache + cancel pending tasks
-        for (_, task) in thumbnailTasks { task.cancel() }
-        thumbnailTasks.removeAll()
-        gridThumbnails.removeAll()
-
-        // Keep selected item visible after layout change (vertical scroll grid)
-        if let selected = collectionView.selectionIndexPaths.first {
-            collectionView.scrollToItems(at: [selected], scrollPosition: .centeredVertically)
-        }
 
         // Notify for persistence
         onCellSizeDidChange?(clamped)
