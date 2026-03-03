@@ -133,7 +133,6 @@ class ImageFolder {
             options: .skipsHiddenFiles
         ) else { return (false, []) }
 
-        var hasImages = false
         var subdirs: [URL] = []
 
         for child in contents {
@@ -145,12 +144,12 @@ class ImageFolder {
                 subdirs.append(child)
             } else if let type = values.contentType,
                       supportedTypes.contains(where: { type.conforms(to: $0) }) {
-                hasImages = true
+                return (true, [])  // Short-circuit: caller ignores subdirs when hasImages
             }
         }
 
         subdirs.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        return (hasImages, subdirs)
+        return (false, subdirs)
     }
 
     /// 輕量取 PDF 頁數：Spotlight 元資料 → CGPDFDocument → 0
