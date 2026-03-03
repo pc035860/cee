@@ -85,6 +85,7 @@ class ImageScrollView: NSScrollView {
 
     // Phase 3: Option+scroll fast navigation
     private var optionScrollAccumulator = OptionScrollAccumulator()
+    private var lastOptionScrollTime: CFAbsoluteTime = 0
 
     // MARK: - Drag and Drop (Phase 2: Browse Mode)
     // URL extraction must happen synchronously because NSDraggingInfo is not Sendable
@@ -877,35 +878,46 @@ class ImageScrollView: NSScrollView {
         let isTrackpad = event.phase != [] || event.momentumPhase != []
         let isMomentum = event.momentumPhase != []
 
-        // 新手勢開始時重置累積器
+        // Trackpad: 新手勢開始時重置累積器
         if event.phase == .began {
             optionScrollAccumulator.resetForNewGesture()
-            resetEdgeState()  // 清除鍵盤導航的邊緣指示器
+            resetEdgeState()
+        }
+
+        // Mouse: 沒有 .began phase，改用時間間隔偵測新手勢
+        if !isTrackpad {
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - lastOptionScrollTime > Constants.optionScrollMouseResetInterval {
+                optionScrollAccumulator.resetForNewGesture()
+                resetEdgeState()
+            }
+            lastOptionScrollTime = now
         }
 
         // Natural Scrolling 方向校正（與 page-turn 邏輯一致）
-        // intentDown (next) 用正值，intentUp (previous) 用負值
         let isNatural = event.isDirectionInvertedFromDevice
         let rawDelta = event.scrollingDeltaY
-        // natural: deltaY < 0 = 使用者向下滑動 = next
-        // traditional: deltaY > 0 = next
         let correctedDelta: CGFloat
         if isNatural {
-            correctedDelta = -rawDelta  // 反轉：natural 的 negative → positive (next)
+            correctedDelta = -rawDelta
         } else {
-            correctedDelta = rawDelta   // traditional: positive = next
+            correctedDelta = rawDelta
         }
 
+        // 滑鼠 delta 極小（~0.1-1.0），需放大至 threshold 量級
+        let scaledDelta = isTrackpad ? correctedDelta
+            : correctedDelta * Constants.optionScrollMouseSensitivity
+
         let steps = optionScrollAccumulator.accumulate(
-            delta: correctedDelta,
+            delta: scaledDelta,
             isTrackpad: isTrackpad,
             isMomentum: isMomentum
         )
 
         guard steps != 0 else { return }
 
-        // 單一 delegate 呼叫：VC 處理 flag 設定、導航、HUD 更新
-        scrollDelegate?.scrollViewOptionScrollNavigate(self, forward: steps > 0, amount: abs(steps))
+        // 限制每次最多導航 1 張，確保逐張切換可見（避免跳躍）
+        scrollDelegate?.scrollViewOptionScrollNavigate(self, forward: steps > 0, amount: 1)
     }
 
     // MARK: - Pinch Zoom

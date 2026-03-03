@@ -1627,7 +1627,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         }
         guard moved else { return false }
         let scroll: InitialScrollPosition = forward ? .top : .bottom
-        loadCurrentImage(initialScroll: scroll, thumbnailOnly: true)
+        loadCurrentImage(initialScroll: scroll, thumbnailOnly: settings.thumbnailFallback)
         scheduleFullResLoad()
         updateWindowTitle()
         return true

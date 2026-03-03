@@ -110,4 +110,37 @@ final class OptionScrollAccumulatorTests: XCTestCase {
         acc.resetForNewGesture()
         XCTAssertEqual(acc.accumulate(delta: 10, isTrackpad: true, isMomentum: true), 1)
     }
+
+    // MARK: - Realistic Mouse Delta (with sensitivity factor)
+
+    func testRealisticMouseDeltaWithSensitivity() {
+        // 真實滑鼠 delta ~0.1-1.0，乘以 sensitivity=10 後送進 accumulator
+        var acc = OptionScrollAccumulator(trackpadThreshold: 40, mouseThreshold: 8, momentumLimit: 10)
+        let sensitivity: CGFloat = 10.0
+
+        // 單次 delta=1.0 × 10 = 10.0 → 超過 threshold 8，觸發 1 step
+        XCTAssertEqual(acc.accumulate(delta: 1.0 * sensitivity, isTrackpad: false, isMomentum: false), 1)
+    }
+
+    func testSmallMouseDeltaAccumulatesWithSensitivity() {
+        var acc = OptionScrollAccumulator(trackpadThreshold: 40, mouseThreshold: 8, momentumLimit: 10)
+        let sensitivity: CGFloat = 10.0
+
+        // delta=0.3 × 10 = 3.0 → 不足 threshold 8
+        XCTAssertEqual(acc.accumulate(delta: 0.3 * sensitivity, isTrackpad: false, isMomentum: false), 0)
+        // 累積 3.0 + 3.0 = 6.0 → 不足
+        XCTAssertEqual(acc.accumulate(delta: 0.3 * sensitivity, isTrackpad: false, isMomentum: false), 0)
+        // 累積 6.0 + 3.0 = 9.0 → 超過 8，觸發 1 step，餘 1.0
+        XCTAssertEqual(acc.accumulate(delta: 0.3 * sensitivity, isTrackpad: false, isMomentum: false), 1)
+    }
+
+    func testConsecutiveMouseScrollsWithSensitivity() {
+        var acc = OptionScrollAccumulator(trackpadThreshold: 40, mouseThreshold: 8, momentumLimit: 10)
+        let sensitivity: CGFloat = 10.0
+
+        // 模擬連續快速滾輪，每次 delta=0.8 × 10 = 8.0 → 剛好 threshold
+        XCTAssertEqual(acc.accumulate(delta: 0.8 * sensitivity, isTrackpad: false, isMomentum: false), 1)
+        XCTAssertEqual(acc.accumulate(delta: 0.8 * sensitivity, isTrackpad: false, isMomentum: false), 1)
+        XCTAssertEqual(acc.accumulate(delta: 0.8 * sensitivity, isTrackpad: false, isMomentum: false), 1)
+    }
 }
