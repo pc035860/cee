@@ -15,6 +15,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var errorPlaceholderView: ErrorPlaceholderView?
     private var emptyStateView: EmptyStateView?  // New: empty state overlay
     private var quickGridView: QuickGridView?
+    private var positionHUDView: PositionHUDView?
+    private var isOptionScrolling = false  // Phase 3: force thumbnail during Option+scroll
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
@@ -127,6 +129,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         Task { await loader.cancelAllPrefetchTasks() }
         showEmptyState(false)  // Hide empty state when loading folder
         showErrorPlaceholder(false)  // Also hide error placeholder
+        dismissPositionHUD()  // Phase 3: clear HUD on folder change
         let wasGridVisible = quickGridView != nil
         self.folder = newFolder
         imageSizeCache.removeAll()
@@ -777,8 +780,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goNext(amount: amount) else { return }
         }
-        loadCurrentImage(initialScroll: .top, thumbnailOnly: settings.thumbnailFallback)
-        if settings.thumbnailFallback { scheduleFullResLoad() }
+        let useThumbnail = settings.thumbnailFallback || isOptionScrolling
+        loadCurrentImage(initialScroll: .top, thumbnailOnly: useThumbnail)
+        if useThumbnail { scheduleFullResLoad() }
         updateWindowTitle()
     }
 
@@ -792,8 +796,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goPrevious(amount: amount) else { return }
         }
-        loadCurrentImage(initialScroll: .bottom, thumbnailOnly: settings.thumbnailFallback)
-        if settings.thumbnailFallback { scheduleFullResLoad() }
+        let useThumbnail = settings.thumbnailFallback || isOptionScrolling
+        loadCurrentImage(initialScroll: .bottom, thumbnailOnly: useThumbnail)
+        if useThumbnail { scheduleFullResLoad() }
         updateWindowTitle()
     }
 
@@ -1592,6 +1597,37 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {
         toggleQuickGrid()
+    }
+
+    func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView) {
+        guard let folder else { return }
+        isOptionScrolling = true
+        showPositionHUD(current: folder.currentIndex + 1, total: folder.images.count)
+    }
+
+    // MARK: - Position HUD (Phase 3)
+
+    private func showPositionHUD(current: Int, total: Int) {
+        if positionHUDView == nil {
+            let hud = PositionHUDView()
+            hud.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(hud)
+            NSLayoutConstraint.activate([
+                hud.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                hud.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -effectiveStatusBarHeight / 2),
+                hud.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
+                hud.heightAnchor.constraint(equalToConstant: 72),
+            ])
+            positionHUDView = hud
+        }
+        positionHUDView?.show(current: current, total: total)
+    }
+
+    private func dismissPositionHUD() {
+        positionHUDView?.dismiss()
+        positionHUDView?.removeFromSuperview()
+        positionHUDView = nil
+        isOptionScrolling = false
     }
 
     // MARK: - Context Menu

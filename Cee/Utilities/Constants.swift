@@ -24,4 +24,10 @@ enum Constants {
     static let quickGridCellSize: CGFloat = 120
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
+
+    // Option+Scroll Fast Navigation (Phase 3)
+    static let optionScrollThresholdTrackpad: CGFloat = 40   // trackpad 每張圖的累積閾值
+    static let optionScrollThresholdMouse: CGFloat = 8       // 滑鼠滾輪每張圖的累積閾值
+    static let optionScrollMomentumLimit: Int = 10           // 動量階段最多切換張數
+    static let positionHUDFadeDelay: TimeInterval = 1.0      // HUD 無操作後開始淡出的延遲
 }

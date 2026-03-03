@@ -25,6 +25,8 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
     /// Toggle Quick Grid overlay (bare G key)
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView)
+    /// Phase 3: Option+scroll 快速切圖後通知 VC 更新 HUD
+    func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView)
 }
 
 // MARK: - Default Implementation
@@ -32,6 +34,7 @@ extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {}
+    func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView) {}
 }
 
 // MARK: - ImageScrollView
@@ -76,6 +79,9 @@ class ImageScrollView: NSScrollView {
     // Mouse drag pan state
     private var isMouseDragging = false
     private var lastDragPoint: NSPoint = .zero
+
+    // Phase 3: Option+scroll fast navigation
+    private var optionScrollAccumulator = OptionScrollAccumulator()
 
     // MARK: - Drag and Drop (Phase 2: Browse Mode)
     // URL extraction must happen synchronously because NSDraggingInfo is not Sendable
@@ -193,6 +199,12 @@ class ImageScrollView: NSScrollView {
         // Cmd + scroll wheel = zoom (攔截在所有其他邏輯之前)
         if event.modifierFlags.contains(.command) {
             handleCmdScrollZoom(with: event)
+            return
+        }
+
+        // Phase 3: Option+scroll 快速切圖（在 pageTurnLock 之前攔截，避免被鎖死阻擋）
+        if event.modifierFlags.contains(.option) {
+            handleOptionScrollNav(with: event)
             return
         }
 
@@ -854,6 +866,47 @@ class ImageScrollView: NSScrollView {
         scrollDelegate?.scrollViewMagnificationDidChange(
             self, magnification: magnification, gesturePhase: event.phase
         )
+    }
+
+    // MARK: - Option + Scroll Fast Navigation (Phase 3)
+
+    private func handleOptionScrollNav(with event: NSEvent) {
+        let isTrackpad = event.phase != [] || event.momentumPhase != []
+        let isMomentum = event.momentumPhase != []
+
+        // 新手勢開始時重置累積器
+        if event.phase == .began {
+            optionScrollAccumulator.resetForNewGesture()
+            resetEdgeState()  // 清除鍵盤導航的邊緣指示器
+        }
+
+        // Natural Scrolling 方向校正（與 page-turn 邏輯一致）
+        // intentDown (next) 用正值，intentUp (previous) 用負值
+        let isNatural = event.isDirectionInvertedFromDevice
+        let rawDelta = event.scrollingDeltaY
+        // natural: deltaY < 0 = 使用者向下滑動 = next
+        // traditional: deltaY > 0 = next
+        let correctedDelta: CGFloat
+        if isNatural {
+            correctedDelta = -rawDelta  // 反轉：natural 的 negative → positive (next)
+        } else {
+            correctedDelta = rawDelta   // traditional: positive = next
+        }
+
+        let steps = optionScrollAccumulator.accumulate(
+            delta: correctedDelta,
+            isTrackpad: isTrackpad,
+            isMomentum: isMomentum
+        )
+
+        guard steps != 0 else { return }
+
+        if steps > 0 {
+            scrollDelegate?.scrollViewRequestNextImage(self, amount: abs(steps))
+        } else {
+            scrollDelegate?.scrollViewRequestPreviousImage(self, amount: abs(steps))
+        }
+        scrollDelegate?.scrollViewOptionScrollDidNavigate(self)
     }
 
     // MARK: - Pinch Zoom
