@@ -11,11 +11,14 @@ protocol QuickGridViewDelegate: AnyObject {
 /// which NSCollectionView may not forward reliably.
 private final class GridCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
+    var onDismiss: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 36, 76:  // Return / Numpad Enter
             onReturn?()
+        case 5 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == []:  // bare G
+            onDismiss?()
         default:
             super.keyDown(with: event)
         }
@@ -82,11 +85,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             forItemWithIdentifier: QuickGridCell.identifier
         )
 
-        // Wire Enter key handler (intercepted at first-responder level by GridCollectionView)
+        // Wire key handlers (intercepted at first-responder level by GridCollectionView)
         collectionView.onReturn = { [weak self] in
             guard let self,
                   let index = self.collectionView.selectionIndexPaths.first?.item else { return }
             self.delegate?.quickGridView(self, didSelectItemAt: index)
+        }
+        collectionView.onDismiss = { [weak self] in
+            guard let self else { return }
+            self.delegate?.quickGridViewDidRequestClose(self)
         }
 
         // Scroll view wrapping collection view
@@ -140,6 +147,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
+        // Clear ImageLoader's thumbnailCache to prevent 240px grid thumbnails
+        // from polluting the main view's 512px thumbnail fallback
+        if let loader {
+            Task { await loader.clearThumbnailCache() }
+        }
         loader = nil
     }
 
