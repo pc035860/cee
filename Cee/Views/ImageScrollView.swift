@@ -20,11 +20,14 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView)
     /// 請求 context menu（右鍵選單）
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu?
+    /// Called when files are dropped onto the scroll view (Phase 2: browse-mode drag-drop)
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
 }
 
 // MARK: - Default Implementation
 extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
 }
 
 // MARK: - ImageScrollView
@@ -65,6 +68,20 @@ class ImageScrollView: NSScrollView {
     // Mouse drag pan state
     private var isMouseDragging = false
     private var lastDragPoint: NSPoint = .zero
+
+    // MARK: - Drag and Drop (Phase 2: Browse Mode)
+    // URL extraction must happen synchronously because NSDraggingInfo is not Sendable
+    // and cannot cross actor boundaries.
+    // cachedValidURLs is only accessed on @MainActor (ImageScrollView is @MainActor isolated).
+    private var cachedValidURLs: [URL] = []
+    private var isDragOver = false {  // Hook for visual feedback work unit
+        didSet {
+            updateDragHighlight()
+        }
+    }
+
+    // Drag highlight layer (Phase 2: Visual Feedback)
+    private lazy var dragHighlightLayer = CAShapeLayer()
 
     // 邊緣翻頁進度視覺提示
     private enum Edge { case top, bottom, left, right }
@@ -117,10 +134,24 @@ class ImageScrollView: NSScrollView {
             name: NSWindow.didResignKeyNotification,
             object: nil
         )
+
+        // Phase 2: Register for drag-drop (browse mode)
+        registerForDraggedTypes([.fileURL])
+
+        // Phase 2: Setup drag highlight layer
+        setupDragHighlightLayer()
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Bottom inset for drag highlight border (matches status bar height when visible)
+    var dragBottomInset: CGFloat = 0
+
+    private func setupDragHighlightLayer() {
+        DragHighlightStyle.apply(to: dragHighlightLayer)
+        dragHighlightLayer.zPosition = 1000  // Same as edge indicators
     }
 
     // MARK: - Window Notifications
@@ -498,6 +529,51 @@ class ImageScrollView: NSScrollView {
     override func layout() {
         super.layout()
         layoutEdgeIndicators()
+        // Only update drag highlight path if visible (efficiency optimization)
+        if !dragHighlightLayer.isHidden {
+            updateDragHighlightPath()
+        }
+    }
+
+    // MARK: - Drag Highlight (Phase 2: Visual Feedback)
+
+    private func updateDragHighlight() {
+        ensureDragHighlightAttached()
+        updateDragHighlightPath()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.allowsImplicitAnimation = true
+            dragHighlightLayer.isHidden = !isDragOver
+        }
+        // Note: didSet will also trigger when isDragOver is set in
+        // draggingExited or concludeDragOperation, ensuring proper cleanup
+    }
+
+    private func ensureDragHighlightAttached() {
+        wantsLayer = true
+        guard let root = layer, dragHighlightLayer.superlayer == nil else { return }
+        root.addSublayer(dragHighlightLayer)  // Lazy attachment on first drag
+    }
+
+    private func updateDragHighlightPath() {
+        let inset: CGFloat = 8
+        // Asymmetric inset: extra bottom space to avoid status bar overlay
+        let topInset = inset
+        let bottomInset = inset + dragBottomInset
+        let rect = CGRect(
+            x: bounds.minX + inset,
+            y: bounds.minY + topInset,
+            width: bounds.width - inset * 2,
+            height: bounds.height - topInset - bottomInset
+        )
+        dragHighlightLayer.frame = bounds
+        dragHighlightLayer.path = CGPath(
+            roundedRect: rect,
+            cornerWidth: 8,
+            cornerHeight: 8,
+            transform: nil
+        )
     }
 
     // MARK: - Arrow Key Edge Press
@@ -843,4 +919,42 @@ class ImageScrollView: NSScrollView {
         contentView.scroll(to: bottomPoint)
         reflectScrolledClipView(contentView)
     }
+
+    // MARK: - Drag and Drop (Phase 2: Browse Mode)
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        cachedValidURLs = URLFilter.extractImageURLs(from: sender.draggingPasteboard)
+        isDragOver = !cachedValidURLs.isEmpty
+        return cachedValidURLs.isEmpty ? [] : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return cachedValidURLs.isEmpty ? [] : .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isDragOver = false
+        cachedValidURLs = []
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return !cachedValidURLs.isEmpty
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = cachedValidURLs
+        guard !urls.isEmpty else { return false }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.scrollDelegate?.scrollViewDidReceiveDrop(self, urls: urls)
+        }
+        return true
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        isDragOver = false
+        cachedValidURLs = []
+    }
+
 }

@@ -7,8 +7,10 @@ final class ImageFolderNavigationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // Resolve symlinks to avoid /var vs /private/var mismatch
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("CeeTests-\(UUID().uuidString)")
+            .resolvingSymlinksInPath()
         try! FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
@@ -19,40 +21,112 @@ final class ImageFolderNavigationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Create N dummy PNG files in tempDir and return an ImageFolder containing the first file.
-    private func makeFolder(count: Int) -> ImageFolder {
+    /// Create N dummy PNG files in tempDir and return an ImageFolder containing the specified file.
+    private func makeFolder(count: Int, openIndex: Int = 0) -> ImageFolder {
         for i in 0..<count {
             let name = String(format: "img%03d.png", i)
             let url = tempDir.appendingPathComponent(name)
-            // Write minimal valid PNG data (1x1 white pixel)
             let pngData = minimalPNG()
             try! pngData.write(to: url)
         }
-        let firstFile = tempDir.appendingPathComponent("img000.png")
-        return ImageFolder(containing: firstFile)
-    }
-
-    /// Minimal valid 1x1 white PNG (67 bytes).
-    private func minimalPNG() -> Data {
-        // 1x1 white RGBA PNG
-        let bytes: [UInt8] = [
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // signature
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-            0xDE,
-            0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
-            0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00,
-            0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, 0x33,
-            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
-            0xAE, 0x42, 0x60, 0x82,
-        ]
-        return Data(bytes)
+        let targetFile = tempDir.appendingPathComponent(String(format: "img%03d.png", openIndex))
+        return ImageFolder(containing: targetFile)
     }
 
     /// Portrait size provider (all indices are portrait).
     private func allPortrait(_ index: Int) -> CGSize? {
         CGSize(width: 800, height: 1200)
+    }
+
+    // MARK: - init(containing:) Tests
+
+    func testInitContaining_currentIndex_startsAtFirstFile() {
+        let folder = makeFolder(count: 3)
+        // makeFolder opens img000.png (first file) → index 0
+        XCTAssertEqual(folder.currentIndex, 0)
+        XCTAssertEqual(folder.currentImage?.url.lastPathComponent, "img000.png")
+    }
+
+    func testInitContaining_folderURL_correct() {
+        let folder = makeFolder(count: 2)
+        // Compare paths to avoid trailing-slash differences
+        XCTAssertEqual(folder.folderURL.path, tempDir.path)
+    }
+
+    func testInitContaining_imagesCount_correct() {
+        let folder = makeFolder(count: 3)
+        XCTAssertEqual(folder.images.count, 3)
+    }
+
+    func testInitContaining_sortedAlphabetically() {
+        // Create files in non-alphabetical order
+        let names = ["img002.png", "img000.png", "img001.png"]
+        for name in names {
+            let url = tempDir.appendingPathComponent(name)
+            try! minimalPNG().write(to: url)
+        }
+        let folder = ImageFolder(containing: tempDir.appendingPathComponent("img000.png"))
+        XCTAssertEqual(folder.images.count, 3)
+        XCTAssertEqual(folder.images[0].url.lastPathComponent, "img000.png")
+        XCTAssertEqual(folder.images[1].url.lastPathComponent, "img001.png")
+        XCTAssertEqual(folder.images[2].url.lastPathComponent, "img002.png")
+    }
+
+    // MARK: - Basic Navigation Tests
+
+    func testGoNext_advances() {
+        let folder = makeFolder(count: 3)
+        XCTAssertTrue(folder.goNext())
+        XCTAssertEqual(folder.currentIndex, 1)
+    }
+
+    func testGoNext_atEnd_fails() {
+        let folder = makeFolder(count: 3)
+        // Navigate to end
+        XCTAssertTrue(folder.goNext())   // 0→1
+        XCTAssertTrue(folder.goNext())   // 1→2
+        XCTAssertFalse(folder.goNext())  // at end
+        XCTAssertEqual(folder.currentIndex, 2)
+    }
+
+    func testGoPrevious_decrements() {
+        let folder = makeFolder(count: 3)
+        folder.goNext()  // 0→1
+        folder.goNext()  // 1→2
+        XCTAssertTrue(folder.goPrevious())
+        XCTAssertEqual(folder.currentIndex, 1)
+    }
+
+    func testGoPrevious_atStart_fails() {
+        let folder = makeFolder(count: 3)
+        XCTAssertFalse(folder.goPrevious())
+        XCTAssertEqual(folder.currentIndex, 0)
+    }
+
+    func testCurrentImage_correct() {
+        let folder = makeFolder(count: 3)
+        folder.goNext()
+        let current = folder.currentImage
+        XCTAssertNotNil(current)
+        XCTAssertEqual(current?.url.lastPathComponent, "img001.png")
+    }
+
+    func testHasNext_hasPrevious() {
+        let folder = makeFolder(count: 3)
+
+        // At start: hasNext=true, hasPrevious=false
+        XCTAssertTrue(folder.hasNext)
+        XCTAssertFalse(folder.hasPrevious)
+
+        // Middle: both true
+        folder.goNext()  // 0→1
+        XCTAssertTrue(folder.hasNext)
+        XCTAssertTrue(folder.hasPrevious)
+
+        // At end: hasNext=false, hasPrevious=true
+        folder.goNext()  // 1→2
+        XCTAssertFalse(folder.hasNext)
+        XCTAssertTrue(folder.hasPrevious)
     }
 
     // MARK: - Spread Navigation Tests

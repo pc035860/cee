@@ -91,11 +91,7 @@ final class EmptyStateView: NSView {
         ])
 
         // Dashed border layer (initially hidden)
-        dashedBorderLayer.fillColor = nil
-        dashedBorderLayer.strokeColor = NSColor.controlAccentColor.cgColor
-        dashedBorderLayer.lineWidth = 2
-        dashedBorderLayer.lineDashPattern = [8, 4]
-        dashedBorderLayer.isHidden = true
+        DragHighlightStyle.apply(to: dashedBorderLayer)
         layer?.addSublayer(dashedBorderLayer)
     }
 
@@ -127,7 +123,7 @@ final class EmptyStateView: NSView {
     // MARK: - Drag and Drop
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        cachedValidURLs = extractImageURLs(from: sender.draggingPasteboard)
+        cachedValidURLs = URLFilter.extractImageURLs(from: sender.draggingPasteboard)
         isDragOver = !cachedValidURLs.isEmpty
         return cachedValidURLs.isEmpty ? [] : .copy
     }
@@ -154,15 +150,4 @@ final class EmptyStateView: NSView {
         return true
     }
 
-    // MARK: - URL Extraction
-
-    private func extractImageURLs(from pasteboard: NSPasteboard) -> [URL] {
-        guard let urls = pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [URL] else {
-            return []
-        }
-        return URLFilter.filterImageURLs(urls, isSupported: ImageFolder.isSupported(url:))
-    }
 }

@@ -305,11 +305,38 @@ static func openEmpty() {
 - Suggestions: URLFilter over-design (kept per user decision), type checking inconsistency (accepted as trade-off)
 - Folder drag-drop deferred to Phase 2
 
-### Phase 2 — 🔲 Pending
+### Phase 2 — ✅ Completed (2026-03-03)
 
-1. **Browse-mode drag-drop on ImageScrollView** — 拖入新圖片切換資料夾
-2. **Folder drag-drop support** — 拖曳資料夾直接開啟（需修改 `ImageFolder` 建構子邏輯）
-3. **Visual drag feedback** — highlight border overlay on ImageScrollView
+**Commits:**
+- `feat(dnd): add browse-mode drag-drop on ImageScrollView (Phase 2)`
+- `feat(dnd): add folder drag-drop support (Phase 2)`
+- `feat(dnd): add visual drag feedback on ImageScrollView (Phase 2)`
+- `fix(dnd): improve same-folder optimization logic`
+- `fix(dnd): fix same-folder drag optimization and cleanup issues`
+
+**Implementation Summary:**
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Browse-mode drag-drop on ImageScrollView | ✅ | NSDraggingDestination protocol implementation |
+| Folder drag-drop support | ✅ | `ImageFolder(folderURL:)` dedicated initializer |
+| Visual drag feedback | ✅ | CAShapeLayer dashed border, NSAnimationContext |
+| Same-folder optimization | ✅ | Direct index update without folder rescan |
+| URLFilter.filterImageAndFolderURLs | ✅ | Combined file + folder filtering |
+| URLFilter.isDirectory | ✅ | Resource value check for directory detection |
+| ImageScrollViewDelegate update | ✅ | `scrollViewDidReceiveDrop(_:urls:)` method |
+
+**Key Design Decisions:**
+1. **`ImageFolder(folderURL:)` dedicated initializer** — Direct folder URL initializer bypasses `deletingLastPathComponent()`. The original `appendingPathComponent(".")` workaround failed with pasteboard URLs: `deletingLastPathComponent()` produced `..` (parent directory) instead of `.` being stripped, causing `scanFolder()` to scan the wrong directory (0 images → black screen). Fixed 2026-03-03.
+2. **Same-folder optimization** — When dropping a file from the same folder, directly update `currentIndex` and call `loadCurrentImage()` instead of rescanning. Saves file I/O and preserves scroll position better.
+3. **URLFilter short-circuit order** — `isSupported(url) || isDirectory(url)` checks memory-first operation before file system access.
+4. **State cleanup consistency** — Both `draggingExited` and `concludeDragOperation` clear `cachedValidURLs`, matching EmptyStateView pattern.
+5. **Visual feedback optimization** — `layout()` only updates drag highlight path when layer is visible.
+
+**Code Review Notes (Gemini 2026-03-03):**
+- Blocking issue fixed: `updateWindowTitle()` added to same-folder optimization path
+- macOS app packages (`.app`) are treated as directories — accepted as MVP trade-off
+- Layout optimization: only update drag highlight path when visible
 
 ### Phase 3 — 🔲 Pending
 

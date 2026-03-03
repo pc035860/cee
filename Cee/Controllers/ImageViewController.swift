@@ -162,6 +162,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applyStatusBar() {
         let visible = settings.showStatusBar
         statusBarView.isHidden = !visible
+        scrollView.dragBottomInset = effectiveStatusBarHeight
         // statusBarHeightConstraint 永遠是 22pt，改由 contentInsets 控制可見性
         applyCenteringInsetsIfNeeded(reason: "applyStatusBar")  // 重要：重新計算置中 insets
     }
@@ -223,19 +224,23 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
     }
 
-    private func showErrorPlaceholder(_ show: Bool) {
+    private func showErrorPlaceholder(_ show: Bool, message: String? = nil) {
         if show {
             if errorPlaceholderView == nil {
                 let placeholder = ErrorPlaceholderView()
                 placeholder.translatesAutoresizingMaskIntoConstraints = false
-                scrollView.addSubview(placeholder)
+                // Add to container view (not scrollView — clipView would cover it)
+                self.view.addSubview(placeholder)
                 NSLayoutConstraint.activate([
-                    placeholder.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-                    placeholder.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
-                    placeholder.topAnchor.constraint(equalTo: scrollView.topAnchor),
-                    placeholder.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+                    placeholder.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                    placeholder.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                    placeholder.topAnchor.constraint(equalTo: self.view.topAnchor),
+                    placeholder.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
                 ])
                 errorPlaceholderView = placeholder
+            }
+            if let message {
+                errorPlaceholderView?.setMessage(message)
             }
             errorPlaceholderView?.isHidden = false
         } else {
@@ -287,7 +292,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard !folder.images.isEmpty else {
             contentView.image = nil
             contentView.loadingState = .error
-            showErrorPlaceholder(true)
+            showErrorPlaceholder(true, message: "No supported images in this folder")
+            updateStatusBar()  // Clear stale status from previous folder
+            (view.window?.windowController as? ImageWindowController)?
+                .updateTitle(folder: folder)
             return
         }
 
@@ -1366,6 +1374,56 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
     func scrollViewRequestPageUp(_ scrollView: ImageScrollView) { scrollPageUpOrPrev() }
 
+    // MARK: - Drag and Drop (Phase 2: Browse Mode)
+
+    /// Create ImageFolder from a dropped URL (handles both file and folder)
+    private func imageFolderFromDrop(url: URL) -> ImageFolder {
+        if URLFilter.isDirectory(url) {
+            // Folder: use dedicated initializer to scan folder directly
+            return ImageFolder(folderURL: url)
+        } else {
+            // File: use existing logic (extracts parent folder)
+            return ImageFolder(containing: url)
+        }
+    }
+
+    /// Load a folder and update window title (reduces code duplication)
+    private func loadFolderAndSetTitle(_ folder: ImageFolder) {
+        loadFolder(folder)
+        (view.window?.windowController as? ImageWindowController)?
+            .updateTitle(folder: folder)
+    }
+
+    func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {
+        guard let url = urls.first else { return }  // Use first item
+
+        // Folders always open fresh (no same-folder optimization)
+        if URLFilter.isDirectory(url) {
+            loadFolderAndSetTitle(imageFolderFromDrop(url: url))
+            return
+        }
+
+        // File: check for same-folder optimization
+        let targetFolderURL = url.deletingLastPathComponent()
+        if let currentFolder = folder, currentFolder.folderURL == targetFolderURL {
+            // Same folder: try to navigate without reloading
+            if let index = currentFolder.images.firstIndex(where: { $0.url == url }) {
+                currentFolder.currentIndex = index
+                // Sync spread index and reload current image (no folder scan needed)
+                if settings.dualPageEnabled {
+                    currentFolder.syncSpreadIndex()
+                }
+                loadCurrentImage(initialScroll: .top)
+                updateWindowTitle()
+                return  // Only return on successful optimization
+            }
+            // If not found, fall through to reload folder (new file case)
+        }
+
+        // Different folder or new file in same folder: create new folder and load
+        loadFolderAndSetTitle(imageFolderFromDrop(url: url))
+    }
+
     // MARK: - Context Menu
 
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? {
@@ -1454,11 +1512,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
 extension ImageViewController: EmptyStateView.Delegate {
     func emptyStateViewDidReceiveDrop(_ view: EmptyStateView, urls: [URL]) {
-        guard let url = urls.first else { return }
-        // Use existing load flow
-        let newFolder = ImageFolder(containing: url)
-        loadFolder(newFolder)
-        (view.window?.windowController as? ImageWindowController)?
-            .updateTitle(folder: newFolder)
+        guard let url = urls.first else { return }  // Use first item
+        loadFolderAndSetTitle(imageFolderFromDrop(url: url))
     }
 }

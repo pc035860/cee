@@ -5,15 +5,20 @@ import AppKit
 class ErrorPlaceholderView: NSView {
     private let label: NSTextField
 
+    /// Update the displayed message text.
+    func setMessage(_ text: String) {
+        label.stringValue = text
+    }
+
     override init(frame frameRect: NSRect) {
         label = NSTextField(labelWithString: "Cannot display image")
-        label.font = .systemFont(ofSize: 14, weight: .regular)
-        label.textColor = NSColor(white: 0.6, alpha: 1.0)
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.textColor = NSColor(white: 0.5, alpha: 1.0)
         label.translatesAutoresizingMaskIntoConstraints = false
         super.init(frame: frameRect)
 
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.15, alpha: 1.0).cgColor
+        layer?.backgroundColor = NSColor(white: 0.12, alpha: 1.0).cgColor
         addSubview(label)
         NSLayoutConstraint.activate([
             label.centerXAnchor.constraint(equalTo: centerXAnchor),

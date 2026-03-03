@@ -81,4 +81,84 @@ final class URLFilterTests: XCTestCase {
         XCTAssertEqual(result[0].pathExtension, "jpg")
         XCTAssertEqual(result[1].pathExtension, "pdf")
     }
+
+    // MARK: - isDirectory Tests
+
+    private var tempDir: URL!
+
+    private func setUpTempDir() {
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CeeTests-URLFilter-\(UUID().uuidString)")
+            .resolvingSymlinksInPath()
+        try! FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    private func tearDownTempDir() {
+        if let tempDir {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        tempDir = nil
+    }
+
+    func testIsDirectory_realDir_true() {
+        setUpTempDir()
+        defer { tearDownTempDir() }
+        XCTAssertTrue(URLFilter.isDirectory(tempDir))
+    }
+
+    func testIsDirectory_regularFile_false() {
+        setUpTempDir()
+        defer { tearDownTempDir() }
+        let file = tempDir.appendingPathComponent("test.png")
+        try! minimalPNG().write(to: file)
+        XCTAssertFalse(URLFilter.isDirectory(file))
+    }
+
+    func testIsDirectory_nonexistent_false() {
+        let fake = URL(fileURLWithPath: "/tmp/CeeTests-nonexistent-\(UUID().uuidString)")
+        XCTAssertFalse(URLFilter.isDirectory(fake))
+    }
+
+    // MARK: - filterImageAndFolderURLs Tests
+
+    func testFilterImageAndFolder_supportedFile() {
+        let urls = [URL(fileURLWithPath: "/tmp/photo.png")]
+        let result = URLFilter.filterImageAndFolderURLs(urls, isSupported: alwaysSupported)
+        XCTAssertEqual(result.count, 1)
+    }
+
+    func testFilterImageAndFolder_directory() {
+        setUpTempDir()
+        defer { tearDownTempDir() }
+        let urls = [tempDir!]
+        // isSupported returns false, but isDirectory saves it
+        let result = URLFilter.filterImageAndFolderURLs(urls, isSupported: neverSupported)
+        XCTAssertEqual(result.count, 1)
+    }
+
+    func testFilterImageAndFolder_unsupported() {
+        let urls = [URL(fileURLWithPath: "/tmp/readme.txt")]
+        let result = URLFilter.filterImageAndFolderURLs(urls, isSupported: neverSupported)
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testFilterImageAndFolder_mixed() {
+        setUpTempDir()
+        defer { tearDownTempDir() }
+        let png = URL(fileURLWithPath: "/tmp/a.png")
+        let dir = tempDir!
+        let txt = URL(fileURLWithPath: "/tmp/b.txt")
+        let urls = [png, dir, txt]
+        let result = URLFilter.filterImageAndFolderURLs(urls, isSupported: { url in
+            url.pathExtension.lowercased() == "png"
+        })
+        XCTAssertEqual(result.count, 2)
+        XCTAssertTrue(result.contains(png))
+        XCTAssertTrue(result.contains(dir))
+    }
+
+    func testFilterImageAndFolder_empty() {
+        let result = URLFilter.filterImageAndFolderURLs([], isSupported: alwaysSupported)
+        XCTAssertTrue(result.isEmpty)
+    }
 }
