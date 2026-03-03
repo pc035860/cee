@@ -15,6 +15,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var errorPlaceholderView: ErrorPlaceholderView?
     private var emptyStateView: EmptyStateView?  // New: empty state overlay
     private var quickGridView: QuickGridView?
+    private var positionHUDView: PositionHUDView?
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
@@ -127,6 +128,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         Task { await loader.cancelAllPrefetchTasks() }
         showEmptyState(false)  // Hide empty state when loading folder
         showErrorPlaceholder(false)  // Also hide error placeholder
+        dismissPositionHUD()  // Phase 3: clear HUD on folder change
         let wasGridVisible = quickGridView != nil
         self.folder = newFolder
         imageSizeCache.removeAll()
@@ -1592,6 +1594,67 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {
         toggleQuickGrid()
+    }
+
+    func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int) {
+        guard optionScrollNavigate(forward: forward, amount: amount) else { return }
+        guard let folder else { return }
+        showPositionHUD(current: folder.currentIndex + 1, total: folder.images.count)
+    }
+
+    /// Phase 3: Option+scroll 專用導航，繞過 NavigationThrottle（accumulator 已是速率控制器）
+    /// - Returns: 是否有實際移動
+    @discardableResult
+    private func optionScrollNavigate(forward: Bool, amount: Int) -> Bool {
+        guard let folder, !folder.images.isEmpty else { return false }
+        let direction: PrefetchDirection = forward ? .forward : .backward
+        lastPrefetchDirection = direction
+        var moved = false
+        for _ in 0..<amount {
+            if settings.dualPageEnabled {
+                if forward {
+                    if folder.goNextSpread() { moved = true }
+                } else {
+                    if folder.goPreviousSpread() { moved = true }
+                }
+            } else {
+                if forward {
+                    if folder.goNext(amount: 1) { moved = true }
+                } else {
+                    if folder.goPrevious(amount: 1) { moved = true }
+                }
+            }
+        }
+        guard moved else { return false }
+        let scroll: InitialScrollPosition = forward ? .top : .bottom
+        loadCurrentImage(initialScroll: scroll, thumbnailOnly: settings.thumbnailFallback)
+        scheduleFullResLoad()
+        updateWindowTitle()
+        return true
+    }
+
+    // MARK: - Position HUD (Phase 3)
+
+    private func showPositionHUD(current: Int, total: Int) {
+        if positionHUDView == nil {
+            let hud = PositionHUDView()
+            hud.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(hud)
+            NSLayoutConstraint.activate([
+                hud.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                hud.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -effectiveStatusBarHeight / 2),
+                hud.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
+                hud.heightAnchor.constraint(equalToConstant: 72),
+            ])
+            positionHUDView = hud
+        }
+        positionHUDView?.show(current: current, total: total)
+    }
+
+    private func dismissPositionHUD() {
+        positionHUDView?.dismiss()
+        positionHUDView?.removeFromSuperview()
+        positionHUDView = nil
     }
 
     // MARK: - Context Menu

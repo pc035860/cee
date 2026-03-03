@@ -188,7 +188,7 @@ Phase 1 (Tier 1): 流暢鍵盤導航 + Option+方向鍵跳躍
     ↓
 Phase 2 (Tier 2): Quick Grid 按需縮圖網格 ✅ COMPLETED
     ↓
-Phase 3 (Tier 3): Option+scroll 快速切圖（可選）
+Phase 3 (Tier 3): Option+scroll 快速切圖 ✅ COMPLETED
 ```
 
 每個 Phase 獨立可用，不依賴後續 Phase。
@@ -220,3 +220,27 @@ Phase 3 (Tier 3): Option+scroll 快速切圖（可選）
 - Enter key 不會透過 responder chain 到達 QuickGridView → 建立 GridCollectionView subclass
 - Thumbnail cache 污染（240px 寫入 shared cache）→ Task.isCancelled guard + clearThumbnailCache()
 - G key 在 grid 開啟時不生效（first responder 是 collection view）→ GridCollectionView 處理 bare G
+
+---
+
+## Phase 3 完成記錄
+
+**實作日期**：2026-03-04
+**Branch**：feat/image-browse-phase3
+**Commits**：8 commits (d4b6a9c..a36049d)
+
+### 實作內容
+- **OptionScrollAccumulator.swift** — Testable struct accumulating scroll delta, threshold-based triggering (trackpad 40pt / mouse 8pt), momentum capping (limit 10)
+- **PositionHUDView.swift** — NSVisualEffectView HUD (.hudWindow material, darkAqua, cornerRadius 16) showing "N / Total" with auto-fade (1s delay + 0.3s animation), showVersion token prevents stale completions
+- **ImageScrollView.swift** — Option+scroll intercept before pageTurnLock, Natural Scrolling correction, delegate-based navigation
+- **ImageViewController.swift** — Dedicated `optionScrollNavigate()` bypassing NavigationThrottle, lazy HUD creation, folder-change cleanup
+- **Constants.swift** — Phase 3 thresholds and HUD fade delay
+- **OptionScrollAccumulatorTests.swift** — 14 unit tests covering accumulation, remainder, negative direction, mouse/trackpad thresholds, momentum capping, reset
+
+### Review 中發現的重要修正
+- Option+scroll 必須在 pageTurnLockUntil 之前攔截 → 避免被鎖死阻擋
+- NavigationThrottle 阻擋多步導航 → 建立專用路徑 `optionScrollNavigate()` 繞過 throttle
+- Dual-page mode amount>1 被 guard 擋住 → for loop 每次 amount=1
+- HUD 在無移動時仍顯示 → `optionScrollNavigate` 回傳 Bool 做 guard
+- 移除 dead `isOptionScrolling` flag（專用路徑不需要此狀態）
+- 空資料夾防禦 → guard `!folder.images.isEmpty`

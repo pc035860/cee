@@ -25,6 +25,11 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
     /// Toggle Quick Grid overlay (bare G key)
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView)
+    /// Phase 3: Option+scroll 快速導航（繞過 NavigationThrottle，accumulator 已是速率控制器）
+    /// - Parameters:
+    ///   - forward: true = 下一張, false = 上一張
+    ///   - amount: 導航張數
+    func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int)
 }
 
 // MARK: - Default Implementation
@@ -32,6 +37,7 @@ extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {}
+    func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int) {}
 }
 
 // MARK: - ImageScrollView
@@ -76,6 +82,10 @@ class ImageScrollView: NSScrollView {
     // Mouse drag pan state
     private var isMouseDragging = false
     private var lastDragPoint: NSPoint = .zero
+
+    // Phase 3: Option+scroll fast navigation
+    private var optionScrollAccumulator = OptionScrollAccumulator()
+    private var lastOptionScrollTime: CFAbsoluteTime = 0
 
     // MARK: - Drag and Drop (Phase 2: Browse Mode)
     // URL extraction must happen synchronously because NSDraggingInfo is not Sendable
@@ -193,6 +203,12 @@ class ImageScrollView: NSScrollView {
         // Cmd + scroll wheel = zoom (攔截在所有其他邏輯之前)
         if event.modifierFlags.contains(.command) {
             handleCmdScrollZoom(with: event)
+            return
+        }
+
+        // Phase 3: Option+scroll 快速切圖（在 pageTurnLock 之前攔截，避免被鎖死阻擋）
+        if event.modifierFlags.contains(.option) {
+            handleOptionScrollNav(with: event)
             return
         }
 
@@ -854,6 +870,54 @@ class ImageScrollView: NSScrollView {
         scrollDelegate?.scrollViewMagnificationDidChange(
             self, magnification: magnification, gesturePhase: event.phase
         )
+    }
+
+    // MARK: - Option + Scroll Fast Navigation (Phase 3)
+
+    private func handleOptionScrollNav(with event: NSEvent) {
+        let isTrackpad = event.phase != [] || event.momentumPhase != []
+        let isMomentum = event.momentumPhase != []
+
+        // Trackpad: 新手勢開始時重置累積器
+        if event.phase == .began {
+            optionScrollAccumulator.resetForNewGesture()
+            resetEdgeState()
+        }
+
+        // Mouse: 沒有 .began phase，改用時間間隔偵測新手勢
+        if !isTrackpad {
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - lastOptionScrollTime > Constants.optionScrollMouseResetInterval {
+                optionScrollAccumulator.resetForNewGesture()
+                resetEdgeState()
+            }
+            lastOptionScrollTime = now
+        }
+
+        // Natural Scrolling 方向校正（與 page-turn 邏輯一致）
+        let isNatural = event.isDirectionInvertedFromDevice
+        let rawDelta = event.scrollingDeltaY
+        let correctedDelta: CGFloat
+        if isNatural {
+            correctedDelta = -rawDelta
+        } else {
+            correctedDelta = rawDelta
+        }
+
+        // 滑鼠 delta 極小（~0.1-1.0），需放大至 threshold 量級
+        let scaledDelta = isTrackpad ? correctedDelta
+            : correctedDelta * Constants.optionScrollMouseSensitivity
+
+        let steps = optionScrollAccumulator.accumulate(
+            delta: scaledDelta,
+            isTrackpad: isTrackpad,
+            isMomentum: isMomentum
+        )
+
+        guard steps != 0 else { return }
+
+        // 限制每次最多導航 1 張，確保逐張切換可見（避免跳躍）
+        scrollDelegate?.scrollViewOptionScrollNavigate(self, forward: steps > 0, amount: 1)
     }
 
     // MARK: - Pinch Zoom
