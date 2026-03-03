@@ -118,10 +118,21 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         loader = nil
     }
 
-    // MARK: - ESC via responder chain
+    // MARK: - Keyboard (ESC + Enter via responder chain)
 
     override func cancelOperation(_ sender: Any?) {
         delegate?.quickGridViewDidRequestClose(self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 36, 76:  // Return / Numpad Enter
+            if let index = collectionView.selectionIndexPaths.first?.item {
+                delegate?.quickGridView(self, didSelectItemAt: index)
+            }
+        default:
+            super.keyDown(with: event)
+        }
     }
 
     // MARK: - Thumbnail Loading

@@ -127,6 +127,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         Task { await loader.cancelAllPrefetchTasks() }
         showEmptyState(false)  // Hide empty state when loading folder
         showErrorPlaceholder(false)  // Also hide error placeholder
+        if quickGridView != nil { dismissQuickGrid() }  // Dismiss grid on folder change
         self.folder = newFolder
         imageSizeCache.removeAll()
         loadFolderDualPageSettings()
