@@ -121,8 +121,17 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **`ImageFolder.isSupported(url:)`**: Uses `supportedTypes` set, not generic `.image` conformance.
 - **Subfolder discovery**: `init(folderURL:)` auto-searches up to 2 levels of subdirectories (BFS) when top-level has no images. `folderURL` is `private(set) var` to allow redirect.
 
+## Fast Browse (Phase 0–1)
+
+- **ImageLoader** — `loadThumbnail(at:maxSize:)` via `CGImageSourceCreateThumbnailAtIndex` (~16ms). `fetchImageDimensions(at:)` for metadata-only size read. `cancelLoad(for:)`. Directional prefetch: `updateCache(prefetchDirection:)` extends ±cacheRadius in nav direction.
+- **Navigation throttle** — `NavigationThrottle` ~20fps; `scheduleFullResLoad` 150ms after last key. Full-res load must use scroll intent (`.top`/`.bottom` from `lastPrefetchDirection`), never `.preserve` — document size change makes preserve meaningless.
+- **Thumbnail→fullRes layout** — When `thumbnailOnly`, use full-res dimensions for `configureSingle`/`applyFitting` (from `imageSizeCache` or `fetchImageDimensions`). Avoids magnification jump on portrait fit-to-width. Don't overwrite `imageSizeCache` during thumbnail load.
+- **applyInitialScrollPosition** — Must run after `applyCenteringInsetsIfNeeded`; else recenter overwrites top/bottom. For `.bottom`, defer one frame to avoid jump.
+- **Option+方向鍵** — Jump 10 images (single-page mode). Dual page keeps 1 spread.
+
 ## Recent Significant Changes
 
+- **Fast browse (Phase 0–1):** Thumbnail loader, navigation throttle, directional prefetch, low-res fallback with delayed full-res, Option+arrow jump 10.
 - **Subfolder auto-discovery (Phase 2.5):** Folder drops with no top-level images auto-find first subfolder with images (BFS, max depth 2). Error placeholder fix (z-order), status bar clear on empty folder.
 - **Browse-mode drag-drop (Phase 2):** ImageScrollView drop support, folder drops, same-folder optimization, visual feedback.
 - **Empty state with drag-drop (Phase 1):** `EmptyStateView`, optional folder, onboarding flow.

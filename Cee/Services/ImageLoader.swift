@@ -28,6 +28,13 @@ actor ImageLoader {
         let pageIndex: Int
     }
 
+    /// 快速取得圖片尺寸（僅讀 metadata，不解碼）。PDF 回傳 nil。
+    func fetchImageDimensions(at url: URL) async -> CGSize? {
+        await Task.detached(priority: .userInitiated) {
+            Self.readImageDimensions(at: url)
+        }.value
+    }
+
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
     /// PDF 不支援，回傳 nil
     func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> NSImage? {
@@ -166,6 +173,17 @@ actor ImageLoader {
     }
 
     // MARK: - Image Loading
+
+    /// 僅讀 metadata 取得尺寸（不解碼，portrait fit-to-width 時避免 thumbnail→fullRes 跳動）
+    private static func readImageDimensions(at url: URL) -> CGSize? {
+        guard url.pathExtension.lowercased() != "pdf" else { return nil }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary? else { return nil }
+        let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        guard w > 0, h > 0 else { return nil }
+        return CGSize(width: w, height: h)
+    }
 
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖（JPEG ~16ms）
     private static func decodeThumbnail(at url: URL, maxSize: CGFloat) -> NSImage? {

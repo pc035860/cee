@@ -329,10 +329,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     /// 導航停止後 150ms 載入全解析度
+    /// 必須使用與 thumbnail 相同的 scroll 方向（.top/.bottom），不可用 .preserve：
+    /// 否則 document 尺寸從 thumbnail 變 full-res 時，preserve 會導致錯誤位置，且 setMagnificationCentered 錨點不穩會造成跳動
     private func scheduleFullResLoad() {
         fullResLoadWorkItem?.cancel()
+        let scrollIntent: InitialScrollPosition = lastPrefetchDirection == .backward ? .bottom : .top
         let task = DispatchWorkItem { [weak self] in
-            self?.loadCurrentImage(initialScroll: .preserve)
+            self?.loadCurrentImage(initialScroll: scrollIntent)
         }
         fullResLoadWorkItem = task
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.fullResLoadDelayAfterNav, execute: task)
@@ -363,8 +366,17 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 contentView.image = image
                 contentView.loadingState = .loaded
                 contentView.setAccessibilityLabel(item.fileName)
-                imageSizeCache[index] = image.size
-                dualPageView.configureSingle(imageSize: image.size)
+                // thumbnailOnly 時用 full-res 尺寸做 layout，避免 portrait fit-to-width 時 magnification 跳動；不覆寫 imageSizeCache
+                let layoutSize: NSSize
+                if thumbnailOnly, !item.isPDF {
+                    var fullSize = imageSizeCache[index]
+                    if fullSize == nil { fullSize = await loader.fetchImageDimensions(at: item.url) }
+                    layoutSize = fullSize ?? image.size
+                } else {
+                    imageSizeCache[index] = image.size
+                    layoutSize = image.size
+                }
+                dualPageView.configureSingle(imageSize: layoutSize)
 
             case .double(let leadingIndex, let leading, let trailingIndex, let trailing):
                 async let leadingImage = loadImageForItem(leading, thumbnailOnly: thumbnailOnly)
@@ -382,27 +394,50 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 contentView.image = lImg
                 contentView.loadingState = .loaded
                 contentView.setAccessibilityLabel(leading.fileName)
-                imageSizeCache[leadingIndex] = lImg.size
+
+                let leadingLayoutSize: NSSize
+                if thumbnailOnly, !leading.isPDF {
+                    var fullSize = imageSizeCache[leadingIndex]
+                    if fullSize == nil { fullSize = await loader.fetchImageDimensions(at: leading.url) }
+                    leadingLayoutSize = fullSize ?? lImg.size
+                } else {
+                    imageSizeCache[leadingIndex] = lImg.size
+                    leadingLayoutSize = lImg.size
+                }
 
                 if let tImg {
-                    imageSizeCache[trailingIndex] = tImg.size
+                    let trailingLayoutSize: NSSize
+                    if thumbnailOnly, !trailing.isPDF {
+                        var fullSize = imageSizeCache[trailingIndex]
+                        if fullSize == nil { fullSize = await loader.fetchImageDimensions(at: trailing.url) }
+                        trailingLayoutSize = fullSize ?? tImg.size
+                    } else {
+                        imageSizeCache[trailingIndex] = tImg.size
+                        trailingLayoutSize = tImg.size
+                    }
                     dualPageView.configureDouble(
-                        leadingSize: lImg.size,
-                        trailingSize: tImg.size,
+                        leadingSize: leadingLayoutSize,
+                        trailingSize: trailingLayoutSize,
                         isRTL: settings.readingDirection.isRTL
                     )
                     dualPageView.trailingPage?.image = tImg
                     dualPageView.trailingPage?.loadingState = .loaded
                     dualPageView.trailingPage?.setAccessibilityLabel(trailing.fileName)
                 } else {
-                    // Trailing image failed — fall back to single
-                    dualPageView.configureSingle(imageSize: lImg.size)
+                    dualPageView.configureSingle(imageSize: leadingLayoutSize)
                 }
             }
 
             applyFitting(for: dualPageView.compositeSize)
-            applyInitialScrollPosition(initialScroll)
             applyCenteringInsetsIfNeeded(reason: "loadSpread")
+            // bottom 時延遲一幀再 scroll，避免 thumbnail→fullRes 轉換時 setMagnificationCentered 錨點造成跳動
+            if initialScroll == .bottom {
+                DispatchQueue.main.async { [weak self] in
+                    self?.scrollView.scrollToBottom()
+                }
+            } else {
+                applyInitialScrollPosition(initialScroll)
+            }
             updateStatusBar()
 
             await loader.updateCache(
