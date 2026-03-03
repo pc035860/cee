@@ -1041,12 +1041,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             grid.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
         ])
 
-        grid.configure(items: folder.images, currentIndex: folder.currentIndex)
+        grid.configure(items: folder.images, currentIndex: folder.currentIndex, loader: loader)
         grid.makeCollectionViewFirstResponder()
         quickGridView = grid
     }
 
     private func dismissQuickGrid() {
+        quickGridView?.cleanup()
         quickGridView?.removeFromSuperview()
         quickGridView = nil
         view.window?.makeFirstResponder(scrollView)

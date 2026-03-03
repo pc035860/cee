@@ -17,6 +17,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var items: [ImageItem] = []
     private var currentIndex: Int = 0
 
+    // MARK: - Thumbnail Loading
+
+    private var loader: ImageLoader?
+    /// Grid-local thumbnail cache (not evicted by navigation's updateCache)
+    private var gridThumbnails: [Int: NSImage] = [:]
+    /// Active thumbnail loading tasks (keyed by item index)
+    private var thumbnailTasks: [Int: Task<Void, Never>] = [:]
+
     // MARK: - Initialization
 
     override init(frame frameRect: NSRect) {
@@ -77,9 +85,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     // MARK: - Configuration
 
-    func configure(items: [ImageItem], currentIndex: Int) {
+    func configure(items: [ImageItem], currentIndex: Int, loader: ImageLoader) {
         self.items = items
         self.currentIndex = currentIndex
+        self.loader = loader
         collectionView.reloadData()
 
         // Scroll to current image and select it
@@ -101,10 +110,54 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         window?.makeFirstResponder(collectionView)
     }
 
+    /// Cancel all pending thumbnail tasks and release cached thumbnails.
+    func cleanup() {
+        for (_, task) in thumbnailTasks { task.cancel() }
+        thumbnailTasks.removeAll()
+        gridThumbnails.removeAll()
+        loader = nil
+    }
+
     // MARK: - ESC via responder chain
 
     override func cancelOperation(_ sender: Any?) {
         delegate?.quickGridViewDidRequestClose(self)
+    }
+
+    // MARK: - Thumbnail Loading
+
+    private func loadThumbnail(for index: Int, cell: QuickGridCell) {
+        // Already cached locally
+        if let cached = gridThumbnails[index] {
+            cell.setThumbnail(cached)
+            return
+        }
+
+        let item = items[index]
+        // PDF items: no thumbnail support (MVP)
+        guard !item.isPDF else { return }
+
+        // Cancel existing task for this index if any
+        thumbnailTasks[index]?.cancel()
+
+        guard let loader else { return }
+
+        thumbnailTasks[index] = Task { [weak self] in
+            let result = await loader.loadThumbnail(at: item.url, maxSize: 240)
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+
+            if let image = result?.image {
+                self.gridThumbnails[index] = image
+
+                // Verify cell is still displaying the same item before updating
+                if let visibleCell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
+                    visibleCell.setThumbnail(image)
+                }
+            }
+
+            self.thumbnailTasks.removeValue(forKey: index)
+        }
     }
 
     // MARK: - NSCollectionViewDataSource
@@ -122,8 +175,13 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             for: indexPath
         )
         guard let gridCell = cell as? QuickGridCell else { return cell }
-        gridCell.configure(item: items[indexPath.item])
-        gridCell.isCurrentImage = (indexPath.item == currentIndex)
+        let index = indexPath.item
+        gridCell.configure(item: items[index])
+        gridCell.isCurrentImage = (index == currentIndex)
+
+        // Load thumbnail (from cache or async)
+        loadThumbnail(for: index, cell: gridCell)
+
         return gridCell
     }
 
