@@ -319,7 +319,7 @@ static func openEmpty() {
 | Item | Status | Notes |
 |------|--------|-------|
 | Browse-mode drag-drop on ImageScrollView | ✅ | NSDraggingDestination protocol implementation |
-| Folder drag-drop support | ✅ | `appendingPathComponent(".")` workaround |
+| Folder drag-drop support | ✅ | `ImageFolder(folderURL:)` dedicated initializer |
 | Visual drag feedback | ✅ | CAShapeLayer dashed border, NSAnimationContext |
 | Same-folder optimization | ✅ | Direct index update without folder rescan |
 | URLFilter.filterImageAndFolderURLs | ✅ | Combined file + folder filtering |
@@ -327,7 +327,7 @@ static func openEmpty() {
 | ImageScrollViewDelegate update | ✅ | `scrollViewDidReceiveDrop(_:urls:)` method |
 
 **Key Design Decisions:**
-1. **`appendingPathComponent(".")` workaround** — Allows reusing `ImageFolder(containing:)` constructor for folder URLs. The `.` component gets stripped by `deletingLastPathComponent()` inside ImageFolder, leaving the folder URL intact. No changes needed to ImageFolder core logic.
+1. **`ImageFolder(folderURL:)` dedicated initializer** — Direct folder URL initializer bypasses `deletingLastPathComponent()`. The original `appendingPathComponent(".")` workaround failed with pasteboard URLs: `deletingLastPathComponent()` produced `..` (parent directory) instead of `.` being stripped, causing `scanFolder()` to scan the wrong directory (0 images → black screen). Fixed 2026-03-03.
 2. **Same-folder optimization** — When dropping a file from the same folder, directly update `currentIndex` and call `loadCurrentImage()` instead of rescanning. Saves file I/O and preserves scroll position better.
 3. **URLFilter short-circuit order** — `isSupported(url) || isDirectory(url)` checks memory-first operation before file system access.
 4. **State cleanup consistency** — Both `draggingExited` and `concludeDragOperation` clear `cachedValidURLs`, matching EmptyStateView pattern.

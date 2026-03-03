@@ -40,6 +40,14 @@ class ImageFolder {
         }
     }
 
+    /// Initialize from a folder URL directly (for drag-drop folder support).
+    /// Scans the folder and starts at the first image.
+    init(folderURL: URL) {
+        self.folderURL = folderURL
+        self.images = scanFolder()
+        self.currentIndex = 0
+    }
+
     private func scanFolder() -> [ImageItem] {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(

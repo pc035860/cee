@@ -1371,12 +1371,10 @@ extension ImageViewController: ImageScrollViewDelegate {
     /// Create ImageFolder from a dropped URL (handles both file and folder)
     private func imageFolderFromDrop(url: URL) -> ImageFolder {
         if URLFilter.isDirectory(url) {
-            // Folder: use workaround to pass folder URL directly
-            // "." is a no-op path component that gets stripped by deletingLastPathComponent()
-            // Result: folderURL scanned, currentIndex = 0 (first image or empty)
-            return ImageFolder(containing: url.appendingPathComponent("."))
+            // Folder: use dedicated initializer to scan folder directly
+            return ImageFolder(folderURL: url)
         } else {
-            // File: use existing logic
+            // File: use existing logic (extracts parent folder)
             return ImageFolder(containing: url)
         }
     }
