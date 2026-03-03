@@ -123,7 +123,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **`ImageFolder.isSupported(url:)`**: Uses `supportedTypes` set, not generic `.image` conformance.
 - **Subfolder discovery**: `init(folderURL:)` auto-searches up to 2 levels of subdirectories (BFS) when top-level has no images. `folderURL` is `private(set) var` to allow redirect.
 
-## Fast Browse (Phase 0–1)
+## Fast Browse (Phase 0–1, 3)
 
 - **ImageLoader** — `loadThumbnail(at:maxSize:)` returns `(image, fullSize)` tuple; decodes thumbnail and reads full-res dimensions from the same `CGImageSource` in one file open. `thumbnailCache` stores `ThumbnailEntry(image, fullSize)` for zero-I/O cache hits. `cancelLoad(for:)`. Directional prefetch: `updateCache(prefetchDirection:)` extends ±cacheRadius in nav direction.
 - **Navigation throttle** — `NavigationThrottle` ~20fps (`CFAbsoluteTimeGetCurrent`); `scheduleFullResLoad` 100ms after last key. Full-res load must use scroll intent (`.top`/`.bottom` from `lastPrefetchDirection`), never `.preserve` — document size change makes preserve meaningless.
@@ -131,6 +131,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Thumbnail→fullRes layout** — `resolveLayoutSize` helper: when `thumbnailOnly`, uses full-res dimensions from `loadThumbnail` result (or `imageSizeCache`) for `configureSingle`/`applyFitting`. Avoids magnification jump on portrait fit-to-width. Don't overwrite `imageSizeCache` during thumbnail load.
 - **applyInitialScrollPosition** — Must run after `applyCenteringInsetsIfNeeded`; else recenter overwrites top/bottom. For `.bottom`, defer one frame to avoid jump.
 - **Option+方向鍵** — Jump 10 images (single-page mode). Dual page keeps 1 spread.
+- **Option+scroll (Phase 3)** — Hold Option + scroll wheel for rapid image switching. `OptionScrollAccumulator` struct accumulates delta (trackpad 40pt / mouse 8pt threshold), momentum capped at 10. Dedicated `optionScrollNavigate()` bypasses `NavigationThrottle` (accumulator IS the rate limiter). Always uses `thumbnailOnly: true`. `PositionHUDView` shows "N / Total" HUD with auto-fade (1s delay). Must intercept in `scrollWheel` BEFORE `pageTurnLockUntil` check. Natural Scrolling correction matches page-turn pattern.
 
 ## Quick Grid (Phase 2)
 
@@ -145,6 +146,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Option+scroll fast nav (Phase 3):** OptionScrollAccumulator, PositionHUDView, dedicated nav path bypassing throttle, momentum capping, Natural Scrolling correction.
 - **Quick Grid (Phase 2):** Thumbnail grid overlay (G key), async loading, grid-local cache, Enter/ESC/G keyboard handling, cache pollution prevention.
 - **Centering/window drift fixes:** Anchor-out-of-bounds → use document center; resizeToFitImage below min → early return to avoid drift.
 - **Fast browse (Phase 0–1):** Thumbnail loader, navigation throttle, directional prefetch, low-res fallback with delayed full-res, Option+arrow jump 10.
