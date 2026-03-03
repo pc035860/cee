@@ -12,7 +12,12 @@ enum PrefetchDirection {
 /// 使用 actor 確保快取的執行緒安全
 actor ImageLoader {
     private var cache: [URL: NSImage] = [:]
-    private var thumbnailCache: [URL: NSImage] = [:]
+    /// 縮圖快取：同時存 image 和 fullSize，避免 cache-hit 時二次開檔
+    private struct ThumbnailEntry {
+        let image: NSImage
+        let fullSize: CGSize
+    }
+    private var thumbnailCache: [URL: ThumbnailEntry] = [:]
     private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
@@ -28,24 +33,22 @@ actor ImageLoader {
         let pageIndex: Int
     }
 
-    /// 快速取得圖片尺寸（僅讀 metadata，不解碼）。PDF 回傳 nil。
-    func fetchImageDimensions(at url: URL) async -> CGSize? {
-        await Task.detached(priority: .userInitiated) {
-            Self.readImageDimensions(at: url)
-        }.value
-    }
-
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
+    /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
     /// PDF 不支援，回傳 nil
-    func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> NSImage? {
-        if let cached = thumbnailCache[url] { return cached }
+    func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> (image: NSImage, fullSize: CGSize)? {
+        if let cached = thumbnailCache[url] {
+            return (cached.image, cached.fullSize)
+        }
 
-        let image = await Task.detached(priority: .userInitiated) {
-            Self.decodeThumbnail(at: url, maxSize: maxSize)
+        let result = await Task.detached(priority: .userInitiated) {
+            Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
         }.value
 
-        if let image { thumbnailCache[url] = image }
-        return image
+        if let result {
+            thumbnailCache[url] = ThumbnailEntry(image: result.image, fullSize: result.fullSize)
+        }
+        return result
     }
 
     func loadImage(at url: URL) async -> NSImage? {
@@ -174,9 +177,14 @@ actor ImageLoader {
 
     // MARK: - Image Loading
 
+    /// PDF URL 判定（共用，避免散佈 pathExtension 比較）
+    private static func isPDFURL(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("pdf") == .orderedSame
+    }
+
     /// 僅讀 metadata 取得尺寸（不解碼，portrait fit-to-width 時避免 thumbnail→fullRes 跳動）
     private static func readImageDimensions(at url: URL) -> CGSize? {
-        guard url.pathExtension.lowercased() != "pdf" else { return nil }
+        guard !isPDFURL(url) else { return nil }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary? else { return nil }
         let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
@@ -185,10 +193,23 @@ actor ImageLoader {
         return CGSize(width: w, height: h)
     }
 
-    /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖（JPEG ~16ms）
-    private static func decodeThumbnail(at url: URL, maxSize: CGFloat) -> NSImage? {
-        guard url.pathExtension.lowercased() != "pdf" else { return nil }
+    /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖，同時讀取 full-res 尺寸
+    /// 共用同一個 CGImageSource，避免二次開檔
+    private static func decodeThumbnailWithDimensions(at url: URL, maxSize: CGFloat) -> (image: NSImage, fullSize: CGSize)? {
+        guard !isPDFURL(url) else { return nil }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+
+        // 讀 full-res dimensions（同一個 source，零額外 I/O）
+        let fullSize: CGSize
+        if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?,
+           let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+           let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+           w > 0, h > 0 {
+            fullSize = CGSize(width: w, height: h)
+        } else {
+            fullSize = .zero  // fallback: caller 會用 thumbnail size
+        }
+
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -196,10 +217,12 @@ actor ImageLoader {
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else { return nil }
-        return NSImage(cgImage: cgImage, size: NSSize(
+        let image = NSImage(cgImage: cgImage, size: NSSize(
             width: cgImage.width,
             height: cgImage.height
         ))
+        let effectiveSize = fullSize == .zero ? image.size : fullSize
+        return (image, effectiveSize)
     }
 
     /// 使用 ImageIO 高效解碼（比 NSImage(contentsOf:) 更高效）
@@ -280,6 +303,7 @@ actor ImageLoader {
 
         // 釋放超出範圍的快取
         cache = cache.filter { activeImageURLs.contains($0.key) }
+        thumbnailCache = thumbnailCache.filter { activeImageURLs.contains($0.key) }
         pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
         pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
 
@@ -307,11 +331,12 @@ actor ImageLoader {
         }
     }
 
-    /// 取消所有預載任務
+    /// 取消所有預載任務並清空縮圖快取
     func cancelAllPrefetchTasks() {
         for (_, task) in prefetchTasks { task.cancel() }
         for (_, task) in imagePrefetchTasks { task.cancel() }
         prefetchTasks.removeAll()
         imagePrefetchTasks.removeAll()
+        thumbnailCache.removeAll()
     }
 }

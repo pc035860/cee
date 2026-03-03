@@ -3,7 +3,7 @@ import XCTest
 
 final class ImageLoaderTests: XCTestCase {
 
-    func testLoadThumbnail_returnsSmallerImage() async throws {
+    func testLoadThumbnail_returnsSmallerImageWithDimensions() async throws {
         #if !canImport(AppKit)
         throw XCTSkip("AppKit required for createPNG")
         #else
@@ -11,11 +11,14 @@ final class ImageLoaderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let loader = ImageLoader()
-        let thumbnail = await loader.loadThumbnail(at: url, maxSize: 128)
+        let result = await loader.loadThumbnail(at: url, maxSize: 128)
 
-        XCTAssertNotNil(thumbnail)
-        let size = thumbnail!.size
+        XCTAssertNotNil(result)
+        let size = result!.image.size
         XCTAssertLessThanOrEqual(max(size.width, size.height), 128 + 1, "Thumbnail should be at most 128pt")
+        // fullSize should reflect original dimensions
+        XCTAssertEqual(result!.fullSize.width, 256, accuracy: 1)
+        XCTAssertEqual(result!.fullSize.height, 256, accuracy: 1)
         #endif
     }
 
@@ -30,7 +33,6 @@ final class ImageLoaderTests: XCTestCase {
         _ = await loader.loadThumbnail(at: url, maxSize: 64)
         let second = await loader.loadThumbnail(at: url, maxSize: 64)
         XCTAssertNotNil(second)
-        // Cache hit - no way to directly assert, but second call should be fast
         #endif
     }
 

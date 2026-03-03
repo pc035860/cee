@@ -286,7 +286,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Image Loading
 
-    private func loadCurrentImage(initialScroll: InitialScrollPosition = .preserve) {
+    private func loadCurrentImage(initialScroll: InitialScrollPosition = .preserve, thumbnailOnly: Bool = false) {
         fullResLoadWorkItem?.cancel()
         fullResLoadWorkItem = nil
 
@@ -308,23 +308,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
 
         if settings.dualPageEnabled, let spread = folder.currentSpread {
-            loadSpread(spread, initialScroll: initialScroll, thumbnailOnly: false)
+            loadSpread(spread, initialScroll: initialScroll, thumbnailOnly: thumbnailOnly)
         } else if let item = folder.currentImage {
-            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll, thumbnailOnly: false)
-        }
-    }
-
-    /// 快速導航時先用 thumbnail 顯示，全解析度由 scheduleFullResLoad 延遲載入
-    private func loadCurrentImageThumbnailOnly(initialScroll: InitialScrollPosition = .preserve) {
-        guard let folder else { return }
-        guard !folder.images.isEmpty else {
-            loadCurrentImage(initialScroll: initialScroll)
-            return
-        }
-        if settings.dualPageEnabled, let spread = folder.currentSpread {
-            loadSpread(spread, initialScroll: initialScroll, thumbnailOnly: true)
-        } else if let item = folder.currentImage {
-            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll, thumbnailOnly: true)
+            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll, thumbnailOnly: thumbnailOnly)
         }
     }
 
@@ -354,73 +340,56 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         currentLoadTask = Task {
             switch spread {
             case .single(let index, let item):
-                let image = await loadImageForItem(item, thumbnailOnly: thumbnailOnly)
+                let result = await loadImageForItem(item, thumbnailOnly: thumbnailOnly)
                 guard currentLoadRequestID == requestID else { return }
-                guard let image else {
+                guard let result else {
                     contentView.image = nil
                     contentView.loadingState = .error
                     showErrorPlaceholder(true)
                     return
                 }
 
-                contentView.image = image
+                contentView.image = result.image
                 contentView.loadingState = .loaded
                 contentView.setAccessibilityLabel(item.fileName)
-                // thumbnailOnly 時用 full-res 尺寸做 layout，避免 portrait fit-to-width 時 magnification 跳動；不覆寫 imageSizeCache
-                let layoutSize: NSSize
-                if thumbnailOnly, !item.isPDF {
-                    var fullSize = imageSizeCache[index]
-                    if fullSize == nil { fullSize = await loader.fetchImageDimensions(at: item.url) }
-                    layoutSize = fullSize ?? image.size
-                } else {
-                    imageSizeCache[index] = image.size
-                    layoutSize = image.size
-                }
+                let layoutSize = resolveLayoutSize(
+                    index: index, item: item, image: result.image,
+                    fullSize: result.fullSize, thumbnailOnly: thumbnailOnly
+                )
                 dualPageView.configureSingle(imageSize: layoutSize)
 
             case .double(let leadingIndex, let leading, let trailingIndex, let trailing):
-                async let leadingImage = loadImageForItem(leading, thumbnailOnly: thumbnailOnly)
-                async let trailingImage = loadImageForItem(trailing, thumbnailOnly: thumbnailOnly)
-                let (lImg, tImg) = await (leadingImage, trailingImage)
+                async let leadingResult = loadImageForItem(leading, thumbnailOnly: thumbnailOnly)
+                async let trailingResult = loadImageForItem(trailing, thumbnailOnly: thumbnailOnly)
+                let (lResult, tResult) = await (leadingResult, trailingResult)
                 guard currentLoadRequestID == requestID else { return }
 
-                guard let lImg else {
+                guard let lResult else {
                     contentView.image = nil
                     contentView.loadingState = .error
                     showErrorPlaceholder(true)
                     return
                 }
 
-                contentView.image = lImg
+                contentView.image = lResult.image
                 contentView.loadingState = .loaded
                 contentView.setAccessibilityLabel(leading.fileName)
+                let leadingLayoutSize = resolveLayoutSize(
+                    index: leadingIndex, item: leading, image: lResult.image,
+                    fullSize: lResult.fullSize, thumbnailOnly: thumbnailOnly
+                )
 
-                let leadingLayoutSize: NSSize
-                if thumbnailOnly, !leading.isPDF {
-                    var fullSize = imageSizeCache[leadingIndex]
-                    if fullSize == nil { fullSize = await loader.fetchImageDimensions(at: leading.url) }
-                    leadingLayoutSize = fullSize ?? lImg.size
-                } else {
-                    imageSizeCache[leadingIndex] = lImg.size
-                    leadingLayoutSize = lImg.size
-                }
-
-                if let tImg {
-                    let trailingLayoutSize: NSSize
-                    if thumbnailOnly, !trailing.isPDF {
-                        var fullSize = imageSizeCache[trailingIndex]
-                        if fullSize == nil { fullSize = await loader.fetchImageDimensions(at: trailing.url) }
-                        trailingLayoutSize = fullSize ?? tImg.size
-                    } else {
-                        imageSizeCache[trailingIndex] = tImg.size
-                        trailingLayoutSize = tImg.size
-                    }
+                if let tResult {
+                    let trailingLayoutSize = resolveLayoutSize(
+                        index: trailingIndex, item: trailing, image: tResult.image,
+                        fullSize: tResult.fullSize, thumbnailOnly: thumbnailOnly
+                    )
                     dualPageView.configureDouble(
                         leadingSize: leadingLayoutSize,
                         trailingSize: trailingLayoutSize,
                         isRTL: settings.readingDirection.isRTL
                     )
-                    dualPageView.trailingPage?.image = tImg
+                    dualPageView.trailingPage?.image = tResult.image
                     dualPageView.trailingPage?.loadingState = .loaded
                     dualPageView.trailingPage?.setAccessibilityLabel(trailing.fileName)
                 } else {
@@ -449,15 +418,29 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
-    /// Extract image loading to reusable helper
-    /// thumbnailOnly: true 時非 PDF 用 loadThumbnail（快速），PDF 仍用全解析度（無 thumbnail 路徑）
-    private func loadImageForItem(_ item: ImageItem, thumbnailOnly: Bool = false) async -> NSImage? {
+    /// 載入圖片，thumbnailOnly 時回傳 thumbnail + fullSize
+    /// fullSize 僅 thumbnail 模式有效，full-res 載入時為 nil（image.size 即為真實尺寸）
+    private func loadImageForItem(_ item: ImageItem, thumbnailOnly: Bool = false) async -> (image: NSImage, fullSize: CGSize?)? {
         if let pageIndex = item.pdfPageIndex {
-            return await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+            guard let img = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex) else { return nil }
+            return (img, nil)
         } else if thumbnailOnly {
-            return await loader.loadThumbnail(at: item.url)
+            guard let result = await loader.loadThumbnail(at: item.url) else { return nil }
+            return (result.image, result.fullSize)
         } else {
-            return await loader.loadImage(at: item.url)
+            guard let img = await loader.loadImage(at: item.url) else { return nil }
+            return (img, nil)
+        }
+    }
+
+    /// 計算 layout 尺寸：thumbnail 時用 full-res 尺寸避免 magnification 跳動，full-res 時直接用 image.size
+    private func resolveLayoutSize(index: Int, item: ImageItem, image: NSImage, fullSize: CGSize?, thumbnailOnly: Bool) -> NSSize {
+        if thumbnailOnly, !item.isPDF, let fullSize {
+            // 不覆寫 imageSizeCache：thumbnail 的 image.size 不代表真實尺寸
+            return imageSizeCache[index] ?? fullSize
+        } else {
+            imageSizeCache[index] = image.size
+            return image.size
         }
     }
 
@@ -784,12 +767,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goNext(amount: amount) else { return }
         }
-        if settings.thumbnailFallback {
-            loadCurrentImageThumbnailOnly(initialScroll: .top)
-            scheduleFullResLoad()
-        } else {
-            loadCurrentImage(initialScroll: .top)
-        }
+        loadCurrentImage(initialScroll: .top, thumbnailOnly: settings.thumbnailFallback)
+        if settings.thumbnailFallback { scheduleFullResLoad() }
         updateWindowTitle()
     }
 
@@ -803,12 +782,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goPrevious(amount: amount) else { return }
         }
-        if settings.thumbnailFallback {
-            loadCurrentImageThumbnailOnly(initialScroll: .bottom)
-            scheduleFullResLoad()
-        } else {
-            loadCurrentImage(initialScroll: .bottom)
-        }
+        loadCurrentImage(initialScroll: .bottom, thumbnailOnly: settings.thumbnailFallback)
+        if settings.thumbnailFallback { scheduleFullResLoad() }
         updateWindowTitle()
     }
 
