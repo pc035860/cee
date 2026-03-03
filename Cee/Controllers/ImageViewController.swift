@@ -127,7 +127,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         Task { await loader.cancelAllPrefetchTasks() }
         showEmptyState(false)  // Hide empty state when loading folder
         showErrorPlaceholder(false)  // Also hide error placeholder
-        if quickGridView != nil { dismissQuickGrid() }  // Dismiss grid on folder change
+        let wasGridVisible = quickGridView != nil
         self.folder = newFolder
         imageSizeCache.removeAll()
         loadFolderDualPageSettings()
@@ -136,7 +136,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             loadCurrentImage(initialScroll: .top)
         }
-        view.window?.makeFirstResponder(scrollView)
+        // Grid visible → refresh with new folder; otherwise → restore scroll view focus
+        if wasGridVisible, let grid = quickGridView, let folder = self.folder, !folder.images.isEmpty {
+            grid.clearCache()
+            grid.configure(items: folder.images, currentIndex: folder.currentIndex, loader: loader)
+            grid.makeCollectionViewFirstResponder()
+        } else {
+            if wasGridVisible { dismissQuickGrid() }  // Empty folder: dismiss grid
+            view.window?.makeFirstResponder(scrollView)
+        }
     }
 
     // MARK: - Settings Application
@@ -1545,6 +1553,10 @@ extension ImageViewController: ImageScrollViewDelegate {
     }
 
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {
+        handleDrop(urls: urls)
+    }
+
+    private func handleDrop(urls: [URL]) {
         guard let url = urls.first else { return }  // Use first item
 
         // Folders always open fresh (no same-folder optimization)
@@ -1565,6 +1577,10 @@ extension ImageViewController: ImageScrollViewDelegate {
                 }
                 loadCurrentImage(initialScroll: .top)
                 updateWindowTitle()
+                // Refresh grid if visible (same-folder doesn't go through loadFolder)
+                if let grid = quickGridView {
+                    grid.configure(items: currentFolder.images, currentIndex: index, loader: loader)
+                }
                 return  // Only return on successful optimization
             }
             // If not found, fall through to reload folder (new file case)
@@ -1620,6 +1636,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         menu.addItem(makeFittingOptionsSubmenu())
         menu.addItem(makeDualPageSubmenu())
         menu.addItem(makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:))))
+        menu.addItem(makeContextItem("Quick Grid", action: #selector(toggleQuickGrid(_:))))
 
         menu.addItem(NSMenuItem.separator())
 
@@ -1666,14 +1683,17 @@ extension ImageViewController: ImageScrollViewDelegate {
 
 extension ImageViewController: EmptyStateView.Delegate {
     func emptyStateViewDidReceiveDrop(_ view: EmptyStateView, urls: [URL]) {
-        guard let url = urls.first else { return }  // Use first item
-        loadFolderAndSetTitle(imageFolderFromDrop(url: url))
+        handleDrop(urls: urls)
     }
 }
 
 // MARK: - QuickGridViewDelegate
 
 extension ImageViewController: QuickGridViewDelegate {
+    func quickGridView(_ view: QuickGridView, didReceiveDrop urls: [URL]) {
+        handleDrop(urls: urls)
+    }
+
     func quickGridView(_ view: QuickGridView, didSelectItemAt index: Int) {
         dismissQuickGrid()
         guard let folder else { return }

@@ -117,7 +117,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 ## Drag-Drop
 
 - **Empty state**: `applicationOpenUntitledFile` → `openEmpty()`. `EmptyStateView` overlay with drag support. `folder` is optional (~17 guard-let sites).
-- **Browse-mode**: `ImageScrollView` also accepts drops. Same `cachedValidURLs` pattern.
+- **Browse-mode**: `ImageScrollView` and `QuickGridView` accept drops. Same `cachedValidURLs` pattern. All drop delegates share `handleDrop(urls:)`.
 - **Folder drops**: `URLFilter.isDirectory(url:)` via resource values. Use `ImageFolder(folderURL:)` initializer (not `appendingPathComponent(".")` — breaks `deletingLastPathComponent()` with pasteboard URLs).
 - **Same-folder optimization**: Dropping file from current folder updates `currentIndex` directly without rescanning.
 - **`ImageFolder.isSupported(url:)`**: Uses `supportedTypes` set, not generic `.image` conformance.
@@ -140,6 +140,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only. Load thumbnails in `itemForRepresentedObjectAt:` instead.
 - **Thumbnail cache cross-contamination** — grid loads at 240px, main view expects 512px, same URL key. Fix: `Task.isCancelled` guard before cache write + `clearThumbnailCache()` on grid dismiss.
 - **Overlay pattern** — add to `self.view` (not scrollView), pin all edges, cleanup on dismiss. Same pattern as `EmptyStateView`/`ErrorPlaceholderView`.
+- **Grid accepts drops** — overlay blocks hit-test to views beneath. Grid registers `.fileURL` drag type and forwards drops via delegate. `clearCache()` (light reset, keeps loader) vs `cleanup()` (full teardown, nils loader).
+- **Grid persists across folder changes** — `loadFolder()` refreshes grid via `clearCache()` + `configure()` instead of dismissing. Empty folder → dismiss. Drop handling shared via `handleDrop(urls:)`.
 
 ## Recent Significant Changes
 
@@ -150,6 +152,6 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Browse-mode drag-drop (Phase 2):** ImageScrollView drop support, folder drops, same-folder optimization, visual feedback.
 - **Empty state with drag-drop (Phase 1):** `EmptyStateView`, optional folder, onboarding flow.
 - **Dual page view:** Spread-aware navigation, RTL, per-folder persistence, PDF spread pairing.
-- **Context menu:** Zoom/display/file actions, dual page hit-test, PDF copy renders image not URL.
+- **Context menu:** Zoom/display/file actions, dual page hit-test, PDF copy renders image not URL. Quick Grid toggle in context menu.
 - **GPU rendering:** `layer.contents` pipeline, CALayer filter scaling.
 - **Status bar overlay:** `NSVisualEffectView` with insets-based padding.

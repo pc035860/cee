@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 protocol QuickGridViewDelegate: AnyObject {
     func quickGridView(_ view: QuickGridView, didSelectItemAt index: Int)
+    func quickGridView(_ view: QuickGridView, didReceiveDrop urls: [URL])
     func quickGridViewDidRequestClose(_ view: QuickGridView)
 }
 
@@ -111,6 +112,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             gridScrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             gridScrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+
+        registerForDraggedTypes([.fileURL])
     }
 
     // MARK: - Configuration
@@ -138,6 +141,17 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     func makeCollectionViewFirstResponder() {
         window?.makeFirstResponder(collectionView)
+    }
+
+    /// Clear cached thumbnails and cancel pending tasks without releasing loader.
+    /// Used when folder content changes and the grid will be reconfigured.
+    func clearCache() {
+        for (_, task) in thumbnailTasks { task.cancel() }
+        thumbnailTasks.removeAll()
+        gridThumbnails.removeAll()
+        if let loader {
+            Task { await loader.clearThumbnailCache() }
+        }
     }
 
     /// Cancel all pending thumbnail tasks and release cached thumbnails.
@@ -234,5 +248,29 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         if let event = NSApp.currentEvent, event.type == .leftMouseUp {
             delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
         }
+    }
+
+    // MARK: - Drag & Drop
+
+    private var cachedValidURLs: [URL] = []
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        cachedValidURLs = URLFilter.extractImageURLs(from: sender.draggingPasteboard)
+        return cachedValidURLs.isEmpty ? [] : .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        cachedValidURLs = []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = cachedValidURLs
+        cachedValidURLs = []
+        guard !urls.isEmpty else { return false }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.delegate?.quickGridView(self, didReceiveDrop: urls)
+        }
+        return true
     }
 }

@@ -206,7 +206,8 @@ Phase 3 (Tier 3): Option+scroll 快速切圖（可選）
 - **QuickGridCell.swift** — NSCollectionViewItem with thumbnail/filename/highlight
 - **Keyboard**: bare G toggle, Enter confirm, ESC dismiss, arrow keys navigate
 - **Thumbnails**: async loading via ImageLoader.loadThumbnail(maxSize:240), grid-local cache
-- **Integration**: menu item, folder change dismiss, delegate-based navigation
+- **Integration**: menu item, context menu toggle, delegate-based navigation
+- **Drag-drop in grid**: grid accepts `.fileURL` drops, refreshes with new folder content instead of dismissing. `clearCache()` (light reset) vs `cleanup()` (full teardown). Drop handling shared via `handleDrop(urls:)`
 
 ### MVP 簡化決策
 - EXIF tier 2 + CGImageSource tier 3 合併為單一 async load（CGImageSource 已內含 EXIF extraction）
