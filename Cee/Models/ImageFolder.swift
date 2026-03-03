@@ -4,7 +4,7 @@ import CoreServices
 import UniformTypeIdentifiers
 
 class ImageFolder {
-    let folderURL: URL
+    private(set) var folderURL: URL
     private(set) var images: [ImageItem] = []
     var currentIndex: Int = 0
 
@@ -42,9 +42,20 @@ class ImageFolder {
 
     /// Initialize from a folder URL directly (for drag-drop folder support).
     /// Scans the folder and starts at the first image.
+    /// If the folder contains no images, searches up to 2 levels of subdirectories
+    /// for the first subfolder that does contain images.
     init(folderURL: URL) {
         self.folderURL = folderURL
         self.images = scanFolder()
+
+        // Top-level empty: search subdirectories for the first folder with images
+        if images.isEmpty {
+            if let found = Self.findFirstSubfolderWithImages(in: folderURL, maxDepth: 2) {
+                self.folderURL = found
+                self.images = scanFolder()
+            }
+        }
+
         self.currentIndex = 0
     }
 
@@ -76,6 +87,77 @@ class ImageFolder {
             } else {
                 return [ImageItem(url: url)]
             }
+        }
+    }
+
+    // MARK: - Subfolder Discovery
+
+    /// BFS search for the first subdirectory that contains supported images.
+    /// - Parameters:
+    ///   - rootURL: The folder to start searching from (its direct children are depth 1).
+    ///   - maxDepth: Maximum depth to search (e.g. 2 means grandchildren at most).
+    /// - Returns: The URL of the first subfolder containing images, or nil.
+    static func findFirstSubfolderWithImages(in rootURL: URL, maxDepth: Int) -> URL? {
+        let fm = FileManager.default
+        var queue: [(url: URL, depth: Int)] = []
+
+        // Seed queue with immediate subdirectories (depth 1)
+        if let children = sortedSubdirectories(of: rootURL, using: fm) {
+            for child in children {
+                queue.append((child, 1))
+            }
+        }
+
+        while !queue.isEmpty {
+            let (currentURL, depth) = queue.removeFirst()
+
+            if folderContainsSupportedImages(currentURL, using: fm) {
+                return currentURL
+            }
+
+            // Enqueue deeper subdirectories if within depth limit
+            if depth < maxDepth, let children = sortedSubdirectories(of: currentURL, using: fm) {
+                for child in children {
+                    queue.append((child, depth + 1))
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Returns sorted subdirectories of a folder, skipping hidden files and packages.
+    private static func sortedSubdirectories(of url: URL, using fm: FileManager) -> [URL]? {
+        guard let contents = try? fm.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+            options: .skipsHiddenFiles
+        ) else { return nil }
+
+        let dirs = contents.filter { child in
+            guard let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]),
+                  values.isDirectory == true,
+                  values.isPackage != true
+            else { return false }
+            return true
+        }
+        .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+
+        return dirs.isEmpty ? nil : dirs
+    }
+
+    /// Quick check whether a folder contains at least one supported image file.
+    private static func folderContainsSupportedImages(_ folderURL: URL, using fm: FileManager) -> Bool {
+        guard let contents = try? fm.contentsOfDirectory(
+            at: folderURL,
+            includingPropertiesForKeys: [.contentTypeKey],
+            options: .skipsHiddenFiles
+        ) else { return false }
+
+        return contents.contains { url in
+            guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+            else { return false }
+            return supportedTypes.contains(where: { type.conforms(to: $0) })
         }
     }
 

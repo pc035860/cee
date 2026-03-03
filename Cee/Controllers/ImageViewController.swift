@@ -224,19 +224,23 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
     }
 
-    private func showErrorPlaceholder(_ show: Bool) {
+    private func showErrorPlaceholder(_ show: Bool, message: String? = nil) {
         if show {
             if errorPlaceholderView == nil {
                 let placeholder = ErrorPlaceholderView()
                 placeholder.translatesAutoresizingMaskIntoConstraints = false
-                scrollView.addSubview(placeholder)
+                // Add to container view (not scrollView — clipView would cover it)
+                self.view.addSubview(placeholder)
                 NSLayoutConstraint.activate([
-                    placeholder.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-                    placeholder.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
-                    placeholder.topAnchor.constraint(equalTo: scrollView.topAnchor),
-                    placeholder.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+                    placeholder.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                    placeholder.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                    placeholder.topAnchor.constraint(equalTo: self.view.topAnchor),
+                    placeholder.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
                 ])
                 errorPlaceholderView = placeholder
+            }
+            if let message {
+                errorPlaceholderView?.setMessage(message)
             }
             errorPlaceholderView?.isHidden = false
         } else {
@@ -288,7 +292,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard !folder.images.isEmpty else {
             contentView.image = nil
             contentView.loadingState = .error
-            showErrorPlaceholder(true)
+            showErrorPlaceholder(true, message: "No supported images in this folder")
+            updateStatusBar()  // Clear stale status from previous folder
+            (view.window?.windowController as? ImageWindowController)?
+                .updateTitle(folder: folder)
             return
         }
 

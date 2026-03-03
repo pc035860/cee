@@ -79,7 +79,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **`ImageContentView` uses `layer.contents = cgImage`**, not `draw()`. GPU affine transform for zoom; zero CPU redraw.
 - **`wantsUpdateLayer = true` + `layerContentsRedrawPolicy = .onSetNeedsDisplay`** — only image changes trigger `updateLayer()`. Never mix with `draw()`.
 - **Scaling quality = CALayer filters** (`layerScalingFilter`/`layerMinificationFilter`). GPU-side; does NOT trigger `needsDisplay`.
-- **Error placeholder** is a separate overlay view, not drawn in `draw()`.
+- **Error placeholder** is a separate overlay view, not drawn in `draw()`. Must be added to container `self.view`, NOT `scrollView` — NSScrollView's clipView covers subviews added directly to it.
 
 ## Zoom & Fit
 
@@ -118,9 +118,11 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Folder drops**: `URLFilter.isDirectory(url:)` via resource values. Use `ImageFolder(folderURL:)` initializer (not `appendingPathComponent(".")` — breaks `deletingLastPathComponent()` with pasteboard URLs).
 - **Same-folder optimization**: Dropping file from current folder updates `currentIndex` directly without rescanning.
 - **`ImageFolder.isSupported(url:)`**: Uses `supportedTypes` set, not generic `.image` conformance.
+- **Subfolder discovery**: `init(folderURL:)` auto-searches up to 2 levels of subdirectories (BFS) when top-level has no images. `folderURL` is `private(set) var` to allow redirect.
 
 ## Recent Significant Changes
 
+- **Subfolder auto-discovery (Phase 2.5):** Folder drops with no top-level images auto-find first subfolder with images (BFS, max depth 2). Error placeholder fix (z-order), status bar clear on empty folder.
 - **Browse-mode drag-drop (Phase 2):** ImageScrollView drop support, folder drops, same-folder optimization, visual feedback.
 - **Empty state with drag-drop (Phase 1):** `EmptyStateView`, optional folder, onboarding flow.
 - **Dual page view:** Spread-aware navigation, RTL, per-folder persistence, PDF spread pairing.
