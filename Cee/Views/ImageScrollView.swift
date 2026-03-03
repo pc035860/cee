@@ -901,12 +901,13 @@ class ImageScrollView: NSScrollView {
 
         guard steps != 0 else { return }
 
+        // 先通知 VC 設定 isOptionScrolling（force thumbnail），再觸發導航
+        scrollDelegate?.scrollViewOptionScrollDidNavigate(self)
         if steps > 0 {
             scrollDelegate?.scrollViewRequestNextImage(self, amount: abs(steps))
         } else {
             scrollDelegate?.scrollViewRequestPreviousImage(self, amount: abs(steps))
         }
-        scrollDelegate?.scrollViewOptionScrollDidNavigate(self)
     }
 
     // MARK: - Pinch Zoom

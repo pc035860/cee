@@ -1611,6 +1611,9 @@ extension ImageViewController: ImageScrollViewDelegate {
         if positionHUDView == nil {
             let hud = PositionHUDView()
             hud.translatesAutoresizingMaskIntoConstraints = false
+            hud.onFadeOut = { [weak self] in
+                self?.isOptionScrolling = false
+            }
             view.addSubview(hud)
             NSLayoutConstraint.activate([
                 hud.centerXAnchor.constraint(equalTo: view.centerXAnchor),

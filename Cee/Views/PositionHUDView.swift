@@ -4,8 +4,12 @@ import AppKit
 /// 類似 macOS 音量 HUD 的設計：毛玻璃背景 + 圓角 + 自動淡出
 final class PositionHUDView: NSVisualEffectView {
 
+    /// HUD 淡出完成後呼叫，用於重置 isOptionScrolling 等外部狀態
+    var onFadeOut: (() -> Void)?
+
     private let positionLabel = NSTextField(labelWithString: "")
     private var fadeTimer: DispatchWorkItem?
+    private var showVersion: UInt = 0  // 防止舊 fade completion 蓋掉新顯示
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -53,6 +57,7 @@ final class PositionHUDView: NSVisualEffectView {
 
         // 取消之前的淡出計時
         fadeTimer?.cancel()
+        showVersion &+= 1  // 遞增版本，使舊的 fade completion 失效
 
         if isHidden || alphaValue < 1 {
             isHidden = false
@@ -78,13 +83,16 @@ final class PositionHUDView: NSVisualEffectView {
 
     private func scheduleFadeOut() {
         fadeTimer?.cancel()
+        let version = showVersion
         let timer = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+            guard let self, self.showVersion == version else { return }
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.3
                 self.animator().alphaValue = 0
             } completionHandler: { [weak self] in
-                self?.isHidden = true
+                guard let self, self.showVersion == version else { return }
+                self.isHidden = true
+                self.onFadeOut?()
             }
         }
         fadeTimer = timer
