@@ -12,8 +12,9 @@ protocol ImageScrollViewDelegate: AnyObject {
         gesturePhase: NSEvent.Phase
     )
     // Phase 2: keyboard navigation callbacks
-    func scrollViewRequestNextImage(_ scrollView: ImageScrollView)
-    func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView)
+    /// amount: 1 = 單張, Option+方向鍵時 = Constants.optionKeyJumpAmount
+    func scrollViewRequestNextImage(_ scrollView: ImageScrollView, amount: Int)
+    func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int)
     func scrollViewRequestFirstImage(_ scrollView: ImageScrollView)
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView)
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView)
@@ -614,15 +615,16 @@ class ImageScrollView: NSScrollView {
     /// 到邊緣時需連續按 N 次才翻頁，防止瀏覽長圖時誤觸
     override func keyDown(with event: NSEvent) {
         let overflow = viewportOverflow
+        let navAmount = event.modifierFlags.contains(.option) ? Constants.optionKeyJumpAmount : 1
 
         switch event.keyCode {
         case 124: // → RightArrow
             let rightAction: () -> Void = { [weak self] in
                 guard let self else { return }
                 if self.isRTLNavigation {
-                    self.scrollDelegate?.scrollViewRequestPreviousImage(self)
+                    self.scrollDelegate?.scrollViewRequestPreviousImage(self, amount: navAmount)
                 } else {
-                    self.scrollDelegate?.scrollViewRequestNextImage(self)
+                    self.scrollDelegate?.scrollViewRequestNextImage(self, amount: navAmount)
                 }
             }
             if overflow.horizontal {
@@ -642,9 +644,9 @@ class ImageScrollView: NSScrollView {
             let leftAction: () -> Void = { [weak self] in
                 guard let self else { return }
                 if self.isRTLNavigation {
-                    self.scrollDelegate?.scrollViewRequestNextImage(self)
+                    self.scrollDelegate?.scrollViewRequestNextImage(self, amount: navAmount)
                 } else {
-                    self.scrollDelegate?.scrollViewRequestPreviousImage(self)
+                    self.scrollDelegate?.scrollViewRequestPreviousImage(self, amount: navAmount)
                 }
             }
             if overflow.horizontal {
@@ -670,12 +672,12 @@ class ImageScrollView: NSScrollView {
                     // At bottom edge: edge-press to navigate
                     handleEdgePress(keyCode: 125) { [weak self] in
                         guard let self else { return }
-                        self.scrollDelegate?.scrollViewRequestNextImage(self)
+                        self.scrollDelegate?.scrollViewRequestNextImage(self, amount: navAmount)
                     }
                 } else {
                     // No vertical overflow: navigate directly
                     resetEdgeState()
-                    scrollDelegate?.scrollViewRequestNextImage(self)
+                    scrollDelegate?.scrollViewRequestNextImage(self, amount: navAmount)
                 }
             }
 
@@ -689,12 +691,12 @@ class ImageScrollView: NSScrollView {
                     // At top edge: edge-press to navigate
                     handleEdgePress(keyCode: 126) { [weak self] in
                         guard let self else { return }
-                        self.scrollDelegate?.scrollViewRequestPreviousImage(self)
+                        self.scrollDelegate?.scrollViewRequestPreviousImage(self, amount: navAmount)
                     }
                 } else {
                     // No vertical overflow: navigate directly
                     resetEdgeState()
-                    scrollDelegate?.scrollViewRequestPreviousImage(self)
+                    scrollDelegate?.scrollViewRequestPreviousImage(self, amount: navAmount)
                 }
             }
 

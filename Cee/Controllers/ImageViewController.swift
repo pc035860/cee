@@ -39,6 +39,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var imageSizeCache: [Int: CGSize] = [:]
     private var navigationThrottle = NavigationThrottle(interval: 0.05)
     private var lastPrefetchDirection: PrefetchDirection = .none
+    private var fullResLoadWorkItem: DispatchWorkItem?
     private enum InitialScrollPosition { case preserve, top, bottom }
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
@@ -286,6 +287,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Image Loading
 
     private func loadCurrentImage(initialScroll: InitialScrollPosition = .preserve) {
+        fullResLoadWorkItem?.cancel()
+        fullResLoadWorkItem = nil
+
         // CRITICAL: Handle nil folder first (empty state)
         guard let folder else {
             showEmptyState(true)
@@ -304,14 +308,37 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
 
         if settings.dualPageEnabled, let spread = folder.currentSpread {
-            loadSpread(spread, initialScroll: initialScroll)
+            loadSpread(spread, initialScroll: initialScroll, thumbnailOnly: false)
         } else if let item = folder.currentImage {
-            // Non-dual mode: wrap as single spread for unified loading path
-            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll)
+            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll, thumbnailOnly: false)
         }
     }
 
-    private func loadSpread(_ spread: PageSpread, initialScroll: InitialScrollPosition) {
+    /// 快速導航時先用 thumbnail 顯示，全解析度由 scheduleFullResLoad 延遲載入
+    private func loadCurrentImageThumbnailOnly(initialScroll: InitialScrollPosition = .preserve) {
+        guard let folder else { return }
+        guard !folder.images.isEmpty else {
+            loadCurrentImage(initialScroll: initialScroll)
+            return
+        }
+        if settings.dualPageEnabled, let spread = folder.currentSpread {
+            loadSpread(spread, initialScroll: initialScroll, thumbnailOnly: true)
+        } else if let item = folder.currentImage {
+            loadSpread(.single(index: folder.currentIndex, item: item), initialScroll: initialScroll, thumbnailOnly: true)
+        }
+    }
+
+    /// 導航停止後 150ms 載入全解析度
+    private func scheduleFullResLoad() {
+        fullResLoadWorkItem?.cancel()
+        let task = DispatchWorkItem { [weak self] in
+            self?.loadCurrentImage(initialScroll: .preserve)
+        }
+        fullResLoadWorkItem = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.fullResLoadDelayAfterNav, execute: task)
+    }
+
+    private func loadSpread(_ spread: PageSpread, initialScroll: InitialScrollPosition, thumbnailOnly: Bool = false) {
         guard let folder else { return }  // Required for cache update
         contextMenuTarget = nil
 
@@ -324,7 +351,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         currentLoadTask = Task {
             switch spread {
             case .single(let index, let item):
-                let image = await loadImageForItem(item)
+                let image = await loadImageForItem(item, thumbnailOnly: thumbnailOnly)
                 guard currentLoadRequestID == requestID else { return }
                 guard let image else {
                     contentView.image = nil
@@ -340,8 +367,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 dualPageView.configureSingle(imageSize: image.size)
 
             case .double(let leadingIndex, let leading, let trailingIndex, let trailing):
-                async let leadingImage = loadImageForItem(leading)
-                async let trailingImage = loadImageForItem(trailing)
+                async let leadingImage = loadImageForItem(leading, thumbnailOnly: thumbnailOnly)
+                async let trailingImage = loadImageForItem(trailing, thumbnailOnly: thumbnailOnly)
                 let (lImg, tImg) = await (leadingImage, trailingImage)
                 guard currentLoadRequestID == requestID else { return }
 
@@ -388,9 +415,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     /// Extract image loading to reusable helper
-    private func loadImageForItem(_ item: ImageItem) async -> NSImage? {
+    /// thumbnailOnly: true 時非 PDF 用 loadThumbnail（快速），PDF 仍用全解析度（無 thumbnail 路徑）
+    private func loadImageForItem(_ item: ImageItem, thumbnailOnly: Bool = false) async -> NSImage? {
         if let pageIndex = item.pdfPageIndex {
             return await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+        } else if thumbnailOnly {
+            return await loader.loadThumbnail(at: item.url)
         } else {
             return await loader.loadImage(at: item.url)
         }
@@ -709,29 +739,33 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Navigation
 
-    @objc func goToNextImage() {
+    @objc func goToNextImage(amount: Int = 1) {
         guard let folder else { return }
         guard navigationThrottle.shouldProceed() else { return }
         lastPrefetchDirection = .forward
         if settings.dualPageEnabled {
+            guard amount == 1 else { return }  // Option+arrow jump 僅單頁模式
             guard folder.goNextSpread() else { return }
         } else {
-            guard folder.goNext() else { return }
+            guard folder.goNext(amount: amount) else { return }
         }
-        loadCurrentImage(initialScroll: .top)
+        loadCurrentImageThumbnailOnly(initialScroll: .top)
+        scheduleFullResLoad()
         updateWindowTitle()
     }
 
-    @objc func goToPreviousImage() {
+    @objc func goToPreviousImage(amount: Int = 1) {
         guard let folder else { return }
         guard navigationThrottle.shouldProceed() else { return }
         lastPrefetchDirection = .backward
         if settings.dualPageEnabled {
+            guard amount == 1 else { return }
             guard folder.goPreviousSpread() else { return }
         } else {
-            guard folder.goPrevious() else { return }
+            guard folder.goPrevious(amount: amount) else { return }
         }
-        loadCurrentImage(initialScroll: .bottom)
+        loadCurrentImageThumbnailOnly(initialScroll: .bottom)
+        scheduleFullResLoad()
         updateWindowTitle()
     }
 
@@ -1396,8 +1430,8 @@ extension ImageViewController: ImageScrollViewDelegate {
         DispatchQueue.main.async(execute: task)
     }
 
-    func scrollViewRequestNextImage(_ scrollView: ImageScrollView) { goToNextImage() }
-    func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView) { goToPreviousImage() }
+    func scrollViewRequestNextImage(_ scrollView: ImageScrollView, amount: Int) { goToNextImage(amount: amount) }
+    func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int) { goToPreviousImage(amount: amount) }
     func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) { goToFirstImage() }
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }

@@ -180,17 +180,21 @@ class ImageFolder {
     var hasPrevious: Bool { currentIndex > 0 }
 
     @discardableResult
-    func goNext() -> Bool {
-        guard hasNext else { return false }
-        currentIndex += 1
+    func goNext(amount: Int = 1) -> Bool {
+        guard amount > 0 else { return false }
+        let nextIndex = min(currentIndex + amount, images.count - 1)
+        guard nextIndex != currentIndex else { return false }
+        currentIndex = nextIndex
         if !spreads.isEmpty { syncSpreadIndex() }
         return true
     }
 
     @discardableResult
-    func goPrevious() -> Bool {
-        guard hasPrevious else { return false }
-        currentIndex -= 1
+    func goPrevious(amount: Int = 1) -> Bool {
+        guard amount > 0 else { return false }
+        let prevIndex = max(currentIndex - amount, 0)
+        guard prevIndex != currentIndex else { return false }
+        currentIndex = prevIndex
         if !spreads.isEmpty { syncSpreadIndex() }
         return true
     }
