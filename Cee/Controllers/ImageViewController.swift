@@ -780,9 +780,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goNext(amount: amount) else { return }
         }
-        let useThumbnail = settings.thumbnailFallback || isOptionScrolling
-        loadCurrentImage(initialScroll: .top, thumbnailOnly: useThumbnail)
-        if useThumbnail { scheduleFullResLoad() }
+        loadCurrentImage(initialScroll: .top, thumbnailOnly: settings.thumbnailFallback)
+        if settings.thumbnailFallback { scheduleFullResLoad() }
         updateWindowTitle()
     }
 
@@ -796,9 +795,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goPrevious(amount: amount) else { return }
         }
-        let useThumbnail = settings.thumbnailFallback || isOptionScrolling
-        loadCurrentImage(initialScroll: .bottom, thumbnailOnly: useThumbnail)
-        if useThumbnail { scheduleFullResLoad() }
+        loadCurrentImage(initialScroll: .bottom, thumbnailOnly: settings.thumbnailFallback)
+        if settings.thumbnailFallback { scheduleFullResLoad() }
         updateWindowTitle()
     }
 
@@ -1599,13 +1597,39 @@ extension ImageViewController: ImageScrollViewDelegate {
         toggleQuickGrid()
     }
 
-    func scrollViewOptionScrollWillNavigate(_ scrollView: ImageScrollView) {
+    func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int) {
         isOptionScrolling = true
-    }
-
-    func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView) {
+        optionScrollNavigate(forward: forward, amount: amount)
         guard let folder else { return }
         showPositionHUD(current: folder.currentIndex + 1, total: folder.images.count)
+    }
+
+    /// Phase 3: Option+scroll 專用導航，繞過 NavigationThrottle（accumulator 已是速率控制器）
+    private func optionScrollNavigate(forward: Bool, amount: Int) {
+        guard let folder else { return }
+        let direction: PrefetchDirection = forward ? .forward : .backward
+        lastPrefetchDirection = direction
+        var moved = false
+        for _ in 0..<amount {
+            if settings.dualPageEnabled {
+                if forward {
+                    if folder.goNextSpread() { moved = true }
+                } else {
+                    if folder.goPreviousSpread() { moved = true }
+                }
+            } else {
+                if forward {
+                    if folder.goNext(amount: 1) { moved = true }
+                } else {
+                    if folder.goPrevious(amount: 1) { moved = true }
+                }
+            }
+        }
+        guard moved else { return }
+        let scroll: InitialScrollPosition = forward ? .top : .bottom
+        loadCurrentImage(initialScroll: scroll, thumbnailOnly: true)
+        scheduleFullResLoad()
+        updateWindowTitle()
     }
 
     // MARK: - Position HUD (Phase 3)

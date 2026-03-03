@@ -25,10 +25,11 @@ protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL])
     /// Toggle Quick Grid overlay (bare G key)
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView)
-    /// Phase 3: Option+scroll 即將觸發導航（設定 isOptionScrolling flag）
-    func scrollViewOptionScrollWillNavigate(_ scrollView: ImageScrollView)
-    /// Phase 3: Option+scroll 導航完成後更新 HUD
-    func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView)
+    /// Phase 3: Option+scroll 快速導航（繞過 NavigationThrottle，accumulator 已是速率控制器）
+    /// - Parameters:
+    ///   - forward: true = 下一張, false = 上一張
+    ///   - amount: 導航張數
+    func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int)
 }
 
 // MARK: - Default Implementation
@@ -36,8 +37,7 @@ extension ImageScrollViewDelegate {
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {}
-    func scrollViewOptionScrollWillNavigate(_ scrollView: ImageScrollView) {}
-    func scrollViewOptionScrollDidNavigate(_ scrollView: ImageScrollView) {}
+    func scrollViewOptionScrollNavigate(_ scrollView: ImageScrollView, forward: Bool, amount: Int) {}
 }
 
 // MARK: - ImageScrollView
@@ -904,19 +904,8 @@ class ImageScrollView: NSScrollView {
 
         guard steps != 0 else { return }
 
-        // 1. 設定 isOptionScrolling flag（force thumbnail fallback）
-        scrollDelegate?.scrollViewOptionScrollWillNavigate(self)
-        // 2. 觸發導航（用 amount=1 逐張切換，確保 dual-page 相容）
-        let navCount = abs(steps)
-        for _ in 0..<navCount {
-            if steps > 0 {
-                scrollDelegate?.scrollViewRequestNextImage(self, amount: 1)
-            } else {
-                scrollDelegate?.scrollViewRequestPreviousImage(self, amount: 1)
-            }
-        }
-        // 3. 導航完成，更新 HUD（此時 folder.currentIndex 已是最新值）
-        scrollDelegate?.scrollViewOptionScrollDidNavigate(self)
+        // 單一 delegate 呼叫：VC 處理 flag 設定、導航、HUD 更新
+        scrollDelegate?.scrollViewOptionScrollNavigate(self, forward: steps > 0, amount: abs(steps))
     }
 
     // MARK: - Pinch Zoom
