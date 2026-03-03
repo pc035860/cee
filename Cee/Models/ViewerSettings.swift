@@ -21,6 +21,9 @@ struct ViewerSettings: Codable {
     var arrowLeftRightNavigation: Bool = true   // left/right arrows navigate images
     var arrowUpDownNavigation: Bool = false      // up/down arrows navigate images at edges
 
+    // MARK: - Fast Browse
+    var thumbnailFallback: Bool = false          // use low-res preview while fast browsing
+
     // MARK: - Scroll Sensitivity
     enum ScrollSensitivity: String, Codable {
         case low, medium, high
@@ -80,6 +83,7 @@ struct ViewerSettings: Codable {
         showPixelsWhenZoomingIn = (try? c.decode(Bool.self, forKey: .showPixelsWhenZoomingIn)) ?? d.showPixelsWhenZoomingIn
         arrowLeftRightNavigation = (try? c.decode(Bool.self, forKey: .arrowLeftRightNavigation)) ?? d.arrowLeftRightNavigation
         arrowUpDownNavigation = (try? c.decode(Bool.self, forKey: .arrowUpDownNavigation)) ?? d.arrowUpDownNavigation
+        thumbnailFallback = (try? c.decode(Bool.self, forKey: .thumbnailFallback)) ?? d.thumbnailFallback
         trackpadSensitivity = (try? c.decode(ScrollSensitivity.self, forKey: .trackpadSensitivity)) ?? d.trackpadSensitivity
         wheelSensitivity = (try? c.decode(ScrollSensitivity.self, forKey: .wheelSensitivity)) ?? d.wheelSensitivity
         resizeWindowAutomatically = (try? c.decode(Bool.self, forKey: .resizeWindowAutomatically)) ?? d.resizeWindowAutomatically

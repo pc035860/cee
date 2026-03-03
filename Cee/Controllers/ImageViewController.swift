@@ -784,8 +784,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goNext(amount: amount) else { return }
         }
-        loadCurrentImageThumbnailOnly(initialScroll: .top)
-        scheduleFullResLoad()
+        if settings.thumbnailFallback {
+            loadCurrentImageThumbnailOnly(initialScroll: .top)
+            scheduleFullResLoad()
+        } else {
+            loadCurrentImage(initialScroll: .top)
+        }
         updateWindowTitle()
     }
 
@@ -799,8 +803,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goPrevious(amount: amount) else { return }
         }
-        loadCurrentImageThumbnailOnly(initialScroll: .bottom)
-        scheduleFullResLoad()
+        if settings.thumbnailFallback {
+            loadCurrentImageThumbnailOnly(initialScroll: .bottom)
+            scheduleFullResLoad()
+        } else {
+            loadCurrentImage(initialScroll: .bottom)
+        }
         updateWindowTitle()
     }
 
@@ -1027,6 +1035,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         scrollView.resetEdgeState()
     }
 
+    @objc func toggleThumbnailFallback(_ sender: Any? = nil) {
+        settings.thumbnailFallback.toggle()
+        settings.save()
+    }
+
     @objc func toggleReadingDirection(_ sender: Any? = nil) {
         settings.readingDirection = (settings.readingDirection == .leftToRight)
             ? .rightToLeft : .leftToRight
@@ -1243,6 +1256,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.arrowLeftRightNavigation ? .on : .off; return true
         case #selector(toggleArrowUpDownNav(_:)):
             menuItem.state = settings.arrowUpDownNavigation ? .on : .off; return true
+        case #selector(toggleThumbnailFallback(_:)):
+            menuItem.state = settings.thumbnailFallback ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):

@@ -126,7 +126,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 ## Fast Browse (Phase 0–1)
 
 - **ImageLoader** — `loadThumbnail(at:maxSize:)` via `CGImageSourceCreateThumbnailAtIndex` (~16ms). `fetchImageDimensions(at:)` for metadata-only size read. `cancelLoad(for:)`. Directional prefetch: `updateCache(prefetchDirection:)` extends ±cacheRadius in nav direction.
-- **Navigation throttle** — `NavigationThrottle` ~20fps; `scheduleFullResLoad` 150ms after last key. Full-res load must use scroll intent (`.top`/`.bottom` from `lastPrefetchDirection`), never `.preserve` — document size change makes preserve meaningless.
+- **Navigation throttle** — `NavigationThrottle` ~20fps; `scheduleFullResLoad` 100ms after last key. Full-res load must use scroll intent (`.top`/`.bottom` from `lastPrefetchDirection`), never `.preserve` — document size change makes preserve meaningless.
+- **Thumbnail fallback is opt-in** — `settings.thumbnailFallback` (default off). When off, navigation loads full-res directly. When on, shows thumbnail first then delays full-res. Toggle in View menu: "Use Low-Res Preview While Browsing".
 - **Thumbnail→fullRes layout** — When `thumbnailOnly`, use full-res dimensions for `configureSingle`/`applyFitting` (from `imageSizeCache` or `fetchImageDimensions`). Avoids magnification jump on portrait fit-to-width. Don't overwrite `imageSizeCache` during thumbnail load.
 - **applyInitialScrollPosition** — Must run after `applyCenteringInsetsIfNeeded`; else recenter overwrites top/bottom. For `.bottom`, defer one frame to avoid jump.
 - **Option+方向鍵** — Jump 10 images (single-page mode). Dual page keeps 1 spread.
