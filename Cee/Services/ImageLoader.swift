@@ -2,12 +2,26 @@ import AppKit
 import ImageIO
 import PDFKit
 
+/// 方向性 prefetch：往翻頁方向多預載
+enum PrefetchDirection {
+    case none
+    case forward
+    case backward
+}
+
 /// 使用 actor 確保快取的執行緒安全
 actor ImageLoader {
     private var cache: [URL: NSImage] = [:]
+    /// 縮圖快取：同時存 image 和 fullSize，避免 cache-hit 時二次開檔
+    private struct ThumbnailEntry {
+        let image: NSImage
+        let fullSize: CGSize
+    }
+    private var thumbnailCache: [URL: ThumbnailEntry] = [:]
     private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
+    private let prefetchExtra = Constants.prefetchDirectionExtraCount
 
     // 追蹤預載任務（支援取消）
     private var prefetchTasks: [PDFCacheKey: Task<Void, Never>] = [:]
@@ -17,6 +31,24 @@ actor ImageLoader {
     private struct PDFCacheKey: Hashable {
         let url: URL
         let pageIndex: Int
+    }
+
+    /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
+    /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
+    /// PDF 不支援，回傳 nil
+    func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> (image: NSImage, fullSize: CGSize)? {
+        if let cached = thumbnailCache[url] {
+            return (cached.image, cached.fullSize)
+        }
+
+        let result = await Task.detached(priority: .userInitiated) {
+            Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
+        }.value
+
+        if let result {
+            thumbnailCache[url] = ThumbnailEntry(image: result.image, fullSize: result.fullSize)
+        }
+        return result
     }
 
     func loadImage(at url: URL) async -> NSImage? {
@@ -145,6 +177,54 @@ actor ImageLoader {
 
     // MARK: - Image Loading
 
+    /// PDF URL 判定（共用，避免散佈 pathExtension 比較）
+    private static func isPDFURL(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("pdf") == .orderedSame
+    }
+
+    /// 僅讀 metadata 取得尺寸（不解碼，portrait fit-to-width 時避免 thumbnail→fullRes 跳動）
+    private static func readImageDimensions(at url: URL) -> CGSize? {
+        guard !isPDFURL(url) else { return nil }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary? else { return nil }
+        let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        guard w > 0, h > 0 else { return nil }
+        return CGSize(width: w, height: h)
+    }
+
+    /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖，同時讀取 full-res 尺寸
+    /// 共用同一個 CGImageSource，避免二次開檔
+    private static func decodeThumbnailWithDimensions(at url: URL, maxSize: CGFloat) -> (image: NSImage, fullSize: CGSize)? {
+        guard !isPDFURL(url) else { return nil }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+
+        // 讀 full-res dimensions（同一個 source，零額外 I/O）
+        let fullSize: CGSize
+        if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?,
+           let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+           let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+           w > 0, h > 0 {
+            fullSize = CGSize(width: w, height: h)
+        } else {
+            fullSize = .zero  // fallback: caller 會用 thumbnail size
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxSize,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        let image = NSImage(cgImage: cgImage, size: NSSize(
+            width: cgImage.width,
+            height: cgImage.height
+        ))
+        let effectiveSize = fullSize == .zero ? image.size : fullSize
+        return (image, effectiveSize)
+    }
+
     /// 使用 ImageIO 高效解碼（比 NSImage(contentsOf:) 更高效）
     private static func decodeImage(at url: URL) -> NSImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -176,11 +256,33 @@ actor ImageLoader {
         return image
     }
 
+    /// 取消指定 item 的預載任務
+    func cancelLoad(for item: ImageItem) {
+        if let pageIndex = item.pdfPageIndex {
+            let key = PDFCacheKey(url: item.url, pageIndex: pageIndex)
+            prefetchTasks[key]?.cancel()
+            prefetchTasks.removeValue(forKey: key)
+        } else {
+            imagePrefetchTasks[item.url]?.cancel()
+            imagePrefetchTasks.removeValue(forKey: item.url)
+        }
+    }
+
     /// 預載周圍項目（圖片或 PDF 頁面），釋放遠離的快取
+    /// 方向性 prefetch：往 direction 方向多預載 prefetchExtra 張
     /// ⚠️ 接收值型別參數（ImageItem 是 Sendable struct）避免 Swift 6 Sendable 問題
-    func updateCache(currentIndex: Int, items: [ImageItem]) {
+    func updateCache(currentIndex: Int, items: [ImageItem], prefetchDirection: PrefetchDirection = .none) {
         guard !items.isEmpty else { return }
-        let range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
+
+        let range: ClosedRange<Int>
+        switch prefetchDirection {
+        case .forward:
+            range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius + prefetchExtra)
+        case .backward:
+            range = max(0, currentIndex - cacheRadius - prefetchExtra)...min(items.count - 1, currentIndex + cacheRadius)
+        case .none:
+            range = max(0, currentIndex - cacheRadius)...min(items.count - 1, currentIndex + cacheRadius)
+        }
 
         // 計算需要的 keys
         let activeImageURLs = Set(items[range].filter { !$0.isPDF }.map(\.url))
@@ -201,6 +303,7 @@ actor ImageLoader {
 
         // 釋放超出範圍的快取
         cache = cache.filter { activeImageURLs.contains($0.key) }
+        thumbnailCache = thumbnailCache.filter { activeImageURLs.contains($0.key) }
         pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
         pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
 
@@ -228,11 +331,12 @@ actor ImageLoader {
         }
     }
 
-    /// 取消所有預載任務
+    /// 取消所有預載任務並清空縮圖快取
     func cancelAllPrefetchTasks() {
         for (_, task) in prefetchTasks { task.cancel() }
         for (_, task) in imagePrefetchTasks { task.cancel() }
         prefetchTasks.removeAll()
         imagePrefetchTasks.removeAll()
+        thumbnailCache.removeAll()
     }
 }

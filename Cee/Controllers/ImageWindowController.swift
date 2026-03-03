@@ -191,10 +191,28 @@ class ImageWindowController: NSWindowController {
               !window.styleMask.contains(.fullScreen) else { return }
         let visibleFrame = screen.visibleFrame
         let maxSize = visibleFrame.size
-        let targetSize = NSSize(
+        var targetSize = NSSize(
             width: min(size.width, maxSize.width),
             height: min(size.height, maxSize.height)
         )
+        // 當 requested size 低於視窗 minimum 時，視窗不會再縮小。
+        // 若仍依計算值移動 origin，會造成「視窗往右漂移」。
+        // 改為不變更視窗（early return），避免漂移。
+        if !center {
+            let currentContent = window.contentRect(forFrameRect: window.frame).size
+            let minFrame = NSRect(origin: .zero, size: window.minSize)
+            let effectiveMinContent = window.contentRect(forFrameRect: minFrame).size
+            let wouldShrink = targetSize.width < currentContent.width || targetSize.height < currentContent.height
+            let belowMin = targetSize.width < effectiveMinContent.width || targetSize.height < effectiveMinContent.height
+            if wouldShrink && belowMin {
+                DebugCentering.log(
+                    "resizeToFitImage skip: target=\(String(format: "%.1f×%.1f", targetSize.width, targetSize.height)) " +
+                    "< minContent=\(String(format: "%.0f×%.0f", effectiveMinContent.width, effectiveMinContent.height)) " +
+                    "current=\(String(format: "%.1f×%.1f", currentContent.width, currentContent.height))"
+                )
+                return
+            }
+        }
         let currentCenter = NSPoint(x: window.frame.midX, y: window.frame.midY)
         let targetFrameSize = window.frameRect(
             forContentRect: NSRect(origin: .zero, size: targetSize)
@@ -217,7 +235,21 @@ class ImageWindowController: NSWindowController {
             for: targetFrame,
             within: visibleFrame
         )
+        if DebugCentering.isEnabled {
+            let before = window.frame
+            DebugCentering.log(
+                "resizeToFitImage before frame=\(String(format: "%.1f,%.1f %.1f×%.1f", before.origin.x, before.origin.y, before.width, before.height)) " +
+                "target=\(String(format: "%.1f,%.1f %.1f×%.1f", targetFrame.origin.x, targetFrame.origin.y, targetFrame.width, targetFrame.height)) " +
+                "center=\(center)"
+            )
+        }
         window.setFrame(targetFrame, display: true, animate: false)
+        if DebugCentering.isEnabled {
+            let after = window.frame
+            DebugCentering.log(
+                "resizeToFitImage after frame=\(String(format: "%.1f,%.1f %.1f×%.1f", after.origin.x, after.origin.y, after.width, after.height))"
+            )
+        }
     }
 
     private func clampedWindowOrigin(for frame: NSRect, within visibleFrame: NSRect) -> NSPoint {

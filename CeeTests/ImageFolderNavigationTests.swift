@@ -103,6 +103,26 @@ final class ImageFolderNavigationTests: XCTestCase {
         XCTAssertEqual(folder.currentIndex, 0)
     }
 
+    func testGoNext_amount10_clampsToEnd() {
+        let folder = makeFolder(count: 15)
+        XCTAssertTrue(folder.goNext(amount: 10))
+        XCTAssertEqual(folder.currentIndex, 10)
+        // 再跳 10 會超出，clamp 到 14
+        XCTAssertTrue(folder.goNext(amount: 10))
+        XCTAssertEqual(folder.currentIndex, 14)
+        XCTAssertFalse(folder.goNext(amount: 10))
+    }
+
+    func testGoPrevious_amount10_clampsToStart() {
+        let folder = makeFolder(count: 15)
+        folder.currentIndex = 14
+        XCTAssertTrue(folder.goPrevious(amount: 10))
+        XCTAssertEqual(folder.currentIndex, 4)
+        XCTAssertTrue(folder.goPrevious(amount: 10))
+        XCTAssertEqual(folder.currentIndex, 0)
+        XCTAssertFalse(folder.goPrevious(amount: 10))
+    }
+
     func testCurrentImage_correct() {
         let folder = makeFolder(count: 3)
         folder.goNext()

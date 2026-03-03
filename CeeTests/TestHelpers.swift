@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
 /// Minimal valid 1x1 white PNG (67 bytes).
 /// Shared across test cases that need real image files on disk.
 func minimalPNG() -> Data {
@@ -17,3 +21,35 @@ func minimalPNG() -> Data {
     ]
     return Data(bytes)
 }
+
+#if canImport(AppKit)
+/// Creates a PNG file of given dimensions (for thumbnail / resize tests).
+/// Returns temp file URL. Caller should delete when done.
+func createPNG(width: Int, height: Int) throws -> URL {
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else { throw NSError(domain: "TestHelpers", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap"]) }
+    if let ctx = NSGraphicsContext(bitmapImageRep: rep) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        ctx.cgContext.setFillColor(CGColor.white)
+        ctx.cgContext.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    guard let pngData = rep.representation(using: .png, properties: [:]) else {
+        throw NSError(domain: "TestHelpers", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])
+    }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+    try pngData.write(to: url)
+    return url
+}
+#endif
