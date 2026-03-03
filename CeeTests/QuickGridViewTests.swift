@@ -177,4 +177,22 @@ final class QuickGridViewTests: XCTestCase {
         grid.applyItemSize(80)
         XCTAssertEqual(grid.currentCellSize, 80)
     }
+
+    func testOnCellSizeDidChange_firesOnResize() {
+        let grid = QuickGridView()
+        var capturedSize: CGFloat?
+        grid.onCellSizeDidChange = { size in capturedSize = size }
+
+        grid.applyItemSize(140)
+        XCTAssertEqual(capturedSize, 140, "onCellSizeDidChange should fire with clamped size")
+    }
+
+    func testOnCellSizeDidChange_doesNotFireOnSameSize() {
+        let grid = QuickGridView()
+        var callCount = 0
+        grid.onCellSizeDidChange = { _ in callCount += 1 }
+
+        grid.applyItemSize(grid.currentCellSize)
+        XCTAssertEqual(callCount, 0, "onCellSizeDidChange should not fire when size unchanged")
+    }
 }
