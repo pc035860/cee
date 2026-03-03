@@ -59,7 +59,8 @@ private final class GridCollectionView: NSCollectionView {
             onReturn?()
         case 5 where modifiers == []:  // bare G (dismiss)
             onDismiss?()
-        case 24 where modifiers == .command:  // Cmd+= (ANSI keyCode 24) — grow by 10pt
+        case 24 where modifiers == .command || modifiers == [.command, .shift]:
+            // Cmd+= or Cmd+Shift+= (Cmd+) — grow by 10pt (ANSI keyCode 24)
             onCellSizeChange?(currentCellSize + 10)
         case 27 where modifiers == .command:  // Cmd+- (ANSI keyCode 27) — shrink by 10pt
             onCellSizeChange?(currentCellSize - 10)
@@ -242,9 +243,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
 
-        // Keep selected item visible after layout change
+        // Keep selected item visible after layout change (vertical scroll grid)
         if let selected = collectionView.selectionIndexPaths.first {
-            collectionView.scrollToItems(at: [selected], scrollPosition: .nearestHorizontalEdge)
+            collectionView.scrollToItems(at: [selected], scrollPosition: .centeredVertically)
         }
 
         // Notify for persistence
