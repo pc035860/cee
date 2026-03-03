@@ -102,7 +102,7 @@
 
 ---
 
-### Tier 2 — Phase 2（高價值）
+### Tier 2 — Phase 2（高價值）✅ COMPLETED
 
 #### 改良版 B3：Quick Grid（按需縮圖網格）
 
@@ -186,9 +186,36 @@ Phase 0: 基礎設施（thumbnail loader + 節流 + 位置顯示）
     ↓
 Phase 1 (Tier 1): 流暢鍵盤導航 + Option+方向鍵跳躍
     ↓
-Phase 2 (Tier 2): Quick Grid 按需縮圖網格
+Phase 2 (Tier 2): Quick Grid 按需縮圖網格 ✅ COMPLETED
     ↓
 Phase 3 (Tier 3): Option+scroll 快速切圖（可選）
 ```
 
 每個 Phase 獨立可用，不依賴後續 Phase。
+
+---
+
+## Phase 2 完成記錄
+
+**實作日期**：2026-03-03
+**Branch**：feat/image-browse-phase2
+**Commits**：5 commits (e3c69e0..0846641)
+
+### 實作內容
+- **QuickGridView.swift** — NSCollectionView overlay with grid-local thumbnail cache
+- **QuickGridCell.swift** — NSCollectionViewItem with thumbnail/filename/highlight
+- **Keyboard**: bare G toggle, Enter confirm, ESC dismiss, arrow keys navigate
+- **Thumbnails**: async loading via ImageLoader.loadThumbnail(maxSize:240), grid-local cache
+- **Integration**: menu item, folder change dismiss, delegate-based navigation
+
+### MVP 簡化決策
+- EXIF tier 2 + CGImageSource tier 3 合併為單一 async load（CGImageSource 已內含 EXIF extraction）
+- PDF 僅顯示檔名（無縮圖），defer 到未來
+- 使用 NSView overlay 而非 NSPanel（與 EmptyStateView 一致）
+- NSCollectionViewPrefetching 不存在於 AppKit，改用 itemForRepresentedObjectAt 觸發載入
+
+### Review 中發現的重要修正
+- `didSelectItemsAt` 會在鍵盤 arrow 時觸發 → 用 NSApp.currentEvent 過濾
+- Enter key 不會透過 responder chain 到達 QuickGridView → 建立 GridCollectionView subclass
+- Thumbnail cache 污染（240px 寫入 shared cache）→ Task.isCancelled guard + clearThumbnailCache()
+- G key 在 grid 開啟時不生效（first responder 是 collection view）→ GridCollectionView 處理 bare G
