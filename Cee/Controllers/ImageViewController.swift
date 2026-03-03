@@ -1606,7 +1606,7 @@ extension ImageViewController: ImageScrollViewDelegate {
     /// - Returns: 是否有實際移動
     @discardableResult
     private func optionScrollNavigate(forward: Bool, amount: Int) -> Bool {
-        guard let folder else { return false }
+        guard let folder, !folder.images.isEmpty else { return false }
         let direction: PrefetchDirection = forward ? .forward : .backward
         lastPrefetchDirection = direction
         var moved = false
