@@ -132,8 +132,18 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **applyInitialScrollPosition** — Must run after `applyCenteringInsetsIfNeeded`; else recenter overwrites top/bottom. For `.bottom`, defer one frame to avoid jump.
 - **Option+方向鍵** — Jump 10 images (single-page mode). Dual page keeps 1 spread.
 
+## Quick Grid (Phase 2)
+
+- **`QuickGridView`** — NSCollectionView overlay (bare G key toggle). `QuickGridCell` with thumbnail/filename/highlight. Grid-local thumbnail cache (`gridThumbnails[Int: NSImage]`) separate from `ImageLoader.thumbnailCache`.
+- **NSCollectionView `didSelectItemsAt` fires on arrow keys** — not just mouse clicks. Filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only navigation.
+- **NSCollectionView doesn't forward Enter via responder chain** — subclass (`GridCollectionView`) intercepts keyCode 36/76 at first-responder level. Same pattern for bare G key dismiss.
+- **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only. Load thumbnails in `itemForRepresentedObjectAt:` instead.
+- **Thumbnail cache cross-contamination** — grid loads at 240px, main view expects 512px, same URL key. Fix: `Task.isCancelled` guard before cache write + `clearThumbnailCache()` on grid dismiss.
+- **Overlay pattern** — add to `self.view` (not scrollView), pin all edges, cleanup on dismiss. Same pattern as `EmptyStateView`/`ErrorPlaceholderView`.
+
 ## Recent Significant Changes
 
+- **Quick Grid (Phase 2):** Thumbnail grid overlay (G key), async loading, grid-local cache, Enter/ESC/G keyboard handling, cache pollution prevention.
 - **Centering/window drift fixes:** Anchor-out-of-bounds → use document center; resizeToFitImage below min → early return to avoid drift.
 - **Fast browse (Phase 0–1):** Thumbnail loader, navigation throttle, directional prefetch, low-res fallback with delayed full-res, Option+arrow jump 10.
 - **Subfolder auto-discovery (Phase 2.5):** Folder drops with no top-level images auto-find first subfolder with images (BFS, max depth 2). Error placeholder fix (z-order), status bar clear on empty folder.
