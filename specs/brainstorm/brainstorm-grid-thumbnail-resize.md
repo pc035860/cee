@@ -223,23 +223,35 @@ private var thumbnailCache: [URL: ThumbnailEntry] = [:]
 
 ## 六、推薦實作路線
 
-### Phase 1 — MVP（方案 A：Pinch + Cmd+Scroll）
+### Phase 1 — MVP（方案 A：Pinch + Cmd+Scroll）✅ 已完成
 
-估計改動：~50 行
+> 完成日期：2026-03-04 | 分支：feat/grid-thumnail-resize | Commits: 7738b20, 128a571
 
-1. `Constants.swift`：加 `quickGridMinCellSize = 80`, `quickGridMaxCellSize = 200`
-2. `QuickGridView.swift`：加 `currentCellSize` 狀態
-3. `GridCollectionView`：override `magnifyWithEvent`（Pinch）
-4. Grid 的 enclosing NSScrollView：override `scrollWheel`（Cmd+Scroll）
-5. 縮圖保持 `maxSize: 240`，不改 ImageLoader
-6. Cell size 變化時清除 `gridThumbnails`，visible cells 自動重新載入
+實際改動：~100 行
 
-### Phase 2 — 增強（方案 B：加 Slider）
+1. ✅ `Constants.swift`：加 `quickGridMinCellSize = 80`, `quickGridMaxCellSize = 200`
+2. ✅ `QuickGridView.swift`：加 `currentCellSize` 狀態 + `applyItemSize()` 統一入口
+3. ✅ `GridCollectionView`：override `magnify(with:)`（Pinch，incremental 計算）
+4. ✅ `GridScrollView`（新增 NSScrollView 子類別）：override `scrollWheel`（Cmd+Scroll）
+5. ✅ 縮圖保持 `maxSize: 240`，不改 ImageLoader
+6. ✅ 240px 縮圖在 80-200pt 範圍內有效，resize 時不清除快取（NSImageView 自動縮放）
 
-1. 底部加 NSSlider（仿 Finder Status Bar / Lightroom 工具列）
-2. Slider 與 Pinch/Cmd+Scroll 雙向同步
-3. 可選：加入 Cmd+=/- 鍵盤快捷鍵
-4. 可選：size 記憶（UserDefaults）
+**實作要點**：
+- Pinch 使用 `currentCellSize * (1 + event.magnification)` incremental 計算，匹配 ImageScrollView 模式
+- Cmd+Scroll 區分 trackpad (sensitivity 0.5) vs mouse (sensitivity 3.0) via `hasPreciseScrollingDeltas`
+- 兩個 override 都不呼叫 `super`，防止事件穿透到底層 ImageScrollView
+- `allowsMagnification = false` 防止 NSScrollView 消費 pinch 事件
+
+### Phase 2 — 增強（方案 B：加 Slider）✅ 已完成
+
+> 完成日期：2026-03-04 | 分支：feat/grid-thumnail-resize | Commits: 9173bb5, c902642
+
+實際改動：~120 行
+
+1. ✅ 底部加 NSSlider（30pt sliderContainer，仿 Finder Status Bar）
+2. ✅ Slider 與 Pinch/Cmd+Scroll 雙向同步（`isUpdatingSliderProgrammatically` 防回授迴圈）
+3. ✅ Cmd+=/- 鍵盤快捷鍵（含 Cmd+Shift+= 變體）
+4. ✅ size 記憶（ViewerSettings.quickGridCellSize + UserDefaults）
 
 ### Phase 3 — 優化（確認瓶頸才做）
 
