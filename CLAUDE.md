@@ -45,6 +45,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Re-apply AutoFit after fullscreen transition** in `handleFullscreenTransitionDidComplete()`.
 - **Degenerate scroll ranges are normal.** When image < viewport, `min == max`; clamp exactly.
 - **Pinch lifecycle:** final normalization only at `.ended/.cancelled`, not during `.changed`.
+- **Anchor out-of-bounds** — When recenter anchor lies outside document bounds (e.g. after zoom shrink), use document center. Clamping with out-of-bounds anchor causes rightward bias.
 
 ## Scroll & Page-Turn
 
@@ -88,6 +89,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Zoom actions must call `resizeWindowToFitZoomedImage`** after magnification change.
 - **Dynamic min magnification** — `effectiveMinMagnification()` prevents magnification below window minimum, avoiding desync drift.
 - **`isZooming` flag** — suppresses force-recenter during zoom to preserve pan position.
+- **resizeToFitImage below min** — When target size < window minimum and would shrink, early return. Otherwise origin updates without size change → window drift.
 
 ## PDF Support
 
@@ -131,6 +133,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Centering/window drift fixes:** Anchor-out-of-bounds → use document center; resizeToFitImage below min → early return to avoid drift.
 - **Fast browse (Phase 0–1):** Thumbnail loader, navigation throttle, directional prefetch, low-res fallback with delayed full-res, Option+arrow jump 10.
 - **Subfolder auto-discovery (Phase 2.5):** Folder drops with no top-level images auto-find first subfolder with images (BFS, max depth 2). Error placeholder fix (z-order), status bar clear on empty folder.
 - **Browse-mode drag-drop (Phase 2):** ImageScrollView drop support, folder drops, same-folder optimization, visual feedback.

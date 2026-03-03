@@ -1300,8 +1300,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
               !window.styleMask.contains(.fullScreen),
               let imageSize = currentDocumentSize else { return }
 
-        let anchorPoint = viewportCenterInDocumentCoordinates()
+        let anchorPoint = activeMagnifyAnchor ?? viewportCenterInDocumentCoordinates()
         let statusBarH = effectiveStatusBarHeight
+        if DebugCentering.isEnabled {
+            DebugCentering.log(
+                "resizeWindowToFitZoomedImage mag=\(debugFloat(magnification)) " +
+                "anchor=\(activeMagnifyAnchor != nil ? "locked" : "viewportCenter") \(debugPoint(anchorPoint))"
+            )
+        }
         let displayedSize = NSSize(
             width: imageSize.width * magnification,
             height: imageSize.height * magnification + statusBarH
@@ -1341,9 +1347,23 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let clipSize = clipView.bounds.size
         guard clipSize.width > 0, clipSize.height > 0 else { return }
 
+        let docSize = documentView.frame.size
+        // 當 anchor 超出 document bounds 時，改用 document 中心，避免 clamp 造成 rightward bias
+        let effectiveAnchor: NSPoint
+        if anchorPoint.x < 0 || anchorPoint.x > docSize.width ||
+           anchorPoint.y < 0 || anchorPoint.y > docSize.height {
+            effectiveAnchor = NSPoint(x: docSize.width / 2.0, y: docSize.height / 2.0)
+            DebugCentering.log(
+                "recenterViewport anchorOutOfBounds anchor=\(debugPoint(anchorPoint)) doc=\(debugSize(docSize)) " +
+                "→ effectiveAnchor=\(debugPoint(effectiveAnchor))"
+            )
+        } else {
+            effectiveAnchor = anchorPoint
+        }
+
         let unclampedOrigin = NSPoint(
-            x: anchorPoint.x - clipSize.width / 2.0,
-            y: anchorPoint.y - clipSize.height / 2.0
+            x: effectiveAnchor.x - clipSize.width / 2.0,
+            y: effectiveAnchor.y - clipSize.height / 2.0
         )
 
         let targetOrigin: NSPoint
@@ -1369,7 +1389,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             )
         }
         DebugCentering.log(
-            "recenterViewport anchor=\(debugPoint(anchorPoint)) clip=\(debugSize(clipSize)) doc=\(debugSize(documentView.frame.size)) " +
+            "recenterViewport anchor=\(debugPoint(effectiveAnchor)) clip=\(debugSize(clipSize)) doc=\(debugSize(documentView.frame.size)) " +
             "target=\(debugPoint(targetOrigin)) current=\(debugPoint(clipView.bounds.origin))"
         )
         clipView.scroll(to: targetOrigin)
