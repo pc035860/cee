@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 @MainActor
 protocol QuickGridViewDelegate: AnyObject {
@@ -162,6 +163,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Current grid cell size — single source of truth. Clamped to min/max range.
     private(set) var currentCellSize: CGFloat = Constants.quickGridCellSize
 
+    /// Dynamic aspect ratio (height/width) determined by sampling folder images.
+    private var currentAspectRatio: CGFloat = Constants.quickGridCellAspectRatio
+
     /// Dynamic thumbnail maxSize based on current cell size.
     /// Three tiers to balance sharpness vs memory:
     /// <= 120pt → 240px, <= 240pt → 480px, > 240pt → 1024px
@@ -209,7 +213,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let layout = NSCollectionViewFlowLayout()
         layout.itemSize = NSSize(
             width: currentCellSize,
-            height: currentCellSize
+            height: currentCellSize * Constants.quickGridCellAspectRatio
         )
         layout.minimumInteritemSpacing = Constants.quickGridSpacing
         layout.minimumLineSpacing = Constants.quickGridSpacing
@@ -295,7 +299,71 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             sizeSlider.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
         ])
 
+        // Respond to window resize: re-center items
+        gridScrollView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(gridFrameDidChange),
+            name: NSView.frameDidChangeNotification, object: gridScrollView)
+
         registerForDraggedTypes([.fileURL])
+    }
+
+    /// Item size derived directly from `currentCellSize` (Finder-style: smooth resize, columns change naturally).
+    private var currentItemSize: NSSize {
+        NSSize(width: currentCellSize, height: currentCellSize * currentAspectRatio)
+    }
+
+    /// Update section insets + inter-item spacing for space-around distribution.
+    /// Each item gets equal gap on both sides; edge gap = G, between items = 2G.
+    private func updateSpaceAroundLayout() {
+        let available = gridScrollView.bounds.width
+        guard available > 0 else { return }
+
+        let cellWidth = currentCellSize
+        let minSpacing = Constants.quickGridSpacing
+        let baseInset = Constants.quickGridInset
+
+        let cols = max(1, floor((available - baseInset * 2 + minSpacing) / (cellWidth + minSpacing)))
+        // space-around: available = cols * cellWidth + 2G * cols  →  G = remaining / (2 * cols)
+        let remaining = available - cols * cellWidth
+        let gap = remaining / (cols * 2)
+
+        flowLayout.sectionInset = NSEdgeInsets(
+            top: baseInset, left: gap,
+            bottom: baseInset, right: gap)
+        flowLayout.minimumInteritemSpacing = gap * 2
+    }
+
+    @objc private func gridFrameDidChange(_ note: Notification) {
+        updateSpaceAroundLayout()
+        collectionView.collectionViewLayout?.invalidateLayout()
+    }
+
+    /// Sample image headers to compute median aspect ratio (height/width).
+    /// Reads only file headers via CGImageSource — no pixel decode, ~0.1ms per file.
+    private func sampleMedianAspectRatio(from items: [ImageItem]) -> CGFloat {
+        let count = min(Constants.quickGridAspectRatioSampleCount, items.count)
+        guard count > 0 else { return Constants.quickGridCellAspectRatio }
+
+        var ratios: [CGFloat] = []
+        ratios.reserveCapacity(count)
+
+        for i in 0..<count {
+            let item = items[i]
+            guard !item.isPDF else { continue }
+
+            guard let source = CGImageSourceCreateWithURL(item.url as CFURL, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+                  let w = props[kCGImagePropertyPixelWidth as String] as? CGFloat,
+                  let h = props[kCGImagePropertyPixelHeight as String] as? CGFloat,
+                  w > 0, h > 0 else { continue }
+
+            ratios.append(h / w)
+        }
+
+        guard !ratios.isEmpty else { return Constants.quickGridCellAspectRatio }
+        ratios.sort()
+        return ratios[ratios.count / 2]
     }
 
     // MARK: - Cell Size
@@ -315,7 +383,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
         let updateLayout = {
-            self.flowLayout.itemSize = NSSize(width: clamped, height: clamped)
+            self.flowLayout.itemSize = self.currentItemSize
+            self.updateSpaceAroundLayout()
             self.collectionView.collectionViewLayout?.invalidateLayout()
         }
         if animated {
@@ -362,8 +431,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         self.currentIndex = currentIndex
         self.loader = loader
 
+        // Sample folder images to determine optimal cell aspect ratio (~5ms for 50 images)
+        currentAspectRatio = sampleMedianAspectRatio(from: items)
+
         // Ensure layout uses current cell size (supports re-open with last size in same session)
-        flowLayout.itemSize = NSSize(width: currentCellSize, height: currentCellSize)
+        flowLayout.itemSize = currentItemSize
+        updateSpaceAroundLayout()
         collectionView.currentCellSize = currentCellSize
         gridScrollView.currentCellSize = currentCellSize
 

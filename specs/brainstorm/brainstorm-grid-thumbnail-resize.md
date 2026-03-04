@@ -262,8 +262,8 @@ private var thumbnailCache: [URL: ThumbnailEntry] = [:]
 1. ✅ **極簡 Slider 美化**：自訂 `MinimalSliderCell`（2px 軌道 + 8x8 白色圓點旋鈕），容器高度 30→24pt，背景透明度 0.6→0.4
 2. ✅ **隱藏捲軸**：`hasVerticalScroller = false`，最乾淨的 grid overlay 視覺
 3. ✅ **縮放動畫**：Cmd+=/- 使用 `NSAnimationContext`（0.15s），Pinch/Cmd+Scroll 保持即時
-4. ✅ **動態縮圖解析度**：`ThumbnailCacheKey(url, maxSize)` 複合鍵，cellSize ≤120pt → 240px、>120pt → 480px
-5. ✅ **Tier 切換安全**：跨越 120pt 邊界時 cancel in-flight tasks + 清 cache + reloadData
+4. ✅ **動態縮圖解析度**：`ThumbnailCacheKey(url, maxSize)` 複合鍵，三級 tier（Phase 4 擴展至 ≤120pt→240px、≤240pt→480px、>240pt→1024px）
+5. ✅ **Tier 切換安全**：跨越 tier 邊界時 cancel in-flight tasks + 清 cache + reloadData
 
 **實作要點**：
 - `MinimalSliderCell` 的 `proportion` 計算屬性消除 drawBar/knobRect 重複
@@ -272,6 +272,23 @@ private var thumbnailCache: [URL: ThumbnailEntry] = [:]
 - Composite cache key 根本解決了 grid/main view 縮圖污染問題，grid dismiss 不再需要 clearThumbnailCache
 - Task 閉包前捕獲 maxSize，避免 actor boundary 存取問題
 - **測試覆蓋**：新增 5 個 unit tests — composite key 隔離（2）、tier 邊界切換（2）、animated resize（1），總計 133 tests 全綠
+
+### Phase 4 — Grid Layout 優化 ✅ 已完成
+
+> 完成日期：2026-03-04 | 分支：feat/grid-thumbnail-resize-phase3
+
+實際改動：~60 行（QuickGridView.swift + Constants.swift）
+
+1. ✅ **16:9 動態 cell 比例**：`sampleMedianAspectRatio()` 取樣前 50 張圖片 header（`CGImageSourceCopyPropertiesAtIndex`，不解碼像素，~5ms），中位數決定 cell height/width 比例
+2. ✅ **Finder 風格平滑縮放**：`currentCellSize` 直接作為 cell 寬度（非 auto-fill snapping），列數由 FlowLayout 自然決定
+3. ✅ **Space-around 排版**：`updateSpaceAroundLayout()` 動態計算 edge gap G 和 inter-item gap 2G，取代 FlowLayout 預設的 space-between 分佈
+4. ✅ **Window resize 響應**：監聽 `NSView.frameDidChangeNotification` 自動重算 space-around layout
+5. ✅ **三級縮圖解析度**：≤120pt→240px、≤240pt→480px、>240pt→1024px（配合 max cell size 512pt）
+
+**設計決策紀錄**：
+- **Auto-fill vs Finder 風格**：Auto-fill（反算 cellWidth 填滿行）在 16:9 寬 cell 下列數少、跳感明顯（2→3 欄寬度差異大）。改用 Finder 風格直接跟隨 slider 更自然
+- **取樣 vs 全掃描**：50 張取樣足夠代表資料夾特性，header-only 讀取無 I/O 瓶頸
+- **Space-around vs center**：Center 把 items 擠在一起置中，2 欄時中間無間距；space-around 讓每張圖周圍有均等間距，視覺更平衡
 
 ---
 

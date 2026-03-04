@@ -26,6 +26,8 @@ enum Constants {
     static let quickGridMaxCellSize: CGFloat = 512
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
+    static let quickGridCellAspectRatio: CGFloat = 9.0 / 16.0  // height / width, fallback default
+    static let quickGridAspectRatioSampleCount: Int = 50       // 取樣數量 for median ratio
 
     // Option+Scroll Fast Navigation (Phase 3)
     static let optionScrollThresholdTrackpad: CGFloat = 40   // trackpad 每張圖的累積閾值
