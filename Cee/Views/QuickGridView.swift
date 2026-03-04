@@ -99,8 +99,10 @@ private final class MinimalSliderCell: NSSliderCell {
 private final class GridCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
     var onDismiss: (() -> Void)?
-    /// Unified callback for cell size changes (pinch gesture).
+    /// Callback for cell size changes (pinch gesture, non-animated).
     var onCellSizeChange: ((CGFloat) -> Void)?
+    /// Callback for animated cell size changes (keyboard shortcuts).
+    var onAnimatedCellSizeChange: ((CGFloat) -> Void)?
     /// Current cell size — set by QuickGridView, read for incremental pinch calculation.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
 
@@ -114,9 +116,9 @@ private final class GridCollectionView: NSCollectionView {
             onDismiss?()
         case 24 where modifiers == .command || modifiers == [.command, .shift]:
             // Cmd+= or Cmd+Shift+= (Cmd+) — grow by 10pt (ANSI keyCode 24)
-            onCellSizeChange?(currentCellSize + 10)
+            onAnimatedCellSizeChange?(currentCellSize + 10)
         case 27 where modifiers == .command:  // Cmd+- (ANSI keyCode 27) — shrink by 10pt
-            onCellSizeChange?(currentCellSize - 10)
+            onAnimatedCellSizeChange?(currentCellSize - 10)
         default:
             super.keyDown(with: event)
         }
@@ -216,9 +218,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self.delegate?.quickGridViewDidRequestClose(self)
         }
 
-        // Wire resize handlers (pinch + Cmd+Scroll)
+        // Wire resize handlers (pinch + Cmd+Scroll — non-animated)
         collectionView.onCellSizeChange = { [weak self] newSize in
             self?.applyItemSize(newSize)
+        }
+        collectionView.onAnimatedCellSizeChange = { [weak self] newSize in
+            self?.applyItemSize(newSize, animated: true)
         }
         gridScrollView.onCmdScroll = { [weak self] newSize in
             self?.applyItemSize(newSize)
@@ -275,15 +280,24 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Only invalidates layout — does NOT clear the thumbnail cache because
     /// the 240px source thumbnails are valid for the entire 80–200pt range
     /// and NSImageView handles the rescaling automatically.
-    func applyItemSize(_ newSize: CGFloat) {
+    func applyItemSize(_ newSize: CGFloat, animated: Bool = false) {
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
         guard clamped != currentCellSize else { return }
         currentCellSize = clamped
 
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
-        flowLayout.itemSize = NSSize(width: clamped, height: clamped)
-        collectionView.collectionViewLayout?.invalidateLayout()
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                context.allowsImplicitAnimation = true
+                flowLayout.itemSize = NSSize(width: clamped, height: clamped)
+                collectionView.collectionViewLayout?.invalidateLayout()
+            }
+        } else {
+            flowLayout.itemSize = NSSize(width: clamped, height: clamped)
+            collectionView.collectionViewLayout?.invalidateLayout()
+        }
 
         // Sync current size to subviews for delta calculation
         collectionView.currentCellSize = clamped
