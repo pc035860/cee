@@ -49,7 +49,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Overlay event passthrough** — display-only overlays override `hitTest` → `nil`. For drag-drop, child `NSImageView` must call `unregisterDraggedTypes()` to prevent intercepting parent's drag session.
 - **NSVisualEffectView + alpha animation** — animating `alphaValue` causes material compositing flash. Use plain `layer.backgroundColor` with semi-transparent color instead.
 - **NSCollectionView re-enables scrollers** during layout/reloadData. Override getter+setter in subclass to lock off; simple property assignment is insufficient.
-- **NSCollectionView `didSelectItemsAt` fires on arrow keys** — filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only.
+- **NSCollectionView `didSelectItemsAt` fires on arrow keys** — filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only. Arrow key selection does NOT auto-scroll; call `scrollToItems(at:scrollPosition:)` manually in the else branch.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 
 ## XCUITest Gotchas
@@ -109,7 +109,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
-- **@objc selector fix:** Split `goToNextImage(amount:)` into `@objc` action + internal `navigateNext(amount:)` to prevent pointer-as-Int.
+- **Grid view fixes:** Cell drag-drop passthrough (`unregisterDraggedTypes` on thumbnailView), keyboard auto-scroll in `didSelectItemsAt`.
 - **Grid layout Phase 3-4:** Dynamic cell aspect ratio (EXIF-aware), smooth resize, space-around layout, thumbnail tiers with cache isolation.
 - **Option+scroll fast nav:** OptionScrollAccumulator, PositionHUDView, mouse sensitivity fix.
 - **Quick Grid:** Thumbnail grid overlay, async loading, keyboard handling, drag-drop support.

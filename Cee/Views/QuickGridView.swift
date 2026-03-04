@@ -572,10 +572,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
         } else {
             // Keyboard navigation: scroll selected item into view
-            collectionView.scrollToItems(
-                at: [indexPath],
-                scrollPosition: .centeredVertically
-            )
+            if let attrs = collectionView.layoutAttributesForItem(at: indexPath) {
+                collectionView.scrollToVisible(attrs.frame)
+            }
         }
     }
 
