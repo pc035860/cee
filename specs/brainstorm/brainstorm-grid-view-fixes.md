@@ -1,6 +1,6 @@
 # Grid View 修正 Roadmap
 
-## 問題 1：Highlight 邊框被裁切
+## 問題 1：Highlight 邊框被裁切 ✅ DONE
 
 ### 現象
 - **藍色 highlight**（當前顯示圖片）：右側和左上角的邊框有機會被裁切
@@ -21,6 +21,8 @@ border 畫在 layer bounds 的邊緣上（內外各佔一半），而 `masksToBo
 1. 不受 `masksToBounds` 影響
 2. 繪製區域略大於 cell bounds（或使用 inset 讓 thumbnail 內縮）
 3. z-order 高於所有 cell content，確保不被覆蓋
+
+> **實作結果**：將 highlightLayer frame 內凹 1pt（`bounds.insetBy(dx:1, dy:1)`），使 2pt border 完全在 cell bounds 內繪製，不被 `masksToBounds` 裁切也不被相鄰 cell 覆蓋。`zPosition = 100` 確保渲染在縮圖上方。同時改善視覺辨識度：active 圖片使用藍色邊框 + 15% 藍色蒙版，游標使用橘色邊框 + 8% 橘色蒙版（取代原本的白色），兩者重疊時 active 蒙版優先 + 橘色邊框。`viewDidLayout()` 取代 `autoresizingMask` 確保縮放時 frame 同步。Commit: `2bb1ac5`
 
 ---
 
