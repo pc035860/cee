@@ -128,7 +128,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Fast Browse (Phase 0–1, 3)
 
-- **ImageLoader** — `loadThumbnail(at:maxSize:)` returns `(image, fullSize)` tuple; decodes thumbnail and reads full-res dimensions from the same `CGImageSource` in one file open. `thumbnailCache` stores `ThumbnailEntry(image, fullSize)` for zero-I/O cache hits. `cancelLoad(for:)`. Directional prefetch: `updateCache(prefetchDirection:)` extends ±cacheRadius in nav direction.
+- **ImageLoader** — `loadThumbnail(at:maxSize:)` returns `(image, fullSize)` tuple; decodes thumbnail and reads full-res dimensions from the same `CGImageSource` in one file open. `thumbnailCache` keyed by `ThumbnailCacheKey(url, maxSize)` — composite key isolates grid (240/480px) from main view (512px). `cancelLoad(for:)`. Directional prefetch: `updateCache(prefetchDirection:)` extends ±cacheRadius in nav direction.
 - **Navigation throttle** — `NavigationThrottle` ~20fps (`CFAbsoluteTimeGetCurrent`); `scheduleFullResLoad` 100ms after last key. Full-res load must use scroll intent (`.top`/`.bottom` from `lastPrefetchDirection`), never `.preserve` — document size change makes preserve meaningless.
 - **Thumbnail fallback is opt-in** — `settings.thumbnailFallback` (default off). When off, navigation loads full-res directly. When on, shows thumbnail first then delays full-res. Toggle in View menu: "Use Low-Res Preview While Browsing".
 - **Thumbnail→fullRes layout** — `resolveLayoutSize` helper: when `thumbnailOnly`, uses full-res dimensions from `loadThumbnail` result (or `imageSizeCache`) for `configureSingle`/`applyFitting`. Avoids magnification jump on portrait fit-to-width. Don't overwrite `imageSizeCache` during thumbnail load.
@@ -144,15 +144,15 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **NSCollectionView `didSelectItemsAt` fires on arrow keys** — not just mouse clicks. Filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only navigation.
 - **NSCollectionView doesn't forward Enter via responder chain** — subclass (`GridCollectionView`) intercepts keyCode 36/76 at first-responder level. Same pattern for bare G key dismiss.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only. Load thumbnails in `itemForRepresentedObjectAt:` instead.
-- **Thumbnail cache cross-contamination** — grid loads at 240px, main view expects 512px, same URL key. Fix: `Task.isCancelled` guard before cache write + `clearThumbnailCache()` on grid dismiss.
+- **Thumbnail cache isolation** — `ThumbnailCacheKey(url, maxSize)` composite key prevents grid/main view cross-contamination. Grid dismiss no longer needs `clearThumbnailCache()`.
 - **Overlay pattern** — add to `self.view` (not scrollView), pin all edges, cleanup on dismiss. Same pattern as `EmptyStateView`/`ErrorPlaceholderView`.
 - **Grid accepts drops** — overlay blocks hit-test to views beneath. Grid registers `.fileURL` drag type and forwards drops via delegate. `clearCache()` (light reset, keeps loader) vs `cleanup()` (full teardown, nils loader).
 - **Grid persists across folder changes** — `loadFolder()` refreshes grid via `clearCache()` + `configure()` instead of dismissing. Empty folder → dismiss. Drop handling shared via `handleDrop(urls:)`.
-- **Grid cell resize** — Pinch (`magnify(with:)` on `GridCollectionView`), Cmd+Scroll (`scrollWheel` on `GridScrollView`), Cmd+=/-, and bottom NSSlider. All route through `applyItemSize()` → `invalidateLayout()` only (never `reloadData()`). 240px thumbnails valid for full 80–200pt range — no cache clear on resize. `isUpdatingSliderProgrammatically` flag prevents slider↔applyItemSize feedback loop. Cell size persisted in `ViewerSettings.quickGridCellSize`.
+- **Grid cell resize** — Pinch (`magnify(with:)` on `GridCollectionView`), Cmd+Scroll (`scrollWheel` on `GridScrollView`), Cmd+=/-, and bottom `MinimalSliderCell` (custom `NSSliderCell`, thin 2px track + 8px dot knob). All route through `applyItemSize()` → `invalidateLayout()` only (never `reloadData()`). Cmd+=+- uses `NSAnimationContext` animation (0.15s); pinch/scroll stays immediate. Two thumbnail tiers: ≤120pt→240px, >120pt→480px; tier change cancels in-flight tasks + clears `gridThumbnails` + `reloadData()`. `isUpdatingSliderProgrammatically` flag prevents slider↔applyItemSize feedback loop. Cell size persisted in `ViewerSettings.quickGridCellSize`. Scrollbar hidden (`hasVerticalScroller = false`).
 
 ## Recent Significant Changes
 
-- **Grid thumbnail resize:** Pinch/Cmd+Scroll/Cmd+=/- /Slider for dynamic cell size (80–200pt). `invalidateLayout()` only, no cache clear. Persisted via `ViewerSettings.quickGridCellSize`.
+- **Grid thumbnail resize Phase 3:** MinimalSliderCell (custom NSSliderCell), hidden scrollbar, Cmd+=+- animated resize (NSAnimationContext), dynamic thumbnail tiers (240/480px based on cell size), composite `ThumbnailCacheKey(url, maxSize)` for cache isolation.
 - **Option+scroll fast nav (Phase 3):** OptionScrollAccumulator, PositionHUDView, dedicated nav path bypassing throttle, momentum capping, Natural Scrolling correction. Mouse sensitivity fix (delta ×10, steps clamped to 1, time-based reset).
 - **Quick Grid (Phase 2):** Thumbnail grid overlay (G key), async loading, grid-local cache, Enter/ESC/G keyboard handling, cache pollution prevention.
 - **Centering/window drift fixes:** Anchor-out-of-bounds → use document center; resizeToFitImage below min → early return to avoid drift.
