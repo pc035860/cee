@@ -22,7 +22,7 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
 cleanup() {
-    [ -d "$RESULT_BUNDLE" ] && rm -rf "$RESULT_BUNDLE"
+    if [ -d "$RESULT_BUNDLE" ]; then rm -rf "$RESULT_BUNDLE"; fi
 }
 
 check_prerequisites() {

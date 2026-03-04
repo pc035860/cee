@@ -6,6 +6,9 @@ class ImageContentView: NSView {
 
     enum LoadingState { case idle, loading, loaded, error }
 
+    /// Set imageFileName before loadingState so the accessibility label is included in the notification.
+    var imageFileName: String?
+
     var loadingState: LoadingState = .idle {
         didSet { updateAccessibilityState() }
     }
@@ -25,6 +28,9 @@ class ImageContentView: NSView {
         }
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
+        if let imageFileName {
+            setAccessibilityLabel(imageFileName)
+        }
         // 通知 accessibility 系統狀態已改變，讓 XCUITest 能查詢到最新 identifier
         NSAccessibility.post(element: self, notification: .valueChanged)
     }

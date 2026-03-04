@@ -33,6 +33,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **CALayer y-axis flipped in layer-backed NSView** — `wantsLayer = true` → `y=0` is visual top. Opposite of raw Core Animation.
 - **`deinit` cannot access stored properties** in strict concurrency. Use notification-based cleanup.
 - **CGImageSource pixel dimensions ignore EXIF orientation** — `kCGImagePropertyPixelWidth/Height` report raw sensor dimensions. For rotated images (EXIF orientation 5-8), must swap w/h manually. Thumbnails created with `kCGImageSourceCreateThumbnailWithTransform: true` are auto-rotated, but `fullSize` from the same source is not.
+- **`@objc func` + default parameter + menu action** — `@objc func foo(amount: Int = 1)` generates ObjC selector `fooWithAmount:`. When AppKit dispatches a menu action, it passes the `NSMenuItem` pointer as the argument — Swift interprets the pointer value as `Int`, causing huge `amount`. Fix: separate `@objc func foo(_ sender: Any?)` (menu action) from internal `func fooImpl(amount: Int)`.
 
 ## XcodeGen Gotchas
 
@@ -157,6 +158,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Navigation @objc selector fix:** `goToNextImage(amount:)` received NSMenuItem pointer as `amount` via menu dispatch, jumping to last image. Split into `@objc goToNextImage(_ sender:)` + `navigateNext(amount:)`. Also fixed `test-e2e.sh` `set -e` bug and added `imageFileName` to `ImageContentView` for accessibility label timing.
 - **Grid layout Phase 4:** Dynamic cell aspect ratio (median sampling with EXIF orientation), Finder-style smooth resize, space-around distribution with floor/max guards, width-cache for resize efficiency.
 - **Grid thumbnail resize Phase 3:** MinimalSliderCell (custom NSSliderCell), hidden scrollbar, Cmd+=+- animated resize (NSAnimationContext), dynamic thumbnail tiers (240/480/1024px based on cell size), composite `ThumbnailCacheKey(url, maxSize)` for cache isolation.
 - **Option+scroll fast nav (Phase 3):** OptionScrollAccumulator, PositionHUDView, dedicated nav path bypassing throttle, momentum capping, Natural Scrolling correction. Mouse sensitivity fix (delta ×10, steps clamped to 1, time-based reset).

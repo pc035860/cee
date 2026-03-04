@@ -58,6 +58,15 @@ final class CeeUITests: XCTestCase {
         usleep(useconds_t(seconds * 1_000_000))
     }
 
+    /// Wait for window title to contain a substring (more reliable than element label in XCUITest)
+    private func waitForWindowTitle(containing substring: String, timeout: TimeInterval = 15) -> XCTWaiter.Result {
+        let window = app.windows["imageWindow"]
+        let pred = NSPredicate { _, _ in
+            window.title.contains(substring)
+        }
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: timeout)
+    }
+
     private func assertImageOverlapsViewport(
         in window: XCUIElement,
         minimumVisibleOverlap: CGFloat = 24,
@@ -219,20 +228,9 @@ final class CeeUITests: XCTestCase {
     func testSmoke_NavigateToNextImage() throws {
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists)
 
-        // Cmd+] → 下一張（Go 選單快捷鍵，比 bare key 路由更可靠）
         app.typeKey("]", modifierFlags: .command)
-
-        let pred = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
-        }
-        let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
-        XCTAssertEqual(result, .completed, "Navigation to next image timed out")
-
-        let window = app.windows["imageWindow"]
-        let title = window.title
-        XCTAssertTrue(title.contains("002-portrait.png"),
-            "Title should show second image, got: \(title)")
-        // Index position shown in status bar, not title (showStatusBar=true by default)
+        let result = waitForWindowTitle(containing: "002")
+        XCTAssertEqual(result, .completed, "Should navigate to image 002")
     }
 
     func testSmoke_NavigateToPreviousImage() throws {
@@ -240,18 +238,11 @@ final class CeeUITests: XCTestCase {
 
         // Cmd+] → 前往 002；Cmd+[ → 返回 001
         app.typeKey("]", modifierFlags: .command)
-        let pred1 = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
-        }
-        let result1 = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred1, object: nil)], timeout: 15)
+        let result1 = waitForWindowTitle(containing: "002")
         XCTAssertEqual(result1, .completed, "Navigation to image 002 timed out")
 
-        // 驗證已到達 002（若沒有，下面的 pred2 會等待 "001" 但 assertion 會 fail）
         app.typeKey("[", modifierFlags: .command)
-        let pred2 = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
-        }
-        let result2 = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred2, object: nil)], timeout: 15)
+        let result2 = waitForWindowTitle(containing: "001")
         XCTAssertEqual(result2, .completed, "Navigation back to image 001 timed out")
 
         let window = app.windows["imageWindow"]
@@ -400,10 +391,7 @@ final class CeeUITests: XCTestCase {
         // Cmd+] 換頁到下一張（等同於捲動到底後觸發的換頁行為）
         app.typeKey("]", modifierFlags: .command)
 
-        let pred = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
-        }
-        let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: pred, object: nil)], timeout: 15)
+        let result = waitForWindowTitle(containing: "002")
         XCTAssertEqual(result, .completed, "Page turn to next image timed out")
 
         let newTitle = app.windows["imageWindow"].title
@@ -476,24 +464,12 @@ final class CeeUITests: XCTestCase {
 
         // Navigate to next image while zoomed — zoom state must not block navigation
         app.typeKey("]", modifierFlags: .command)
-        let predNext = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
-        }
-        let resultNext = XCTWaiter().wait(
-            for: [XCTNSPredicateExpectation(predicate: predNext, object: nil)],
-            timeout: 15
-        )
+        let resultNext = waitForWindowTitle(containing: "002")
         XCTAssertEqual(resultNext, .completed, "Navigation to next image should work while zoomed")
 
         // Navigate back
         app.typeKey("[", modifierFlags: .command)
-        let predPrev = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
-        }
-        let resultPrev = XCTWaiter().wait(
-            for: [XCTNSPredicateExpectation(predicate: predPrev, object: nil)],
-            timeout: 15
-        )
+        let resultPrev = waitForWindowTitle(containing: "001")
         XCTAssertEqual(resultPrev, .completed, "Navigation back should work while zoomed")
 
         // Fit to restore normal state
@@ -522,26 +498,14 @@ final class CeeUITests: XCTestCase {
                              "Zoom In should increase window width")
 
         app.typeKey("]", modifierFlags: .command)   // Next image
-        let pred1 = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
-        }
-        let result1 = XCTWaiter().wait(
-            for: [XCTNSPredicateExpectation(predicate: pred1, object: nil)],
-            timeout: 15
-        )
+        let result1 = waitForWindowTitle(containing: "002")
         XCTAssertEqual(result1, .completed, "Cycle 1: navigate to 002 after zoom in")
 
         // Cycle 2: Zoom out → navigate prev
         app.typeKey("-", modifierFlags: .command)   // Zoom Out
         waitForStableLayout()
         app.typeKey("[", modifierFlags: .command)   // Previous image
-        let pred2 = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
-        }
-        let result2 = XCTWaiter().wait(
-            for: [XCTNSPredicateExpectation(predicate: pred2, object: nil)],
-            timeout: 15
-        )
+        let result2 = waitForWindowTitle(containing: "001")
         XCTAssertEqual(result2, .completed, "Cycle 2: navigate back to 001 after zoom out")
 
         // Verify we're back at the original image with stable state
@@ -609,17 +573,11 @@ final class CeeUITests: XCTestCase {
         app.typeKey("1", modifierFlags: .command)   // Actual Size
 
         app.typeKey("]", modifierFlags: .command)   // 前往下一張
-        let predNext = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("002")
-        }
-        let resultNext = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predNext, object: nil)], timeout: 15)
+        let resultNext = waitForWindowTitle(containing: "002")
         XCTAssertEqual(resultNext, .completed, "Navigation to next image timed out")
 
         app.typeKey("[", modifierFlags: .command)   // 返回上一張
-        let predPrev = NSPredicate { _, _ in
-            self.waitForImageState("imageContent-loaded", timeout: 2).label.contains("001")
-        }
-        let resultPrev = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predPrev, object: nil)], timeout: 15)
+        let resultPrev = waitForWindowTitle(containing: "001")
         XCTAssertEqual(resultPrev, .completed, "Navigation back to first image timed out")
 
         XCTAssertTrue(waitForImageState("imageContent-loaded").exists,

@@ -362,8 +362,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 }
 
                 contentView.image = result.image
+                contentView.imageFileName = item.fileName
                 contentView.loadingState = .loaded
-                contentView.setAccessibilityLabel(item.fileName)
                 let layoutSize = resolveLayoutSize(
                     index: index, item: item, image: result.image,
                     fullSize: result.fullSize, thumbnailOnly: thumbnailOnly
@@ -384,8 +384,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 }
 
                 contentView.image = lResult.image
+                contentView.imageFileName = leading.fileName
                 contentView.loadingState = .loaded
-                contentView.setAccessibilityLabel(leading.fileName)
                 let leadingLayoutSize = resolveLayoutSize(
                     index: leadingIndex, item: leading, image: lResult.image,
                     fullSize: lResult.fullSize, thumbnailOnly: thumbnailOnly
@@ -769,7 +769,17 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Navigation
 
-    @objc func goToNextImage(amount: Int = 1) {
+    /// Menu action entry point — `sender` is the NSMenuItem; ignore it.
+    @objc func goToNextImage(_ sender: Any? = nil) {
+        navigateNext(amount: 1)
+    }
+
+    /// Menu action entry point — `sender` is the NSMenuItem; ignore it.
+    @objc func goToPreviousImage(_ sender: Any? = nil) {
+        navigatePrevious(amount: 1)
+    }
+
+    func navigateNext(amount: Int = 1) {
         guard let folder else { return }
         guard navigationThrottle.shouldProceed() else { return }
         lastPrefetchDirection = .forward
@@ -784,7 +794,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateWindowTitle()
     }
 
-    @objc func goToPreviousImage(amount: Int = 1) {
+    func navigatePrevious(amount: Int = 1) {
         guard let folder else { return }
         guard navigationThrottle.shouldProceed() else { return }
         lastPrefetchDirection = .backward
@@ -1538,8 +1548,8 @@ extension ImageViewController: ImageScrollViewDelegate {
         DispatchQueue.main.async(execute: task)
     }
 
-    func scrollViewRequestNextImage(_ scrollView: ImageScrollView, amount: Int) { goToNextImage(amount: amount) }
-    func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int) { goToPreviousImage(amount: amount) }
+    func scrollViewRequestNextImage(_ scrollView: ImageScrollView, amount: Int) { navigateNext(amount: amount) }
+    func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int) { navigatePrevious(amount: amount) }
     func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) { goToFirstImage() }
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
