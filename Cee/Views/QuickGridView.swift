@@ -40,6 +40,59 @@ private final class GridScrollView: NSScrollView {
     }
 }
 
+/// Minimal slider cell with thin track (2px) and small dot knob (8x8).
+/// Provides a Figma-like ultra-minimal appearance for the grid size slider.
+private final class MinimalSliderCell: NSSliderCell {
+    private let trackHeight: CGFloat = 2
+    private let knobSize: CGFloat = 8
+
+    override func barRect(flipped: Bool) -> NSRect {
+        let full = super.barRect(flipped: flipped)
+        let y = full.midY - trackHeight / 2
+        return NSRect(x: full.origin.x, y: y, width: full.width, height: trackHeight)
+    }
+
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+        let barRect = self.barRect(flipped: flipped)
+        let proportion = CGFloat((doubleValue - minValue) / (maxValue - minValue))
+        let knobX = barRect.origin.x + barRect.width * proportion
+
+        // Left (filled) portion
+        let leftRect = NSRect(x: barRect.origin.x, y: barRect.origin.y,
+                              width: knobX - barRect.origin.x, height: barRect.height)
+        let leftPath = NSBezierPath(roundedRect: leftRect, xRadius: 1, yRadius: 1)
+        NSColor.white.withAlphaComponent(0.4).setFill()
+        leftPath.fill()
+
+        // Right (unfilled) portion
+        let rightRect = NSRect(x: knobX, y: barRect.origin.y,
+                               width: barRect.maxX - knobX, height: barRect.height)
+        let rightPath = NSBezierPath(roundedRect: rightRect, xRadius: 1, yRadius: 1)
+        NSColor.white.withAlphaComponent(0.15).setFill()
+        rightPath.fill()
+    }
+
+    override func knobRect(flipped: Bool) -> NSRect {
+        let barRect = self.barRect(flipped: flipped)
+        let proportion = CGFloat((doubleValue - minValue) / (maxValue - minValue))
+        let knobX = barRect.origin.x + barRect.width * proportion - knobSize / 2
+        let knobY = barRect.midY - knobSize / 2
+        return NSRect(x: knobX, y: knobY, width: knobSize, height: knobSize)
+    }
+
+    override func drawKnob(_ knobRect: NSRect) {
+        let dotRect = NSRect(
+            x: knobRect.midX - knobSize / 2,
+            y: knobRect.midY - knobSize / 2,
+            width: knobSize,
+            height: knobSize
+        )
+        let path = NSBezierPath(ovalIn: dotRect)
+        NSColor.white.withAlphaComponent(0.85).setFill()
+        path.fill()
+    }
+}
+
 /// NSCollectionView subclass that intercepts Enter/Return at the first responder level.
 /// Without this, Enter events would need to propagate up the responder chain,
 /// which NSCollectionView may not forward reliably.
@@ -173,9 +226,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Size slider (bottom bar)
         sliderContainer.wantsLayer = true
-        sliderContainer.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        sliderContainer.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
         sliderContainer.translatesAutoresizingMaskIntoConstraints = false
 
+        // Custom minimal cell — must be set BEFORE property configuration
+        sizeSlider.cell = MinimalSliderCell()
         sizeSlider.minValue = Double(Constants.quickGridMinCellSize)
         sizeSlider.maxValue = Double(Constants.quickGridMaxCellSize)
         sizeSlider.doubleValue = Double(currentCellSize)
@@ -187,10 +242,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Scroll view wrapping collection view
         gridScrollView.documentView = collectionView
-        gridScrollView.hasVerticalScroller = true
+        gridScrollView.hasVerticalScroller = false
         gridScrollView.hasHorizontalScroller = false
         gridScrollView.drawsBackground = false
-        gridScrollView.autohidesScrollers = true
         gridScrollView.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(gridScrollView)
@@ -205,7 +259,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             sliderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             sliderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             sliderContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
-            sliderContainer.heightAnchor.constraint(equalToConstant: 30),
+            sliderContainer.heightAnchor.constraint(equalToConstant: 24),
 
             sizeSlider.leadingAnchor.constraint(equalTo: sliderContainer.leadingAnchor, constant: 8),
             sizeSlider.trailingAnchor.constraint(equalTo: sliderContainer.trailingAnchor, constant: -8),
