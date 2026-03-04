@@ -148,6 +148,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Current grid cell size — single source of truth. Clamped to min/max range.
     private(set) var currentCellSize: CGFloat = Constants.quickGridCellSize
 
+    /// Dynamic thumbnail maxSize based on current cell size.
+    /// <= 120pt → 240px (covers @2x), > 120pt → 480px (sharp at @2x for large cells).
+    private var gridThumbnailMaxSize: CGFloat {
+        currentCellSize > 120 ? 480 : 240
+    }
+
     // MARK: - Slider
 
     private let sizeSlider = NSSlider()
@@ -284,7 +290,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
         guard clamped != currentCellSize else { return }
+
+        // Detect thumbnail tier change (120pt boundary)
+        let oldMaxSize: CGFloat = currentCellSize > 120 ? 480 : 240
         currentCellSize = clamped
+        let newMaxSize = gridThumbnailMaxSize
 
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
         if animated {
@@ -297,6 +307,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         } else {
             flowLayout.itemSize = NSSize(width: clamped, height: clamped)
             collectionView.collectionViewLayout?.invalidateLayout()
+        }
+
+        // Tier changed: reload thumbnails at new resolution
+        if oldMaxSize != newMaxSize {
+            gridThumbnails.removeAll()
+            collectionView.reloadData()
         }
 
         // Sync current size to subviews for delta calculation
@@ -356,9 +372,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
-        if let loader {
-            Task { await loader.clearThumbnailCache() }
-        }
+        // No need to clear ImageLoader.thumbnailCache — composite key (URL + maxSize)
+        // prevents cross-contamination between grid and main view thumbnails.
     }
 
     /// Cancel all pending thumbnail tasks and release cached thumbnails.
@@ -368,11 +383,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
-        // Clear ImageLoader's thumbnailCache to prevent 240px grid thumbnails
-        // from polluting the main view's 512px thumbnail fallback
-        if let loader {
-            Task { await loader.clearThumbnailCache() }
-        }
+        // Composite key in ImageLoader prevents cross-contamination —
+        // no need to clear thumbnailCache on grid dismiss.
         loader = nil
     }
 
@@ -401,7 +413,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard let loader else { return }
 
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: 240)
+            let result = await loader.loadThumbnail(at: item.url, maxSize: self?.gridThumbnailMaxSize ?? 240)
             guard !Task.isCancelled else { return }
             guard let self else { return }
 

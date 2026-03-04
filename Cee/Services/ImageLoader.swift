@@ -17,7 +17,13 @@ actor ImageLoader {
         let image: NSImage
         let fullSize: CGSize
     }
-    private var thumbnailCache: [URL: ThumbnailEntry] = [:]
+    /// Composite key: same URL with different maxSize produces separate cache entries.
+    /// Prevents grid (240/480px) and main view (512px) thumbnails from cross-contaminating.
+    private struct ThumbnailCacheKey: Hashable {
+        let url: URL
+        let maxSize: CGFloat
+    }
+    private var thumbnailCache: [ThumbnailCacheKey: ThumbnailEntry] = [:]
     private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
@@ -37,7 +43,8 @@ actor ImageLoader {
     /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
     /// PDF 不支援，回傳 nil
     func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> (image: NSImage, fullSize: CGSize)? {
-        if let cached = thumbnailCache[url] {
+        let cacheKey = ThumbnailCacheKey(url: url, maxSize: maxSize)
+        if let cached = thumbnailCache[cacheKey] {
             return (cached.image, cached.fullSize)
         }
 
@@ -46,9 +53,8 @@ actor ImageLoader {
         }.value
 
         // Don't cache if caller's Task was cancelled (e.g. Quick Grid dismissed).
-        // Prevents 240px grid thumbnails from polluting 512px fallback cache.
         if let result, !Task.isCancelled {
-            thumbnailCache[url] = ThumbnailEntry(image: result.image, fullSize: result.fullSize)
+            thumbnailCache[cacheKey] = ThumbnailEntry(image: result.image, fullSize: result.fullSize)
         }
         return result
     }
@@ -305,7 +311,7 @@ actor ImageLoader {
 
         // 釋放超出範圍的快取
         cache = cache.filter { activeImageURLs.contains($0.key) }
-        thumbnailCache = thumbnailCache.filter { activeImageURLs.contains($0.key) }
+        thumbnailCache = thumbnailCache.filter { activeImageURLs.contains($0.key.url) }
         pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
         pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
 
