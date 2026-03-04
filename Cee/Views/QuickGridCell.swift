@@ -34,6 +34,9 @@ final class QuickGridCell: NSCollectionViewItem {
         thumbnailView.translatesAutoresizingMaskIntoConstraints = false
         thumbnailView.isHidden = true  // Hidden until thumbnail is loaded (WU2)
         view.addSubview(thumbnailView)
+        // Let drag events pass through to parent QuickGridView
+        // (NSImageView registers drag types by default, intercepting file drops)
+        thumbnailView.unregisterDraggedTypes()
 
         NSLayoutConstraint.activate([
             thumbnailView.topAnchor.constraint(equalTo: view.topAnchor, constant: 2),
