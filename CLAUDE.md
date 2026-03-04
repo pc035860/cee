@@ -50,6 +50,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **NSVisualEffectView + alpha animation** — animating `alphaValue` causes material compositing flash. Use plain `layer.backgroundColor` with semi-transparent color instead.
 - **NSCollectionView re-enables scrollers** during layout/reloadData. Override getter+setter in subclass to lock off; simple property assignment is insufficient.
 - **NSCollectionView `didSelectItemsAt` fires on arrow keys** — filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only. Arrow key selection does NOT auto-scroll; call `scrollToItems(at:scrollPosition:)` manually in the else branch.
+- **NSCollectionView `scrollToItems` unreliable** — use `layoutAttributesForItem(at:)?.frame` + `scrollToVisible(_:)` instead for reliable programmatic scrolling.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 
 ## XCUITest Gotchas
