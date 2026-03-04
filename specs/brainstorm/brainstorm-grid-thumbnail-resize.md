@@ -253,11 +253,24 @@ private var thumbnailCache: [URL: ThumbnailEntry] = [:]
 3. ✅ Cmd+=/- 鍵盤快捷鍵（含 Cmd+Shift+= 變體）
 4. ✅ size 記憶（ViewerSettings.quickGridCellSize + UserDefaults）
 
-### Phase 3 — 優化（確認瓶頸才做）
+### Phase 3 — 優化 ✅ 已完成
 
-1. 動態縮圖解析度（cellSize > 200pt 時用更高 maxSize）
-2. thumbnailCache key 加入 size 維度
-3. 縮放動畫（NSAnimationContext）
+> 完成日期：2026-03-04 | 分支：feat/grid-thumbnail-resize-phase3 | Commits: fb9af2b, 705881f, 652d513, 99dcc1c, 71ef127
+
+實際改動：~110 行（QuickGridView.swift + ImageLoader.swift）
+
+1. ✅ **極簡 Slider 美化**：自訂 `MinimalSliderCell`（2px 軌道 + 8x8 白色圓點旋鈕），容器高度 30→24pt，背景透明度 0.6→0.4
+2. ✅ **隱藏捲軸**：`hasVerticalScroller = false`，最乾淨的 grid overlay 視覺
+3. ✅ **縮放動畫**：Cmd+=/- 使用 `NSAnimationContext`（0.15s），Pinch/Cmd+Scroll 保持即時
+4. ✅ **動態縮圖解析度**：`ThumbnailCacheKey(url, maxSize)` 複合鍵，cellSize ≤120pt → 240px、>120pt → 480px
+5. ✅ **Tier 切換安全**：跨越 120pt 邊界時 cancel in-flight tasks + 清 cache + reloadData
+
+**實作要點**：
+- `MinimalSliderCell` 的 `proportion` 計算屬性消除 drawBar/knobRect 重複
+- 動畫只用於離散跳變（Cmd+=/-），連續手勢不動畫避免互相打架
+- `onAnimatedCellSizeChange` 獨立回調，不影響 pinch 路徑
+- Composite cache key 根本解決了 grid/main view 縮圖污染問題，grid dismiss 不再需要 clearThumbnailCache
+- Task 閉包前捕獲 maxSize，避免 actor boundary 存取問題
 
 ---
 
