@@ -8,3 +8,5 @@ DerivedData/
 
 .agents/skills/*
 .claude/skills/*
+
+TestResults.xcresult/*

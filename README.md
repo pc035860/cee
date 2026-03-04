@@ -1,154 +1,185 @@
 # Cee
 
-一個輕量的 macOS 圖片瀏覽器，設計來取代 XEE。
+**[English](README.md)** | [繁體中文](README.zh-TW.md)
 
-開啟一張圖片後，Cee 會自動掃描同一資料夾內的所有圖片，讓你用鍵盤或滑鼠輕鬆翻頁瀏覽。
+A lightweight macOS image viewer, designed as a replacement for XEE.
 
-**系統需求：** macOS 14.0 (Sonoma) 以上、Apple Silicon (M1 以上)
+Open an image and Cee automatically scans the folder for all supported images, letting you browse them with keyboard or mouse.
 
-**授權條款：** [MIT License](LICENSE)
+**Requirements:** macOS 14.0 (Sonoma) or later, Apple Silicon (M1 or later)
 
----
-
-## 功能
-
-- 從 Finder 右鍵「打開方式」開啟圖片，自動讀取同資料夾的圖片列表
-- 支援格式：JPEG、PNG、TIFF、HEIC/HEIF、GIF、WebP、BMP、PDF
-- 鍵盤快速鍵導航（Cmd+]/[ 切換圖片）
-- 左/右方向鍵平移放大圖片，到邊緣後連續按鍵可翻頁
-- 上/下方向鍵捲動圖片（不導航）
-- PageUp/PageDown/Space 逐頁捲動，到底/頂自動翻頁
-- 滑鼠拖曳平移圖片
-- 三指觸控板拖曳平移圖片
-- 邊緣翻頁進度指示器（珊瑚色漸層提示）
-- 捏合縮放、Cmd+滾輪縮放
-- 適合螢幕大小 / 實際像素 / 自訂縮放
-- 全螢幕模式、永遠浮於最上層
-- 底部狀態列顯示圖片尺寸、索引、縮放比例（Cmd+/ 切換）
-- 開窗時自動調整視窗大小（可選）
-- 觸控板與滑鼠滾輪分離的靈敏度設定
-- PDF 逐頁瀏覽，記憶上次閱讀頁碼
+**License:** [MIT License](LICENSE)
 
 ---
 
-## 從原始碼執行
+## Features
 
-目前 Cee 沒有提供預編譯的發行版，需要自行 build。
+### Image Browsing
+- Open images via Finder right-click "Open With", auto-loads all images in the same folder
+- Supported formats: JPEG, PNG, TIFF, HEIC/HEIF, GIF, WebP, BMP, PDF
+- Keyboard shortcuts for navigation (Cmd+]/[ to switch images)
+- Left/Right arrow keys pan zoomed images; at the edge, press 3 more times to turn the page (with coral gradient progress indicator)
+- Up/Down arrow keys scroll vertically (no page turn by default; configurable in View menu)
+- PageUp/PageDown/Space for page-by-page scrolling, auto-turns at top/bottom
+- Option+Arrow keys jump 10 images at once (single-page mode)
+- Drag-and-drop images or folders to open (supports browse view, grid view, and empty state)
+- Subfolder auto-discovery: dropping a folder with no top-level images automatically finds the first subfolder containing images (BFS, max depth 2)
 
-### 1. 安裝必要工具
+### Zoom & Display
+- Pinch-to-zoom, Cmd+Scroll wheel zoom
+- Fit to screen / Actual pixels / Custom zoom
+- Fullscreen mode, always-on-top window
+- GPU-accelerated rendering via CALayer
+- Bottom status bar showing dimensions, index, and zoom level (Cmd+/ to toggle)
+- Auto-resize window on open (optional)
+- Separate sensitivity settings for trackpad and mouse wheel
 
-需要 **Xcode 16 以上**（建議從 Mac App Store 安裝），以及 **xcodegen**（用來產生 Xcode 專案檔）：
+### Quick Grid
+- Press **G** to toggle a thumbnail grid overlay of all images in the folder
+- Click or press Enter to jump to an image; press G or Esc to dismiss
+- Pinch, Cmd+Scroll, Cmd+=+- to resize grid cells; slider at the bottom for fine control
+- Dynamic cell aspect ratio based on folder content
+- Grid persists across folder changes and accepts drag-and-drop
+
+### Dual Page View
+- Side-by-side two-page display with height normalization
+- RTL (right-to-left) reading direction support
+- Spread-aware navigation
+
+### Fast Browse
+- Optional low-res thumbnail preview while navigating (View menu: "Use Low-Res Preview While Browsing")
+- Directional prefetch for smooth browsing
+- Option+Scroll wheel for rapid image switching with position HUD overlay
+- Navigation throttle (~20fps) with delayed full-res load
+
+### PDF
+- Per-page PDF browsing with remembered last-read page
+- Cancelable prefetch for PDF pages
+
+### Mouse & Gestures
+- Mouse drag to pan (cursor changes to hand icon)
+- Three-finger trackpad drag to pan
+- Trackpad edge-start swipe for page turn
+- Cmd+Scroll for zoom at viewport center
+
+---
+
+## Building from Source
+
+Cee does not currently provide prebuilt releases. You need to build it yourself.
+
+### 1. Install Prerequisites
+
+Requires **Xcode 16 or later** (install from Mac App Store) and **xcodegen** (generates the Xcode project file):
 
 ```bash
 brew install xcodegen
 ```
 
-如果還沒裝 Homebrew，請先參考 [brew.sh](https://brew.sh)。
+If you don't have Homebrew, see [brew.sh](https://brew.sh).
 
-### 2. Clone 專案
+### 2. Clone the Repository
 
 ```bash
 git clone <repo-url>
 cd cee
 ```
 
-### 3. 產生 Xcode 專案
+### 3. Generate Xcode Project
 
-`.xcodeproj` 不放進 Git，每次都要用 xcodegen 產生：
+The `.xcodeproj` is not checked into Git; generate it with xcodegen:
 
 ```bash
 xcodegen generate
 ```
 
-### 4. 用 Xcode 開啟並執行
+### 4. Open and Run in Xcode
 
 ```bash
 open Cee.xcodeproj
 ```
 
-在 Xcode 裡選好 scheme（`Cee`）和目標裝置（`My Mac`），按 Cmd+R 即可執行。
+Select the `Cee` scheme and `My Mac` as target, then press Cmd+R to run.
 
-#### 或者用命令列 Build
+#### Or Build from Command Line
 
 ```bash
 xcodebuild -project Cee.xcodeproj -scheme Cee -configuration Debug build
 ```
 
-Build 完成後，.app 會在：
+The built `.app` will be at:
 
 ```
 build/Debug/Cee.app
 ```
 
-可以直接雙擊執行，或把它拖到 `/Applications` 資料夾。
+Double-click to run, or drag it to `/Applications`.
 
 ---
 
-## 使用方式
+## Usage
 
-### 開啟圖片
+### Opening Images
 
-- **從 Finder：** 在圖片上右鍵 → 打開方式 → Cee
-- **從 App 內：** Cmd+O 開啟檔案選擇器
+- **From Finder:** Right-click an image > Open With > Cee
+- **From the app:** Cmd+O to open the file picker
+- **Drag and drop:** Drop image files or folders onto the window
 
-開啟後，Cee 會自動掃描同一資料夾裡所有支援格式的圖片。
+Cee automatically scans the folder for all supported image formats.
 
-### 鍵盤快速鍵
+### Keyboard Shortcuts
 
-| 動作 | 快速鍵 |
-|------|--------|
-| 下一張 | Cmd+] 或 右方向鍵（邊緣時） |
-| 上一張 | Cmd+[ 或 左方向鍵（邊緣時） |
-| 第一張 | Home |
-| 最後一張 | End |
-| 向下捲動一頁 | Space 或 PageDown |
-| 向上捲動一頁 | PageUp |
-| 適合螢幕 | Cmd+0 |
-| 實際大小 | Cmd+1 |
-| 放大 | Cmd+= |
-| 縮小 | Cmd+- |
-| 全螢幕 | Cmd+F |
-| 退出全螢幕 | Esc |
-| 切換狀態列 | Cmd+/ |
-| 開啟檔案 | Cmd+O |
-| 關閉視窗 | Cmd+W |
-| 結束 | Cmd+Q |
+| Action | Shortcut |
+|--------|----------|
+| Next image | Cmd+] or Right arrow (at edge) |
+| Previous image | Cmd+[ or Left arrow (at edge) |
+| Jump 10 images forward | Option+Right arrow |
+| Jump 10 images back | Option+Left arrow |
+| First image | Home |
+| Last image | End |
+| Scroll down one page | Space or PageDown |
+| Scroll up one page | PageUp |
+| Fit to screen | Cmd+0 |
+| Actual size | Cmd+1 |
+| Zoom in | Cmd+= |
+| Zoom out | Cmd+- |
+| Fullscreen | Cmd+F |
+| Exit fullscreen | Esc |
+| Toggle status bar | Cmd+/ |
+| Toggle Quick Grid | G |
+| Open file | Cmd+O |
+| Close window | Cmd+W |
+| Quit | Cmd+Q |
 
-> **方向鍵行為：** 左/右方向鍵用於平移圖片，到達邊緣後連續按 3 次同方向即可翻頁（邊緣會顯示珊瑚色漸層進度提示）。上/下方向鍵僅用於捲動，不會觸發翻頁。圖片未超出視窗時，左/右方向鍵直接切換上/下一張。
+> **Arrow key behavior:** Left/Right arrows pan the image when zoomed; at the edge, press 3 more times to turn the page (a coral gradient indicator shows progress). Up/Down arrows scroll only and do not trigger page turns by default. When the image fits within the window, Left/Right arrows switch images directly.
 
-> **PageDown / Space 行為：** 逐頁捲動圖片，到底部後再按一次即翻到下一張。PageUp 同理。
+> **PageDown / Space behavior:** Scrolls the image by one page; press once more at the bottom to go to the next image. Same for PageUp.
 
-### 縮放
+### Zoom
 
-- **捏合手勢**：觸控板雙指縮放
-- **Cmd+滾輪**：放大縮小
-- **Cmd+0**：縮放至適合螢幕
-- **Cmd+1**：顯示原始像素大小
-
-### 滑鼠與手勢
-
-- **滑鼠拖曳**：按住左鍵拖曳來平移圖片（游標會變成手掌圖示）
-- **三指拖曳**：觸控板三指拖曳平移圖片
-- **捲動到頂/底**：觸控板從邊緣開始滑動超過門檻值，自動翻頁
+- **Pinch gesture**: Two-finger trackpad zoom
+- **Cmd+Scroll**: Zoom in/out
+- **Cmd+0**: Fit to screen
+- **Cmd+1**: Actual pixel size
 
 ---
 
-## 開發者
+## Development
 
-### 執行 E2E 測試
+### Run E2E Tests
 
 ```bash
 ./scripts/test-e2e.sh
 ```
 
-會自動 build 並跑全部 XCUITest smoke tests。
+Automatically builds and runs all XCUITest smoke tests.
 
-### 修改專案結構後
+### After Modifying Project Structure
 
-新增 / 刪除檔案或修改 target 設定後，需要重新產生 Xcode 專案：
+After adding/removing files or changing target settings, regenerate the Xcode project:
 
 ```bash
 xcodegen generate
 ```
 
-> `Cee.xcodeproj` 是自動產生的，請勿手動編輯。
+> `Cee.xcodeproj` is auto-generated — do not edit manually.
