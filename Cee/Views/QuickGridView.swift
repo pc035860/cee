@@ -283,9 +283,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     // MARK: - Cell Size
 
     /// Apply a new cell size, clamped to the allowed range.
-    /// Only invalidates layout — does NOT clear the thumbnail cache because
-    /// the 240px source thumbnails are valid for the entire 80–200pt range
-    /// and NSImageView handles the rescaling automatically.
+    /// Normally only invalidates layout (no cache clear). When crossing the 120pt
+    /// thumbnail tier boundary (240px ↔ 480px), cancels in-flight tasks and reloads.
     func applyItemSize(_ newSize: CGFloat, animated: Bool = false) {
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
@@ -309,8 +308,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             collectionView.collectionViewLayout?.invalidateLayout()
         }
 
-        // Tier changed: reload thumbnails at new resolution
+        // Tier changed: cancel in-flight tasks (prevent stale resolution writeback),
+        // clear local cache, and reload to trigger fresh thumbnail loads at new maxSize.
         if oldMaxSize != newMaxSize {
+            for (_, task) in thumbnailTasks { task.cancel() }
+            thumbnailTasks.removeAll()
             gridThumbnails.removeAll()
             collectionView.reloadData()
         }
