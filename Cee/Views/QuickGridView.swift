@@ -171,6 +171,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var loader: ImageLoader?
     /// Grid-local thumbnail cache (not evicted by navigation's updateCache)
     private var gridThumbnails: [Int: NSImage] = [:]
+    /// Test-only: number of cached grid thumbnails.
+    var gridThumbnailCount: Int { gridThumbnails.count }
     /// Active thumbnail loading tasks (keyed by item index)
     private var thumbnailTasks: [Int: Task<Void, Never>] = [:]
 

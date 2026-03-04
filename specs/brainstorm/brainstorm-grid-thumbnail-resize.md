@@ -255,7 +255,7 @@ private var thumbnailCache: [URL: ThumbnailEntry] = [:]
 
 ### Phase 3 — 優化 ✅ 已完成
 
-> 完成日期：2026-03-04 | 分支：feat/grid-thumbnail-resize-phase3 | Commits: fb9af2b, 705881f, 652d513, 99dcc1c, 71ef127
+> 完成日期：2026-03-04 | 分支：feat/grid-thumbnail-resize-phase3 | Commits: fb9af2b, 705881f, 652d513, 99dcc1c, 71ef127, 2fba6a9
 
 實際改動：~110 行（QuickGridView.swift + ImageLoader.swift）
 
@@ -271,6 +271,7 @@ private var thumbnailCache: [URL: ThumbnailEntry] = [:]
 - `onAnimatedCellSizeChange` 獨立回調，不影響 pinch 路徑
 - Composite cache key 根本解決了 grid/main view 縮圖污染問題，grid dismiss 不再需要 clearThumbnailCache
 - Task 閉包前捕獲 maxSize，避免 actor boundary 存取問題
+- **測試覆蓋**：新增 5 個 unit tests — composite key 隔離（2）、tier 邊界切換（2）、animated resize（1），總計 133 tests 全綠
 
 ---
 
