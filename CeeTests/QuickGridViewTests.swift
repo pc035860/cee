@@ -147,7 +147,7 @@ final class QuickGridViewTests: XCTestCase {
 
     func testApplyItemSize_clampsToMaximum() {
         let grid = QuickGridView()
-        grid.applyItemSize(300)
+        grid.applyItemSize(999)
         XCTAssertEqual(grid.currentCellSize, Constants.quickGridMaxCellSize,
                        "Cell size above maximum should clamp to \(Constants.quickGridMaxCellSize)")
     }

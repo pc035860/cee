@@ -15,6 +15,17 @@ private final class GridScrollView: NSScrollView {
     /// Read by scrollWheel to compute delta-based size. Updated by QuickGridView.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
 
+    // NSCollectionView re-enables scrollers during layout passes / reloadData.
+    // Override to lock them off permanently.
+    override var hasVerticalScroller: Bool {
+        get { false }
+        set { /* ignore — NSCollectionView tries to enable this */ }
+    }
+    override var hasHorizontalScroller: Bool {
+        get { false }
+        set { /* ignore */ }
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         allowsMagnification = false  // defensive: prevent pinch event consumption
@@ -152,9 +163,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private(set) var currentCellSize: CGFloat = Constants.quickGridCellSize
 
     /// Dynamic thumbnail maxSize based on current cell size.
-    /// <= 120pt → 240px (covers @2x), > 120pt → 480px (sharp at @2x for large cells).
+    /// Three tiers to balance sharpness vs memory:
+    /// <= 120pt → 240px, <= 240pt → 480px, > 240pt → 1024px
     private var gridThumbnailMaxSize: CGFloat {
-        currentCellSize > 120 ? 480 : 240
+        if currentCellSize <= 120 { return 240 }
+        if currentCellSize <= 240 { return 480 }
+        return 1024
     }
 
     // MARK: - Slider
@@ -258,8 +272,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Scroll view wrapping collection view
         gridScrollView.documentView = collectionView
-        gridScrollView.hasVerticalScroller = false
-        gridScrollView.hasHorizontalScroller = false
+        // hasVerticalScroller/hasHorizontalScroller locked via override in GridScrollView
         gridScrollView.drawsBackground = false
         gridScrollView.translatesAutoresizingMaskIntoConstraints = false
 
