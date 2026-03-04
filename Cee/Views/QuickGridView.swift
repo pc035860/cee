@@ -405,11 +405,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             updateLayout()
         }
 
-        // Tier changed: cancel in-flight tasks (prevent stale resolution writeback),
-        // clear local cache, and reload to trigger fresh thumbnail loads at new maxSize.
+        // Tier changed: cancel in-flight tasks (prevent stale resolution writeback)
+        // and progressively reload visible thumbnails at new tier resolution.
+        // No reloadData() — old thumbnails stay visible until new ones are ready.
         if oldMaxSize != newMaxSize {
-            cancelAndClearThumbnails()
-            collectionView.reloadData()
+            cancelPendingThumbnailTasks()
+            reloadVisibleThumbnails()
         }
 
         // Sync current size to subviews for delta calculation
@@ -472,6 +473,24 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
+    }
+
+    /// Cancel in-flight thumbnail tasks only (keep cached images for smooth tier transitions).
+    private func cancelPendingThumbnailTasks() {
+        for (_, task) in thumbnailTasks { task.cancel() }
+        thumbnailTasks.removeAll()
+    }
+
+    /// Reload thumbnails for visible cells at the current tier resolution.
+    /// Clears entire gridThumbnails cache so off-screen cells also reload at new tier
+    /// when they scroll into view. Old images stay in cells (no reloadData = no flash).
+    private func reloadVisibleThumbnails() {
+        gridThumbnails.removeAll()
+        for indexPath in collectionView.indexPathsForVisibleItems() {
+            if let cell = collectionView.item(at: indexPath) as? QuickGridCell {
+                loadThumbnail(for: indexPath.item, cell: cell)
+            }
+        }
     }
 
     /// Clear cached thumbnails and cancel pending tasks without releasing loader.
@@ -567,10 +586,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         didSelectItemsAt indexPaths: Set<IndexPath>
     ) {
         guard let indexPath = indexPaths.first else { return }
-        // Only navigate on mouse click, not keyboard arrow selection.
-        // Keyboard users confirm with Enter (handled in keyDown).
         if let event = NSApp.currentEvent, event.type == .leftMouseUp {
+            // Mouse click: navigate directly (view will change, no scroll needed)
             delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
+        } else {
+            // Keyboard navigation: scroll selected item into view
+            if let attrs = collectionView.layoutAttributesForItem(at: indexPath) {
+                collectionView.scrollToVisible(attrs.frame)
+            }
         }
     }
 

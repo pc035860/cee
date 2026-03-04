@@ -49,7 +49,9 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Overlay event passthrough** — display-only overlays override `hitTest` → `nil`. For drag-drop, child `NSImageView` must call `unregisterDraggedTypes()` to prevent intercepting parent's drag session.
 - **NSVisualEffectView + alpha animation** — animating `alphaValue` causes material compositing flash. Use plain `layer.backgroundColor` with semi-transparent color instead.
 - **NSCollectionView re-enables scrollers** during layout/reloadData. Override getter+setter in subclass to lock off; simple property assignment is insufficient.
-- **NSCollectionView `didSelectItemsAt` fires on arrow keys** — filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only.
+- **NSCollectionView `didSelectItemsAt` fires on arrow keys** — filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only. Arrow key selection does NOT auto-scroll; call `scrollToItems(at:scrollPosition:)` manually in the else branch.
+- **NSCollectionView `scrollToItems` unreliable** — use `layoutAttributesForItem(at:)?.frame` + `scrollToVisible(_:)` instead for reliable programmatic scrolling.
+- **CALayer border clipping in NSCollectionView cells** — `borderWidth` draws half inside, half outside bounds. With `masksToBounds = true` + adjacent cell overlap, borders get clipped. Fix: inset highlightLayer frame by `borderWidth/2` so border is fully inside bounds; set `zPosition` high to render above subview layers.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 
 ## XCUITest Gotchas
@@ -109,7 +111,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
-- **@objc selector fix:** Split `goToNextImage(amount:)` into `@objc` action + internal `navigateNext(amount:)` to prevent pointer-as-Int.
+- **Grid view fixes:** Highlight border clipping fix (inset frame + zPosition), visual redesign (blue tint for active, orange border for cursor), cell drag-drop passthrough, keyboard auto-scroll.
 - **Grid layout Phase 3-4:** Dynamic cell aspect ratio (EXIF-aware), smooth resize, space-around layout, thumbnail tiers with cache isolation.
 - **Option+scroll fast nav:** OptionScrollAccumulator, PositionHUDView, mouse sensitivity fix.
 - **Quick Grid:** Thumbnail grid overlay, async loading, keyboard handling, drag-drop support.

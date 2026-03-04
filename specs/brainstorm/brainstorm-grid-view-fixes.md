@@ -1,6 +1,6 @@
 # Grid View 修正 Roadmap
 
-## 問題 1：Highlight 邊框被裁切
+## 問題 1：Highlight 邊框被裁切 ✅ DONE
 
 ### 現象
 - **藍色 highlight**（當前顯示圖片）：右側和左上角的邊框有機會被裁切
@@ -22,9 +22,11 @@ border 畫在 layer bounds 的邊緣上（內外各佔一半），而 `masksToBo
 2. 繪製區域略大於 cell bounds（或使用 inset 讓 thumbnail 內縮）
 3. z-order 高於所有 cell content，確保不被覆蓋
 
+> **實作結果**：將 highlightLayer frame 內凹 1pt（`bounds.insetBy(dx:1, dy:1)`），使 2pt border 完全在 cell bounds 內繪製，不被 `masksToBounds` 裁切也不被相鄰 cell 覆蓋。`zPosition = 100` 確保渲染在縮圖上方。同時改善視覺辨識度：active 圖片使用藍色邊框 + 15% 藍色蒙版，游標使用橘色邊框 + 8% 橘色蒙版（取代原本的白色），兩者重疊時 active 蒙版優先 + 橘色邊框。`viewDidLayout()` 取代 `autoresizingMask` 確保縮放時 frame 同步。Commit: `2bb1ac5`
+
 ---
 
-## 問題 2：Grid 縮放時 Layout 閃爍
+## 問題 2：Grid 縮放時 Layout 閃爍 ✅ DONE
 
 ### 現象
 進行 zoom in / zoom out（pinch、Cmd+Scroll、Cmd+=/-）時，畫面偶爾出現閃爍或不穩定的 layout 跳動。
@@ -47,9 +49,11 @@ border 畫在 layer bounds 的邊緣上（內外各佔一半），而 `masksToBo
 - 考慮 tier 切換時使用漸進載入而非全量 reloadData
 - 列數跳變時可加入 hysteresis（遲滯）避免在臨界點反覆切換
 
+> **實作結果**：根因為 tier 邊界跨越時 `cancelAndClearThumbnails()` + `reloadData()` 清空所有 cell 造成白色閃爍。改為 Progressive Reload：`cancelPendingThumbnailTasks()`（只取消 tasks 不清 cache）+ `reloadVisibleThumbnails()`（為可見 cell 啟動新 tier 載入，舊縮圖保留到新的載入完成）。不再呼叫 `reloadData()`。
+
 ---
 
-## 問題 3：鍵盤導航不自動捲動到選取項目
+## 問題 3：鍵盤導航不自動捲動到選取項目 ✅ DONE
 
 ### 現象
 在 Grid 中使用方向鍵瀏覽，當選取項目移出 viewport 範圍時，畫面不會自動捲動跟隨。
@@ -63,9 +67,11 @@ border 畫在 layer bounds 的邊緣上（內外各佔一半），而 `masksToBo
 ### 建議修正方向
 在 `didSelectItemsAt` 中（或監聽 selection change），當偵測到非滑鼠觸發的 selection 變更時，呼叫 `scrollToItems(at:scrollPosition:)` 確保選取項目保持在 viewport 內。使用 `.nearestHorizontalEdge` 或自訂邏輯避免不必要的大幅跳動。
 
+> **實作結果**：在 `didSelectItemsAt` 的 else 分支（非 `.leftMouseUp`）呼叫 `scrollToItems(at:scrollPosition:.centeredVertically)`。滑鼠點擊直接導航不 scroll。Commit: `693b74d`
+
 ---
 
-## 問題 4：Grid Drag-Drop 只能在間隙觸發
+## 問題 4：Grid Drag-Drop 只能在間隙觸發 ✅ DONE
 
 ### 現象
 拖放檔案/資料夾到 Grid 上時，只有拖到 cell 之間的「間隙」才能觸發 drop，拖到 cell 上方無法觸發。使用者必須刻意避開圖片找到縫隙才能放手。
@@ -84,6 +90,8 @@ Cell 內的 `NSImageView` 預設會攔截 drag 事件，阻止事件冒泡到父
 
 ### 建議修正方向
 在 `QuickGridCell` 的 view 設定中，對 `thumbnailView`（NSImageView）呼叫 `unregisterDraggedTypes()`，讓 drag 事件能穿透 cell 冒泡到 `QuickGridView`。這是 CLAUDE.md 中已記錄的標準解法。
+
+> **實作結果**：在 `setupThumbnailView()` 中 `view.addSubview(thumbnailView)` 之後呼叫 `thumbnailView.unregisterDraggedTypes()`。Commit: `648f896`
 
 ---
 

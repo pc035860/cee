@@ -34,6 +34,9 @@ final class QuickGridCell: NSCollectionViewItem {
         thumbnailView.translatesAutoresizingMaskIntoConstraints = false
         thumbnailView.isHidden = true  // Hidden until thumbnail is loaded (WU2)
         view.addSubview(thumbnailView)
+        // Let drag events pass through to parent QuickGridView
+        // (NSImageView registers drag types by default, intercepting file drops)
+        thumbnailView.unregisterDraggedTypes()
 
         NSLayoutConstraint.activate([
             thumbnailView.topAnchor.constraint(equalTo: view.topAnchor, constant: 2),
@@ -88,19 +91,36 @@ final class QuickGridCell: NSCollectionViewItem {
             if highlightLayer == nil {
                 let hl = CALayer()
                 hl.borderWidth = 2
-                hl.cornerRadius = 4
-                hl.frame = layer.bounds
-                hl.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+                hl.cornerRadius = 3  // 4 - 1pt inset to align with container corner
+                hl.frame = layer.bounds.insetBy(dx: 1, dy: 1)
+                hl.zPosition = 100  // Render above thumbnailView layer
                 layer.addSublayer(hl)
                 highlightLayer = hl
             }
-            // Current image: accent color. Selection cursor: white.
-            highlightLayer?.borderColor = isCurrentImage
-                ? NSColor.controlAccentColor.cgColor
-                : NSColor.white.cgColor
+            // Cursor (selection): orange. Active-only (current image): accent blue.
+            highlightLayer?.borderColor = isSelected
+                ? NSColor.systemOrange.cgColor
+                : NSColor.controlAccentColor.cgColor
+            // Background tint: active=blue, cursor=orange, both=blended
+            let bgColor: CGColor? = switch (isCurrentImage, isSelected) {
+            case (true, _):
+                NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
+            case (false, true):
+                NSColor.systemOrange.withAlphaComponent(0.08).cgColor
+            case (false, false):
+                nil
+            }
+            highlightLayer?.backgroundColor = bgColor
             highlightLayer?.isHidden = false
         } else {
             highlightLayer?.isHidden = true
+        }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        if let highlightLayer, let layer = view.layer {
+            highlightLayer.frame = layer.bounds.insetBy(dx: 1, dy: 1)
         }
     }
 
