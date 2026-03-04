@@ -23,9 +23,18 @@ enum Constants {
     // Quick Grid
     static let quickGridCellSize: CGFloat = 120
     static let quickGridMinCellSize: CGFloat = 80
-    static let quickGridMaxCellSize: CGFloat = 200
+    static let quickGridMaxCellSize: CGFloat = 512
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
+    static let quickGridCellAspectRatio: CGFloat = 9.0 / 16.0  // height / width, fallback default
+    static let quickGridAspectRatioSampleCount: Int = 50       // 取樣數量 for median ratio
+
+    // Grid Thumbnail Tiers — cell size boundary → thumbnail resolution
+    static let quickGridTier1Boundary: CGFloat = 120   // ≤120pt → tier1 size
+    static let quickGridTier2Boundary: CGFloat = 240   // ≤240pt → tier2 size
+    static let quickGridThumbnailSize1: CGFloat = 240  // low-res tier
+    static let quickGridThumbnailSize2: CGFloat = 480  // mid-res tier
+    static let quickGridThumbnailSize3: CGFloat = 1024 // high-res tier
 
     // Option+Scroll Fast Navigation (Phase 3)
     static let optionScrollThresholdTrackpad: CGFloat = 40   // trackpad 每張圖的累積閾值

@@ -147,7 +147,7 @@ final class QuickGridViewTests: XCTestCase {
 
     func testApplyItemSize_clampsToMaximum() {
         let grid = QuickGridView()
-        grid.applyItemSize(300)
+        grid.applyItemSize(999)
         XCTAssertEqual(grid.currentCellSize, Constants.quickGridMaxCellSize,
                        "Cell size above maximum should clamp to \(Constants.quickGridMaxCellSize)")
     }
@@ -194,5 +194,61 @@ final class QuickGridViewTests: XCTestCase {
 
         grid.applyItemSize(grid.currentCellSize)
         XCTAssertEqual(callCount, 0, "onCellSizeDidChange should not fire when size unchanged")
+    }
+
+    // MARK: - Thumbnail Tier Boundary
+
+    func testApplyItemSize_crossTierBoundary_clearsGridThumbnails() {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 3)
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+
+        // Start in low tier (<=120pt)
+        grid.applyItemSize(100)
+        XCTAssertEqual(grid.currentCellSize, 100)
+
+        // Cross 120pt boundary into high tier (>120pt) — should clear gridThumbnails
+        grid.applyItemSize(130)
+        XCTAssertEqual(grid.currentCellSize, 130)
+        XCTAssertEqual(grid.gridThumbnailCount, 0,
+                       "Crossing tier boundary should clear grid thumbnails")
+
+        // Items should still be intact after reloadData
+        let count = grid.collectionView(dummyCV, numberOfItemsInSection: 0)
+        XCTAssertEqual(count, 3, "Items should survive tier change reload")
+    }
+
+    func testApplyItemSize_withinSameTier_doesNotClearThumbnails() {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 3)
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+
+        // Both in low tier (<=120pt): 80→100
+        grid.applyItemSize(80)
+        let countBefore = grid.gridThumbnailCount
+        grid.applyItemSize(100)
+        XCTAssertEqual(grid.gridThumbnailCount, countBefore,
+                       "Same tier resize should not clear thumbnails")
+
+        // Both in high tier (>120pt): 130→180
+        grid.applyItemSize(130)
+        grid.applyItemSize(180)
+        // No crash, size updated correctly
+        XCTAssertEqual(grid.currentCellSize, 180)
+    }
+
+    func testApplyItemSize_animated_sameResult() {
+        let grid = QuickGridView()
+        var capturedSize: CGFloat?
+        grid.onCellSizeDidChange = { size in capturedSize = size }
+
+        grid.applyItemSize(150, animated: true)
+
+        XCTAssertEqual(grid.currentCellSize, 150,
+                       "Animated resize should produce same final state")
+        XCTAssertEqual(capturedSize, 150,
+                       "onCellSizeDidChange should fire for animated resize")
     }
 }

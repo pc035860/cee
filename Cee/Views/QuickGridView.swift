@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 @MainActor
 protocol QuickGridViewDelegate: AnyObject {
@@ -14,6 +15,17 @@ private final class GridScrollView: NSScrollView {
     var onCmdScroll: ((CGFloat) -> Void)?
     /// Read by scrollWheel to compute delta-based size. Updated by QuickGridView.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
+
+    // NSCollectionView re-enables scrollers during layout passes / reloadData.
+    // Override to lock them off permanently.
+    override var hasVerticalScroller: Bool {
+        get { false }
+        set { /* ignore — NSCollectionView tries to enable this */ }
+    }
+    override var hasHorizontalScroller: Bool {
+        get { false }
+        set { /* ignore */ }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -40,14 +52,72 @@ private final class GridScrollView: NSScrollView {
     }
 }
 
+/// Minimal slider cell with thin track (2px) and small dot knob (8x8).
+/// Provides a Figma-like ultra-minimal appearance for the grid size slider.
+private final class MinimalSliderCell: NSSliderCell {
+    private let trackHeight: CGFloat = 2
+    private let knobSize: CGFloat = 8
+
+    /// Normalized slider position (0.0–1.0).
+    private var proportion: CGFloat {
+        CGFloat((doubleValue - minValue) / (maxValue - minValue))
+    }
+
+    override func barRect(flipped: Bool) -> NSRect {
+        let full = super.barRect(flipped: flipped)
+        let y = full.midY - trackHeight / 2
+        return NSRect(x: full.origin.x, y: y, width: full.width, height: trackHeight)
+    }
+
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+        let barRect = self.barRect(flipped: flipped)
+        let knobX = barRect.origin.x + barRect.width * proportion
+
+        // Left (filled) portion
+        let leftRect = NSRect(x: barRect.origin.x, y: barRect.origin.y,
+                              width: knobX - barRect.origin.x, height: barRect.height)
+        let leftPath = NSBezierPath(roundedRect: leftRect, xRadius: 1, yRadius: 1)
+        NSColor.white.withAlphaComponent(0.4).setFill()
+        leftPath.fill()
+
+        // Right (unfilled) portion
+        let rightRect = NSRect(x: knobX, y: barRect.origin.y,
+                               width: barRect.maxX - knobX, height: barRect.height)
+        let rightPath = NSBezierPath(roundedRect: rightRect, xRadius: 1, yRadius: 1)
+        NSColor.white.withAlphaComponent(0.15).setFill()
+        rightPath.fill()
+    }
+
+    override func knobRect(flipped: Bool) -> NSRect {
+        let barRect = self.barRect(flipped: flipped)
+        let knobX = barRect.origin.x + barRect.width * proportion - knobSize / 2
+        let knobY = barRect.midY - knobSize / 2
+        return NSRect(x: knobX, y: knobY, width: knobSize, height: knobSize)
+    }
+
+    override func drawKnob(_ knobRect: NSRect) {
+        let dotRect = NSRect(
+            x: knobRect.midX - knobSize / 2,
+            y: knobRect.midY - knobSize / 2,
+            width: knobSize,
+            height: knobSize
+        )
+        let path = NSBezierPath(ovalIn: dotRect)
+        NSColor.white.withAlphaComponent(0.85).setFill()
+        path.fill()
+    }
+}
+
 /// NSCollectionView subclass that intercepts Enter/Return at the first responder level.
 /// Without this, Enter events would need to propagate up the responder chain,
 /// which NSCollectionView may not forward reliably.
 private final class GridCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
     var onDismiss: (() -> Void)?
-    /// Unified callback for cell size changes (pinch gesture).
+    /// Callback for cell size changes (pinch gesture, non-animated).
     var onCellSizeChange: ((CGFloat) -> Void)?
+    /// Callback for animated cell size changes (keyboard shortcuts).
+    var onAnimatedCellSizeChange: ((CGFloat) -> Void)?
     /// Current cell size — set by QuickGridView, read for incremental pinch calculation.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
 
@@ -61,9 +131,9 @@ private final class GridCollectionView: NSCollectionView {
             onDismiss?()
         case 24 where modifiers == .command || modifiers == [.command, .shift]:
             // Cmd+= or Cmd+Shift+= (Cmd+) — grow by 10pt (ANSI keyCode 24)
-            onCellSizeChange?(currentCellSize + 10)
+            onAnimatedCellSizeChange?(currentCellSize + 10)
         case 27 where modifiers == .command:  // Cmd+- (ANSI keyCode 27) — shrink by 10pt
-            onCellSizeChange?(currentCellSize - 10)
+            onAnimatedCellSizeChange?(currentCellSize - 10)
         default:
             super.keyDown(with: event)
         }
@@ -93,6 +163,18 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Current grid cell size — single source of truth. Clamped to min/max range.
     private(set) var currentCellSize: CGFloat = Constants.quickGridCellSize
 
+    /// Dynamic aspect ratio (height/width) determined by sampling folder images.
+    private var currentAspectRatio: CGFloat = Constants.quickGridCellAspectRatio
+
+    /// Dynamic thumbnail maxSize based on current cell size.
+    /// Three tiers to balance sharpness vs memory:
+    /// ≤ tier1 → 240px, ≤ tier2 → 480px, > tier2 → 1024px
+    private var gridThumbnailMaxSize: CGFloat {
+        if currentCellSize <= Constants.quickGridTier1Boundary { return Constants.quickGridThumbnailSize1 }
+        if currentCellSize <= Constants.quickGridTier2Boundary { return Constants.quickGridThumbnailSize2 }
+        return Constants.quickGridThumbnailSize3
+    }
+
     // MARK: - Slider
 
     private let sizeSlider = NSSlider()
@@ -107,6 +189,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var loader: ImageLoader?
     /// Grid-local thumbnail cache (not evicted by navigation's updateCache)
     private var gridThumbnails: [Int: NSImage] = [:]
+    /// Test-only: number of cached grid thumbnails.
+    var gridThumbnailCount: Int { gridThumbnails.count }
     /// Active thumbnail loading tasks (keyed by item index)
     private var thumbnailTasks: [Int: Task<Void, Never>] = [:]
 
@@ -127,10 +211,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Collection view layout
         let layout = NSCollectionViewFlowLayout()
-        layout.itemSize = NSSize(
-            width: currentCellSize,
-            height: currentCellSize
-        )
+        layout.itemSize = currentItemSize
         layout.minimumInteritemSpacing = Constants.quickGridSpacing
         layout.minimumLineSpacing = Constants.quickGridSpacing
         layout.sectionInset = NSEdgeInsets(
@@ -163,9 +244,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self.delegate?.quickGridViewDidRequestClose(self)
         }
 
-        // Wire resize handlers (pinch + Cmd+Scroll)
+        // Wire resize handlers (pinch + Cmd+Scroll — non-animated)
         collectionView.onCellSizeChange = { [weak self] newSize in
             self?.applyItemSize(newSize)
+        }
+        collectionView.onAnimatedCellSizeChange = { [weak self] newSize in
+            self?.applyItemSize(newSize, animated: true)
         }
         gridScrollView.onCmdScroll = { [weak self] newSize in
             self?.applyItemSize(newSize)
@@ -173,9 +257,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Size slider (bottom bar)
         sliderContainer.wantsLayer = true
-        sliderContainer.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        sliderContainer.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
         sliderContainer.translatesAutoresizingMaskIntoConstraints = false
 
+        // Custom minimal cell — must be set BEFORE property configuration
+        sizeSlider.cell = MinimalSliderCell()
         sizeSlider.minValue = Double(Constants.quickGridMinCellSize)
         sizeSlider.maxValue = Double(Constants.quickGridMaxCellSize)
         sizeSlider.doubleValue = Double(currentCellSize)
@@ -187,10 +273,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Scroll view wrapping collection view
         gridScrollView.documentView = collectionView
-        gridScrollView.hasVerticalScroller = true
-        gridScrollView.hasHorizontalScroller = false
+        // hasVerticalScroller/hasHorizontalScroller locked via override in GridScrollView
         gridScrollView.drawsBackground = false
-        gridScrollView.autohidesScrollers = true
         gridScrollView.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(gridScrollView)
@@ -205,31 +289,128 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             sliderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             sliderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             sliderContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
-            sliderContainer.heightAnchor.constraint(equalToConstant: 30),
+            sliderContainer.heightAnchor.constraint(equalToConstant: 24),
 
             sizeSlider.leadingAnchor.constraint(equalTo: sliderContainer.leadingAnchor, constant: 8),
             sizeSlider.trailingAnchor.constraint(equalTo: sliderContainer.trailingAnchor, constant: -8),
             sizeSlider.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
         ])
 
+        // Respond to window resize: re-center items
+        gridScrollView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(gridFrameDidChange),
+            name: NSView.frameDidChangeNotification, object: gridScrollView)
+
         registerForDraggedTypes([.fileURL])
+    }
+
+    /// Item size derived directly from `currentCellSize` (Finder-style: smooth resize, columns change naturally).
+    private var currentItemSize: NSSize {
+        NSSize(width: currentCellSize, height: currentCellSize * currentAspectRatio)
+    }
+
+    /// Update section insets + inter-item spacing for space-around distribution.
+    /// Each item gets equal gap on both sides; edge gap = G, between items = 2G.
+    private func updateSpaceAroundLayout() {
+        let available = gridScrollView.bounds.width
+        guard available > 0 else { return }
+        lastLayoutWidth = available
+
+        let cellWidth = currentCellSize
+        let minSpacing = Constants.quickGridSpacing
+        let baseInset = Constants.quickGridInset
+
+        let cols = max(1, floor((available - baseInset * 2 + minSpacing) / (cellWidth + minSpacing)))
+        // space-around: available = cols * cellWidth + 2G * cols  →  G = remaining / (2 * cols)
+        let remaining = max(0, available - cols * cellWidth)
+        let gap = floor(remaining / (cols * 2))
+
+        flowLayout.sectionInset = NSEdgeInsets(
+            top: baseInset, left: gap,
+            bottom: baseInset, right: gap)
+        flowLayout.minimumInteritemSpacing = gap * 2
+    }
+
+    /// Last width used for space-around calculation; skip redundant recalcs (e.g. height-only resize).
+    private var lastLayoutWidth: CGFloat = 0
+
+    @objc private func gridFrameDidChange(_ note: Notification) {
+        let width = gridScrollView.bounds.width
+        guard width != lastLayoutWidth else { return }
+        updateSpaceAroundLayout()
+        collectionView.collectionViewLayout?.invalidateLayout()
+    }
+
+    /// Sample image headers to compute median aspect ratio (height/width).
+    /// Reads only file headers via CGImageSource — no pixel decode, ~0.1ms per file.
+    /// Note: runs synchronously on main thread (~5ms for 50 images on SSD;
+    /// may be slower on HDD/NAS — acceptable MVP trade-off).
+    private func sampleMedianAspectRatio(from items: [ImageItem]) -> CGFloat {
+        let sampleItems = items
+            .lazy
+            .filter { !$0.isPDF }
+            .prefix(Constants.quickGridAspectRatioSampleCount)
+        guard !sampleItems.isEmpty else { return Constants.quickGridCellAspectRatio }
+
+        var ratios: [CGFloat] = []
+        ratios.reserveCapacity(sampleItems.count)
+
+        for item in sampleItems {
+            guard let source = CGImageSourceCreateWithURL(item.url as CFURL, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+                  let pw = props[kCGImagePropertyPixelWidth as String] as? CGFloat,
+                  let ph = props[kCGImagePropertyPixelHeight as String] as? CGFloat,
+                  pw > 0, ph > 0 else { continue }
+
+            // EXIF orientation 5-8 means the image is rotated 90°/270° — swap dimensions.
+            let orientation = (props[kCGImagePropertyOrientation as String] as? NSNumber)?.intValue ?? 1
+            let (w, h) = (orientation >= 5 && orientation <= 8) ? (ph, pw) : (pw, ph)
+            ratios.append(h / w)
+        }
+
+        guard !ratios.isEmpty else { return Constants.quickGridCellAspectRatio }
+        ratios.sort()
+        return ratios[ratios.count / 2]
     }
 
     // MARK: - Cell Size
 
     /// Apply a new cell size, clamped to the allowed range.
-    /// Only invalidates layout — does NOT clear the thumbnail cache because
-    /// the 240px source thumbnails are valid for the entire 80–200pt range
-    /// and NSImageView handles the rescaling automatically.
-    func applyItemSize(_ newSize: CGFloat) {
+    /// Normally only invalidates layout (no cache clear). When crossing a thumbnail
+    /// tier boundary (240/480/1024px), cancels in-flight tasks and reloads.
+    func applyItemSize(_ newSize: CGFloat, animated: Bool = false) {
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
         guard clamped != currentCellSize else { return }
+
+        // Detect thumbnail tier change
+        let oldMaxSize = gridThumbnailMaxSize
         currentCellSize = clamped
+        let newMaxSize = gridThumbnailMaxSize
 
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
-        flowLayout.itemSize = NSSize(width: clamped, height: clamped)
-        collectionView.collectionViewLayout?.invalidateLayout()
+        let updateLayout = {
+            self.flowLayout.itemSize = self.currentItemSize
+            self.updateSpaceAroundLayout()
+            self.collectionView.collectionViewLayout?.invalidateLayout()
+        }
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                context.allowsImplicitAnimation = true
+                updateLayout()
+            }
+        } else {
+            updateLayout()
+        }
+
+        // Tier changed: cancel in-flight tasks (prevent stale resolution writeback),
+        // clear local cache, and reload to trigger fresh thumbnail loads at new maxSize.
+        if oldMaxSize != newMaxSize {
+            cancelAndClearThumbnails()
+            collectionView.reloadData()
+        }
 
         // Sync current size to subviews for delta calculation
         collectionView.currentCellSize = clamped
@@ -256,8 +437,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         self.currentIndex = currentIndex
         self.loader = loader
 
+        // Sample folder images to determine optimal cell aspect ratio (~5ms for 50 images)
+        currentAspectRatio = sampleMedianAspectRatio(from: items)
+
         // Ensure layout uses current cell size (supports re-open with last size in same session)
-        flowLayout.itemSize = NSSize(width: currentCellSize, height: currentCellSize)
+        flowLayout.itemSize = currentItemSize
+        updateSpaceAroundLayout()
         collectionView.currentCellSize = currentCellSize
         gridScrollView.currentCellSize = currentCellSize
 
@@ -282,29 +467,28 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         window?.makeFirstResponder(collectionView)
     }
 
-    /// Clear cached thumbnails and cancel pending tasks without releasing loader.
-    /// Used when folder content changes and the grid will be reconfigured.
-    func clearCache() {
+    /// Cancel all in-flight thumbnail tasks and clear the grid-local cache.
+    private func cancelAndClearThumbnails() {
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
-        if let loader {
-            Task { await loader.clearThumbnailCache() }
-        }
+    }
+
+    /// Clear cached thumbnails and cancel pending tasks without releasing loader.
+    /// Used when folder content changes and the grid will be reconfigured.
+    func clearCache() {
+        cancelAndClearThumbnails()
+        // No need to clear ImageLoader.thumbnailCache — composite key (URL + maxSize)
+        // prevents cross-contamination between grid and main view thumbnails.
     }
 
     /// Cancel all pending thumbnail tasks and release cached thumbnails.
     /// Note: Task.detached inside ImageLoader.loadThumbnail won't propagate cancellation,
     /// but thumbnail decodes are fast (~16ms for JPEG) so the impact is minimal.
     func cleanup() {
-        for (_, task) in thumbnailTasks { task.cancel() }
-        thumbnailTasks.removeAll()
-        gridThumbnails.removeAll()
-        // Clear ImageLoader's thumbnailCache to prevent 240px grid thumbnails
-        // from polluting the main view's 512px thumbnail fallback
-        if let loader {
-            Task { await loader.clearThumbnailCache() }
-        }
+        cancelAndClearThumbnails()
+        // Composite key in ImageLoader prevents cross-contamination —
+        // no need to clear thumbnailCache on grid dismiss.
         loader = nil
     }
 
@@ -332,8 +516,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         guard let loader else { return }
 
+        let maxSize = gridThumbnailMaxSize
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: 240)
+            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize)
             guard !Task.isCancelled else { return }
             guard let self else { return }
 
