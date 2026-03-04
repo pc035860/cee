@@ -24,7 +24,7 @@ border 畫在 layer bounds 的邊緣上（內外各佔一半），而 `masksToBo
 
 ---
 
-## 問題 2：Grid 縮放時 Layout 閃爍
+## 問題 2：Grid 縮放時 Layout 閃爍 ✅ DONE
 
 ### 現象
 進行 zoom in / zoom out（pinch、Cmd+Scroll、Cmd+=/-）時，畫面偶爾出現閃爍或不穩定的 layout 跳動。
@@ -46,6 +46,8 @@ border 畫在 layer bounds 的邊緣上（內外各佔一半），而 `masksToBo
 - 調查具體閃爍場景（tier 邊界？列數跳變？）再針對性修正
 - 考慮 tier 切換時使用漸進載入而非全量 reloadData
 - 列數跳變時可加入 hysteresis（遲滯）避免在臨界點反覆切換
+
+> **實作結果**：根因為 tier 邊界跨越時 `cancelAndClearThumbnails()` + `reloadData()` 清空所有 cell 造成白色閃爍。改為 Progressive Reload：`cancelPendingThumbnailTasks()`（只取消 tasks 不清 cache）+ `reloadVisibleThumbnails()`（為可見 cell 啟動新 tier 載入，舊縮圖保留到新的載入完成）。不再呼叫 `reloadData()`。
 
 ---
 
