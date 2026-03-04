@@ -46,6 +46,11 @@ private final class MinimalSliderCell: NSSliderCell {
     private let trackHeight: CGFloat = 2
     private let knobSize: CGFloat = 8
 
+    /// Normalized slider position (0.0–1.0).
+    private var proportion: CGFloat {
+        CGFloat((doubleValue - minValue) / (maxValue - minValue))
+    }
+
     override func barRect(flipped: Bool) -> NSRect {
         let full = super.barRect(flipped: flipped)
         let y = full.midY - trackHeight / 2
@@ -54,7 +59,6 @@ private final class MinimalSliderCell: NSSliderCell {
 
     override func drawBar(inside rect: NSRect, flipped: Bool) {
         let barRect = self.barRect(flipped: flipped)
-        let proportion = CGFloat((doubleValue - minValue) / (maxValue - minValue))
         let knobX = barRect.origin.x + barRect.width * proportion
 
         // Left (filled) portion
@@ -74,7 +78,6 @@ private final class MinimalSliderCell: NSSliderCell {
 
     override func knobRect(flipped: Bool) -> NSRect {
         let barRect = self.barRect(flipped: flipped)
-        let proportion = CGFloat((doubleValue - minValue) / (maxValue - minValue))
         let knobX = barRect.origin.x + barRect.width * proportion - knobSize / 2
         let knobY = barRect.midY - knobSize / 2
         return NSRect(x: knobX, y: knobY, width: knobSize, height: knobSize)
@@ -291,21 +294,23 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard clamped != currentCellSize else { return }
 
         // Detect thumbnail tier change (120pt boundary)
-        let oldMaxSize: CGFloat = currentCellSize > 120 ? 480 : 240
+        let oldMaxSize = gridThumbnailMaxSize
         currentCellSize = clamped
         let newMaxSize = gridThumbnailMaxSize
 
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
+        let updateLayout = {
+            self.flowLayout.itemSize = NSSize(width: clamped, height: clamped)
+            self.collectionView.collectionViewLayout?.invalidateLayout()
+        }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.15
                 context.allowsImplicitAnimation = true
-                flowLayout.itemSize = NSSize(width: clamped, height: clamped)
-                collectionView.collectionViewLayout?.invalidateLayout()
+                updateLayout()
             }
         } else {
-            flowLayout.itemSize = NSSize(width: clamped, height: clamped)
-            collectionView.collectionViewLayout?.invalidateLayout()
+            updateLayout()
         }
 
         // Tier changed: cancel in-flight tasks (prevent stale resolution writeback),
@@ -414,8 +419,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         guard let loader else { return }
 
+        let maxSize = gridThumbnailMaxSize
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: self?.gridThumbnailMaxSize ?? 240)
+            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize)
             guard !Task.isCancelled else { return }
             guard let self else { return }
 
