@@ -567,10 +567,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         didSelectItemsAt indexPaths: Set<IndexPath>
     ) {
         guard let indexPath = indexPaths.first else { return }
-        // Only navigate on mouse click, not keyboard arrow selection.
-        // Keyboard users confirm with Enter (handled in keyDown).
         if let event = NSApp.currentEvent, event.type == .leftMouseUp {
+            // Mouse click: navigate directly (view will change, no scroll needed)
             delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
+        } else {
+            // Keyboard navigation: scroll selected item into view
+            collectionView.scrollToItems(
+                at: [indexPath],
+                scrollPosition: .centeredVertically
+            )
         }
     }
 
