@@ -218,6 +218,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Test-only accessor for gridThumbnailMaxCount.
     var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
 
+    /// Test-only accessor for generationID.
+    var _testGenerationID: Int { 0 }  // TODO: Implement in GREEN phase
+
+    /// Test-only: write thumbnail only if generation matches current.
+    func _testWriteThumbnailIfCurrentGeneration(_ image: NSImage, forIndex index: Int, generation: Int) {
+        // TODO: Implement in GREEN phase
+    }
+
     /// Test-only: simulate memory pressure response.
     func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
         handleMemoryPressure(level)
