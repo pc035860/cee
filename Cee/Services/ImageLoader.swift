@@ -43,14 +43,19 @@ actor ImageLoader {
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
     /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
     /// PDF 不支援，回傳 nil
-    func loadThumbnail(at url: URL, maxSize: CGFloat = 512, priority: TaskPriority = .userInitiated) async -> (image: NSImage, fullSize: CGSize)? {
+    /// - Parameter throttlePriority: Smaller = higher urgency. 0 = highest (default, for non-grid callers).
+    ///   Grid callers pass `abs(index - visibleCenter)` as distance-based priority.
+    func loadThumbnail(at url: URL, maxSize: CGFloat = 512, priority: TaskPriority = .userInitiated, throttlePriority: Int = 0) async -> (image: NSImage, fullSize: CGSize)? {
         let cacheKey = ThumbnailCacheKey(url: url, maxSize: maxSize)
         if let cached = thumbnailCache[cacheKey] {
             return (cached.image, cached.fullSize)
         }
 
-        let result = await thumbnailThrottle.withThrottle {
-            await Task.detached(priority: priority) {
+        let result = await thumbnailThrottle.withThrottle(priority: throttlePriority) {
+            () async -> (image: NSImage, fullSize: CGSize)? in
+            // Skip expensive decode if caller was cancelled while waiting in queue
+            guard !Task.isCancelled else { return nil }
+            return await Task.detached(priority: priority) {
                 Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
             }.value
         }
@@ -208,7 +213,10 @@ actor ImageLoader {
     /// 共用同一個 CGImageSource，避免二次開檔
     private static func decodeThumbnailWithDimensions(at url: URL, maxSize: CGFloat) -> (image: NSImage, fullSize: CGSize)? {
         guard !isPDFURL(url) else { return nil }
+        let decodeStart = CFAbsoluteTimeGetCurrent()
+
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let sourceMs = (CFAbsoluteTimeGetCurrent() - decodeStart) * 1000
 
         // 讀 full-res dimensions（同一個 source，零額外 I/O）
         let fullSize: CGSize
@@ -221,17 +229,33 @@ actor ImageLoader {
             fullSize = .zero  // fallback: caller 會用 thumbnail size
         }
 
-        let options: [CFString: Any] = [
+        var options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxSize,
         ]
+        // Phase 3.1: SubsampleFactor for JPEG/HEIF DCT fast path at micro-thumbnail sizes
+        let subsample: Int
+        if maxSize <= Constants.quickGridSubsampleThresholdPx {
+            subsample = 4
+            options[kCGImageSourceSubsampleFactor] = subsample
+        } else {
+            subsample = 1
+        }
+        let thumbStart = CFAbsoluteTimeGetCurrent()
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else { return nil }
+        let thumbMs = (CFAbsoluteTimeGetCurrent() - thumbStart) * 1000
+
         let image = NSImage(cgImage: cgImage, size: NSSize(
             width: cgImage.width,
             height: cgImage.height
         ))
+        let totalMs = (CFAbsoluteTimeGetCurrent() - decodeStart) * 1000
+        GridPerfLog.log(String(format: "decode: total=%.2fms | source=%.2fms | thumb(%dx%d→%.0f,ss=%d)=%.2fms | %@",
+                               totalMs, sourceMs, cgImage.width, cgImage.height, maxSize, subsample, thumbMs,
+                               url.lastPathComponent))
+
         let effectiveSize = fullSize == .zero ? image.size : fullSize
         return (image, effectiveSize)
     }

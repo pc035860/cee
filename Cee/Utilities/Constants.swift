@@ -21,15 +21,20 @@ enum Constants {
     static let statusBarHeight: CGFloat = 22
 
     // Quick Grid
-    static let quickGridCellSize: CGFloat = 120
-    static let quickGridMinCellSize: CGFloat = 80
+    static let quickGridCellSize: CGFloat = 160    // matches min; slider left = this size
+    static let quickGridMinCellSize: CGFloat = 160  // tier2 decode 480px; user-preferred min zoom
     static let quickGridMaxCellSize: CGFloat = 512
+    static let quickGridSliderMaxWidth: CGFloat = 400  // Finder-style centered slider
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
     static let quickGridCellAspectRatio: CGFloat = 9.0 / 16.0  // height / width, fallback default
     static let quickGridAspectRatioSampleCount: Int = 50       // 取樣數量 for median ratio
 
     // Grid Thumbnail Tiers — cell size boundary → thumbnail resolution
+    static let quickGridTier0MinPx: CGFloat = 80       // micro-thumbnail pixel floor (ensures legibility)
+    static let quickGridTier0QuantizeStep: CGFloat = 20 // quantization step to avoid cache churn on pinch
+    static let quickGridSubsampleThresholdPx: CGFloat = 120  // ≤ this px → 4x DCT subsample fast path
+    static let quickGridTier0Boundary: CGFloat = 60    // ≤60pt → adaptive micro-thumbnail (Phase 3.1)
     static let quickGridTier1Boundary: CGFloat = 120   // ≤120pt → tier1 size
     static let quickGridTier2Boundary: CGFloat = 240   // ≤240pt → tier2 size
     static let quickGridThumbnailSize1: CGFloat = 240  // low-res tier

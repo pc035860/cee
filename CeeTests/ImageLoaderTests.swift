@@ -87,6 +87,44 @@ final class ImageLoaderTests: XCTestCase {
         #endif
     }
 
+    // MARK: - SubsampleFactor (Phase 3.1)
+
+    func testLoadThumbnail_smallMaxSize_appliesSubsampleFactor() async throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createJPEG")
+        #else
+        let url = try createJPEG(width: 2000, height: 2000)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = ImageLoader()
+        let result = await loader.loadThumbnail(at: url, maxSize: 80)
+
+        XCTAssertNotNil(result, "Small maxSize with SubsampleFactor should still produce valid image")
+        let maxEdge = max(result!.image.size.width, result!.image.size.height)
+        XCTAssertLessThanOrEqual(maxEdge, 80 + 1, "Thumbnail should be at most 80px")
+        // fullSize should still reflect original dimensions
+        XCTAssertEqual(result!.fullSize.width, 2000, accuracy: 1)
+        XCTAssertEqual(result!.fullSize.height, 2000, accuracy: 1)
+        #endif
+    }
+
+    func testLoadThumbnail_largeMaxSize_noSubsampleFactor() async throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createJPEG")
+        #else
+        let url = try createJPEG(width: 2000, height: 2000)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = ImageLoader()
+        let result = await loader.loadThumbnail(at: url, maxSize: 240)
+
+        XCTAssertNotNil(result, "Large maxSize should produce valid image")
+        let maxEdge = max(result!.image.size.width, result!.image.size.height)
+        XCTAssertLessThanOrEqual(maxEdge, 240 + 1, "Thumbnail should be at most 240px")
+        XCTAssertEqual(result!.fullSize.width, 2000, accuracy: 1)
+        #endif
+    }
+
     // MARK: - Dual Priority Loading
 
     func testLoadThumbnail_utilityPriority_stillWorks() async throws {

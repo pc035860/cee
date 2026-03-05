@@ -176,6 +176,147 @@ final class ThumbnailThrottleTests: XCTestCase {
         let active = await throttle.activeCount
         XCTAssertEqual(active, 0, "Active count should return to 0 even after cancellation")
     }
+
+    // MARK: - Test 7: Priority dequeue — smallest first (Phase 3.2)
+
+    func testThumbnailThrottle_priorityDequeue_smallestFirst() async {
+        let throttle = ThumbnailThrottle(maxConcurrent: 1)
+        let order = ManagedOrder()
+        let gate = ManagedGate()
+
+        // Hold the only slot
+        async let op1: Void = throttle.withThrottle(priority: 0) {
+            order.append(0)
+            await gate.wait()
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000) // let op1 acquire
+
+        // Queue 3 waiters with different priorities (not FIFO order)
+        async let opA: Void = throttle.withThrottle(priority: 30) {
+            order.append(30)
+        }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        async let opB: Void = throttle.withThrottle(priority: 10) {
+            order.append(10)
+        }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        async let opC: Void = throttle.withThrottle(priority: 20) {
+            order.append(20)
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000) // let all enqueue
+
+        gate.open()
+        await op1
+        await opA
+        await opB
+        await opC
+
+        // Should be: [0 (first acquired), 10, 20, 30] — priority order, not FIFO
+        XCTAssertEqual(order.values, [0, 10, 20, 30],
+                       "Waiters should dequeue by smallest priority (closest to center)")
+    }
+
+    // MARK: - Test 8: Same priority preserves FIFO (Phase 3.2)
+
+    func testThumbnailThrottle_samePriority_preservesFIFO() async {
+        let throttle = ThumbnailThrottle(maxConcurrent: 1)
+        let order = ManagedOrder()
+        let gate = ManagedGate()
+
+        // Hold the only slot
+        async let op1: Void = throttle.withThrottle(priority: 0) {
+            order.append(0)
+            await gate.wait()
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000)
+
+        // Queue 3 waiters with SAME priority
+        async let opA: Void = throttle.withThrottle(priority: 5) {
+            order.append(1)
+        }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        async let opB: Void = throttle.withThrottle(priority: 5) {
+            order.append(2)
+        }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        async let opC: Void = throttle.withThrottle(priority: 5) {
+            order.append(3)
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000)
+
+        gate.open()
+        await op1
+        await opA
+        await opB
+        await opC
+
+        XCTAssertEqual(order.values, [0, 1, 2, 3],
+                       "Same-priority waiters should dequeue in FIFO order")
+    }
+
+    // MARK: - Test 9: Default priority is 0 (highest) (Phase 3.2)
+
+    func testThumbnailThrottle_defaultPriority_isZero() async {
+        let throttle = ThumbnailThrottle(maxConcurrent: 1)
+        let order = ManagedOrder()
+        let gate = ManagedGate()
+
+        // Hold slot
+        async let op1: Void = throttle.withThrottle {
+            order.append(0)
+            await gate.wait()
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000)
+
+        // Enqueue with explicit high priority number (low priority)
+        async let opA: Void = throttle.withThrottle(priority: 100) {
+            order.append(100)
+        }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        // Enqueue with default (should be 0 = highest)
+        async let opB: Void = throttle.withThrottle {
+            order.append(1)
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000)
+
+        gate.open()
+        await op1
+        await opA
+        await opB
+
+        // Default priority (0) should dequeue before explicit 100
+        XCTAssertEqual(order.values, [0, 1, 100],
+                       "Default priority (0) should dequeue before higher values")
+    }
+
+}
+
+// MARK: - Integration Tests (Phase 3.2)
+
+final class ThumbnailThrottlePriorityIntegrationTests: XCTestCase {
+
+    func testLoadThumbnail_throttlePriority_passesThrough() async throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createJPEG")
+        #else
+        let url = try createJPEG(width: 200, height: 200)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = ImageLoader()
+        let result = await loader.loadThumbnail(at: url, maxSize: 128, throttlePriority: 42)
+
+        XCTAssertNotNil(result, "loadThumbnail with throttlePriority should produce valid result")
+        let maxEdge = max(result!.image.size.width, result!.image.size.height)
+        XCTAssertLessThanOrEqual(maxEdge, 128 + 1)
+        #endif
+    }
 }
 
 // MARK: - Test Helpers

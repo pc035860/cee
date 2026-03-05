@@ -54,7 +54,7 @@ struct ViewerSettings: Codable {
     var lastWindowHeight: CGFloat? = nil  // nil = 未曾儲存，首次啟動使用螢幕 80%
 
     // MARK: - Quick Grid
-    var quickGridCellSize: CGFloat = 120
+    var quickGridCellSize: CGFloat = 160  // matches Constants.quickGridMinCellSize
 
     // MARK: - UI
     var showStatusBar: Bool = true

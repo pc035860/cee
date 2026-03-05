@@ -60,14 +60,14 @@ final class ViewerSettingsTests: XCTestCase {
         // New keys should fall back to defaults
         XCTAssertTrue(decoded.arrowLeftRightNavigation)
         XCTAssertFalse(decoded.arrowUpDownNavigation)
-        XCTAssertEqual(decoded.quickGridCellSize, 120, "Missing quickGridCellSize should default to 120")
+        XCTAssertEqual(decoded.quickGridCellSize, 160, "Missing quickGridCellSize should default to 160")
     }
 
     // MARK: - Quick Grid Cell Size
 
-    func testDefaultQuickGridCellSize_is120() {
+    func testDefaultQuickGridCellSize_is160() {
         let settings = ViewerSettings()
-        XCTAssertEqual(settings.quickGridCellSize, 120)
+        XCTAssertEqual(settings.quickGridCellSize, 160)
     }
 
     func testCodableRoundTrip_quickGridCellSize() throws {

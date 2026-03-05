@@ -23,16 +23,23 @@ func minimalPNG() -> Data {
 }
 
 #if canImport(AppKit)
-/// Creates a PNG file of given dimensions (for thumbnail / resize tests).
+
+// MARK: - Image File Creation Helpers
+
+/// Shared implementation for creating test image files of given dimensions.
 /// Returns temp file URL. Caller should delete when done.
-func createPNG(width: Int, height: Int) throws -> URL {
+private func createImageFile(width: Int, height: Int,
+                             fileType: NSBitmapImageRep.FileType,
+                             properties: [NSBitmapImageRep.PropertyKey: Any],
+                             hasAlpha: Bool,
+                             extension ext: String) throws -> URL {
     guard let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil,
         pixelsWide: width,
         pixelsHigh: height,
         bitsPerSample: 8,
-        samplesPerPixel: 4,
-        hasAlpha: true,
+        samplesPerPixel: hasAlpha ? 4 : 3,
+        hasAlpha: hasAlpha,
         isPlanar: false,
         colorSpaceName: .deviceRGB,
         bytesPerRow: 0,
@@ -45,11 +52,25 @@ func createPNG(width: Int, height: Int) throws -> URL {
         ctx.cgContext.fill(CGRect(x: 0, y: 0, width: width, height: height))
         NSGraphicsContext.restoreGraphicsState()
     }
-    guard let pngData = rep.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "TestHelpers", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])
+    guard let data = rep.representation(using: fileType, properties: properties) else {
+        throw NSError(domain: "TestHelpers", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to encode \(ext)"])
     }
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
-    try pngData.write(to: url)
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ext)
+    try data.write(to: url)
     return url
+}
+
+/// Creates a JPEG file of given dimensions (for SubsampleFactor tests).
+func createJPEG(width: Int, height: Int) throws -> URL {
+    try createImageFile(width: width, height: height,
+                        fileType: .jpeg, properties: [.compressionFactor: 0.8],
+                        hasAlpha: false, extension: ".jpg")
+}
+
+/// Creates a PNG file of given dimensions (for thumbnail / resize tests).
+func createPNG(width: Int, height: Int) throws -> URL {
+    try createImageFile(width: width, height: height,
+                        fileType: .png, properties: [:],
+                        hasAlpha: true, extension: ".png")
 }
 #endif
