@@ -892,7 +892,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self.reloadVisibleThumbnails()
             self.pendingTierChange = false
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: tierChangeWorkItem!)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.quickGridTierChangeDelay, execute: tierChangeWorkItem!)
     }
 
     @objc private func sliderValueChanged(_ sender: NSSlider) {
