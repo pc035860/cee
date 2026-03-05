@@ -220,7 +220,37 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Test-only: simulate memory pressure response.
     func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
-        // TODO: Implement in GREEN phase
+        handleMemoryPressure(level)
+    }
+
+    // MARK: - Memory Pressure
+
+    private let memoryPressureMonitor = MemoryPressureMonitor()
+
+    func setupMemoryPressureMonitor() {
+        memoryPressureMonitor.onPressure = { [weak self] level in
+            guard let self else { return }
+            self.handleMemoryPressure(level)
+        }
+        memoryPressureMonitor.start()
+    }
+
+    private func handleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        switch level {
+        case .warning:
+            // Clear non-visible thumbnails and cancel all pending tasks
+            let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
+            evictNonVisibleThumbnails(visibleIndices: visibleIndices)
+            cancelPendingThumbnailTasks()
+        case .critical:
+            // Nuclear: clear ALL thumbnails and tasks
+            gridThumbnails.removeAll()
+            cancelPendingThumbnailTasks()
+            // Also clear ImageLoader cache (actor-isolated, fire-and-forget)
+            Task { [weak self] in
+                await self?.loader?.clearThumbnailCache()
+            }
+        }
     }
 
     // MARK: - Prefetch Pipeline
@@ -449,6 +479,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             name: NSView.boundsDidChangeNotification, object: gridScrollView.contentView)
 
         registerForDraggedTypes([.fileURL])
+
+        // Memory pressure safety net
+        setupMemoryPressureMonitor()
     }
 
     /// Item size derived directly from `currentCellSize` (Finder-style: smooth resize, columns change naturally).
@@ -723,6 +756,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         cancelAndClearThumbnails()
         scrollDirection = .none
         lastClipOriginY = 0
+        memoryPressureMonitor.stop()
         // Composite key in ImageLoader prevents cross-contamination —
         // no need to clear thumbnailCache on grid dismiss.
         loader = nil
