@@ -72,6 +72,21 @@ final class ImageFolderNavigationTests: XCTestCase {
         XCTAssertEqual(folder.images[2].url.lastPathComponent, "img002.png")
     }
 
+    func testInitContaining_pathConstructedURL_findsCorrectIndex() {
+        // CLAUDE gotcha: URL == can fail between manually constructed URLs and contentsOfDirectory.
+        // Opening with URL(fileURLWithPath: path) must still find the correct file.
+        for i in 0..<3 {
+            let name = String(format: "img%03d.png", i)
+            let url = tempDir.appendingPathComponent(name)
+            try! minimalPNG().write(to: url)
+        }
+        let pathString = tempDir.appendingPathComponent("img001.png").path
+        let pathConstructedURL = URL(fileURLWithPath: pathString)
+        let folder = ImageFolder(containing: pathConstructedURL)
+        XCTAssertEqual(folder.currentIndex, 1, "Opening with path-constructed URL should find img001.png at index 1")
+        XCTAssertEqual(folder.currentImage?.url.lastPathComponent, "img001.png")
+    }
+
     // MARK: - Basic Navigation Tests
 
     func testGoNext_advances() {

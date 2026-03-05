@@ -22,13 +22,14 @@ class ImageFolder {
         self.folderURL = fileURL.deletingLastPathComponent()
         self.images = scanFolder()
 
-        // 找到對應的 ImageItem
-        if let firstIndex = images.firstIndex(where: { $0.url == fileURL }) {
+        // 找到對應的 ImageItem (use .path — URL == can fail between constructed URLs and contentsOfDirectory)
+        let filePath = fileURL.resolvingSymlinksInPath().path
+        if let firstIndex = images.firstIndex(where: { $0.url.resolvingSymlinksInPath().path == filePath }) {
             let firstItem = images[firstIndex]
 
             if firstItem.isPDF {
                 // PDF 檔案：計算總頁數並恢復上次頁碼
-                let totalPages = images.filter { $0.url == fileURL }.count
+                let totalPages = images.filter { $0.url.resolvingSymlinksInPath().path == filePath }.count
                 let savedPage = Self.getLastViewedPage(for: fileURL, totalPages: totalPages)
                 self.currentIndex = firstIndex + savedPage
             } else {

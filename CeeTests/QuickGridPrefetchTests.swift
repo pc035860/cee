@@ -176,6 +176,64 @@ final class QuickGridPrefetchTests: XCTestCase {
         XCTAssertEqual(setRange, minMaxRange)
     }
 
+    // MARK: - scrollTargetYForItem (static, keyboard nav scroll)
+
+    func testScrollTargetYForItem_itemBelowViewport_scrollsUp() {
+        // visibleRect: y=0, height=300 → shows 0..300. Item at y=400..500 is below.
+        // Target: item.maxY - viewportHeight = 500 - 300 = 200
+        let itemFrame = CGRect(x: 0, y: 400, width: 100, height: 100)
+        let visibleRect = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let target = QuickGridView.scrollTargetYForItem(
+            itemFrame: itemFrame, visibleRect: visibleRect, documentHeight: 1000)
+        XCTAssertEqual(target, 200)
+    }
+
+    func testScrollTargetYForItem_itemAboveViewport_scrollsDown() {
+        // visibleRect: y=200, height=300 → shows 200..500. Item at y=50..150 is above.
+        // Target: item.minY = 50
+        let itemFrame = CGRect(x: 0, y: 50, width: 100, height: 100)
+        let visibleRect = CGRect(x: 0, y: 200, width: 400, height: 300)
+        let target = QuickGridView.scrollTargetYForItem(
+            itemFrame: itemFrame, visibleRect: visibleRect, documentHeight: 1000)
+        XCTAssertEqual(target, 50)
+    }
+
+    func testScrollTargetYForItem_itemAlreadyVisible_returnsNil() {
+        let itemFrame = CGRect(x: 0, y: 150, width: 100, height: 100)
+        let visibleRect = CGRect(x: 0, y: 100, width: 400, height: 300)
+        let target = QuickGridView.scrollTargetYForItem(
+            itemFrame: itemFrame, visibleRect: visibleRect, documentHeight: 1000)
+        XCTAssertNil(target)
+    }
+
+    func testScrollTargetYForItem_clampsToMaxScroll() {
+        // Item at y=900..1000, documentHeight=500, viewport=300 → maxScrollY=200
+        // Target would be 700 (1000-300) but clamped to 200
+        let itemFrame = CGRect(x: 0, y: 900, width: 100, height: 100)
+        let visibleRect = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let target = QuickGridView.scrollTargetYForItem(
+            itemFrame: itemFrame, visibleRect: visibleRect, documentHeight: 500)
+        XCTAssertEqual(target, 200)
+    }
+
+    func testScrollTargetYForItem_clampsToZero() {
+        // Item above viewport: target would be negative, clamp to 0
+        let itemFrame = CGRect(x: 0, y: -50, width: 100, height: 100)
+        let visibleRect = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let target = QuickGridView.scrollTargetYForItem(
+            itemFrame: itemFrame, visibleRect: visibleRect, documentHeight: 1000)
+        XCTAssertEqual(target, 0)
+    }
+
+    func testScrollTargetYForItem_itemPartiallyVisible_below_scrollsToShowBottom() {
+        // Item at y=250..350, visible 0..300. Item bottom (350) > visible max (300) → scroll
+        let itemFrame = CGRect(x: 0, y: 250, width: 100, height: 100)
+        let visibleRect = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let target = QuickGridView.scrollTargetYForItem(
+            itemFrame: itemFrame, visibleRect: visibleRect, documentHeight: 1000)
+        XCTAssertEqual(target, 50)  // 350 - 300
+    }
+
     // MARK: - detectDirection (static)
 
     func testDetectDirection_sequence() {

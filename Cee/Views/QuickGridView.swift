@@ -151,6 +151,33 @@ private final class GridCollectionView: NSCollectionView {
         onCellSizeChange?(newSize)
         // Do NOT call super — prevents event propagating to ImageScrollView
     }
+
+    // Suppress NSCollectionView's internal animated scroll during keyboard nav.
+    // didSelectItemsAt handles scrolling with our own smooth animation.
+    override func moveUp(_ sender: Any?) {
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        super.moveUp(sender)
+        NSAnimationContext.endGrouping()
+    }
+    override func moveDown(_ sender: Any?) {
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        super.moveDown(sender)
+        NSAnimationContext.endGrouping()
+    }
+    override func moveLeft(_ sender: Any?) {
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        super.moveLeft(sender)
+        NSAnimationContext.endGrouping()
+    }
+    override func moveRight(_ sender: Any?) {
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        super.moveRight(sender)
+        NSAnimationContext.endGrouping()
+    }
 }
 
 final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
@@ -316,6 +343,25 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let lastVisible = min(lastRow * cols + cols - 1, itemCount - 1)
         guard firstVisible <= lastVisible else { return nil }
         return firstVisible...lastVisible
+    }
+
+    /// Returns target origin.y to scroll item into view, or nil if already visible.
+    /// Used by keyboard navigation. Static for unit testing.
+    static func scrollTargetYForItem(
+        itemFrame: CGRect,
+        visibleRect: CGRect,
+        documentHeight: CGFloat
+    ) -> CGFloat? {
+        var targetY = visibleRect.origin.y
+        if itemFrame.maxY > visibleRect.maxY {
+            targetY = itemFrame.maxY - visibleRect.height
+        } else if itemFrame.minY < visibleRect.minY {
+            targetY = itemFrame.minY
+        } else {
+            return nil  // already visible
+        }
+        let maxScrollY = max(0, documentHeight - visibleRect.height)
+        return max(0, min(targetY, maxScrollY))
     }
 
     /// Instance wrapper using current layout state.
@@ -963,6 +1009,33 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         return gridCell
     }
 
+    /// Scroll selected item into view with smooth animation (keyboard navigation).
+    /// Manual scroll computation + NSAnimationContext avoids conflict with NSCollectionView's internal scroll.
+    private func scrollItemIntoView(at indexPath: IndexPath, animated: Bool = true) {
+        guard let attrs = collectionView.layoutAttributesForItem(at: indexPath) else { return }
+        let clipView = gridScrollView.contentView
+        let visibleRect = clipView.bounds
+        let itemFrame = attrs.frame
+
+        guard let targetY = Self.scrollTargetYForItem(
+            itemFrame: itemFrame,
+            visibleRect: visibleRect,
+            documentHeight: collectionView.frame.height
+        ) else { return }
+
+        var targetOrigin = visibleRect.origin
+        targetOrigin.y = targetY
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.1
+                clipView.animator().setBoundsOrigin(targetOrigin)
+            }
+        } else {
+            clipView.setBoundsOrigin(targetOrigin)
+        }
+    }
+
     // MARK: - NSCollectionViewDelegate
 
     func collectionView(
@@ -974,10 +1047,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             // Mouse click: navigate directly (view will change, no scroll needed)
             delegate?.quickGridView(self, didSelectItemAt: indexPath.item)
         } else {
-            // Keyboard navigation: scroll selected item into view
-            if let attrs = collectionView.layoutAttributesForItem(at: indexPath) {
-                collectionView.scrollToVisible(attrs.frame)
-            }
+            // Keyboard navigation: smooth scroll selected item into view
+            scrollItemIntoView(at: indexPath)
         }
     }
 

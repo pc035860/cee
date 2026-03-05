@@ -39,7 +39,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 - **Unit test bundle type is `bundle.unit-test`**, not `bundle.unit-testing`. UI test is `bundle.ui-testing`.
 - **`GENERATE_INFOPLIST_FILE: YES`** required for test targets without custom Info.plist.
-- **Xcode 26 debug dylib** — `ENABLE_DEBUG_DYLIB` splits app into stub + `Cee.debug.dylib`. Requires `CODE_SIGNING_ALLOWED: YES` with ad-hoc signing, otherwise dylib fails system policy. Incremental builds may stale the signature — clean build fixes it.
+- **Xcode 26 debug dylib** — `ENABLE_DEBUG_DYLIB` splits app into stub + `Cee.debug.dylib`. Requires `CODE_SIGNING_ALLOWED: YES` with ad-hoc signing, otherwise dylib fails system policy.
+- **Signing / test failures** — If CodeSign fails ("code object is not signed at all" in test bundle, or dylib system policy) or tests fail to run: run `xcodegen generate` then `xcodebuild clean build`. Regenerating syncs project.yml; clean build refreshes stale signatures. Incremental builds can leave dylib/test bundle signatures out of sync.
 
 ## AppKit Gotchas
 
