@@ -193,6 +193,13 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     var gridThumbnailCount: Int { gridThumbnails.count }
     /// Active thumbnail loading tasks (keyed by item index)
     private var thumbnailTasks: [Int: Task<Void, Never>] = [:]
+    /// Test-only: number of active thumbnail loading tasks.
+    var thumbnailTaskCount: Int { thumbnailTasks.count }
+
+    /// Test-only: inject a mock task at the given index.
+    func _testSetTask(_ task: Task<Void, Never>, forIndex index: Int) {
+        thumbnailTasks[index] = task
+    }
 
     // MARK: - Initialization
 
@@ -473,6 +480,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
+    }
+
+    /// Cancel in-flight thumbnail tasks for items not in the visible set.
+    /// Does NOT evict gridThumbnails cache (that's 1.4 Window Cache scope).
+    func cancelNonVisibleTasks(visibleIndices: Set<Int>) {
+        // TODO: Implement scroll-based cancellation
     }
 
     /// Cancel in-flight thumbnail tasks only (keep cached images for smooth tier transitions).

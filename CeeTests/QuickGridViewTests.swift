@@ -251,4 +251,77 @@ final class QuickGridViewTests: XCTestCase {
         XCTAssertEqual(capturedSize, 150,
                        "onCellSizeDidChange should fire for animated resize")
     }
+
+    // MARK: - Cancel Non-Visible Tasks
+
+    /// Helper: inject mock long-running tasks at given indices.
+    private func injectMockTasks(into grid: QuickGridView, indices: [Int]) {
+        for index in indices {
+            let task = Task<Void, Never> {
+                // Long-running task that waits until cancelled
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                }
+            }
+            grid._testSetTask(task, forIndex: index)
+        }
+    }
+
+    func testCancelNonVisibleTasks_cancelsOutOfViewTasks() {
+        let grid = QuickGridView()
+        injectMockTasks(into: grid, indices: [0, 1, 2, 3, 4])
+
+        XCTAssertEqual(grid.thumbnailTaskCount, 5, "Should have 5 tasks before cancel")
+
+        grid.cancelNonVisibleTasks(visibleIndices: Set([1, 2]))
+
+        XCTAssertEqual(grid.thumbnailTaskCount, 2,
+                       "Should only keep 2 tasks for visible indices [1, 2]")
+    }
+
+    func testCancelNonVisibleTasks_preservesVisibleTasks() {
+        let grid = QuickGridView()
+        injectMockTasks(into: grid, indices: [0, 1, 2])
+
+        grid.cancelNonVisibleTasks(visibleIndices: Set([0, 1, 2]))
+
+        XCTAssertEqual(grid.thumbnailTaskCount, 3,
+                       "All tasks visible — none should be cancelled")
+    }
+
+    func testCancelNonVisibleTasks_preservesCache() {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 3)
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+
+        // Manually populate gridThumbnails via loading
+        // For this test, just verify the count accessor works with empty initial state
+        let cacheBefore = grid.gridThumbnailCount
+
+        injectMockTasks(into: grid, indices: [0, 1, 2])
+        grid.cancelNonVisibleTasks(visibleIndices: Set([1]))
+
+        XCTAssertEqual(grid.gridThumbnailCount, cacheBefore,
+                       "cancelNonVisibleTasks should not touch gridThumbnails cache")
+    }
+
+    func testCancelNonVisibleTasks_emptyTasks_noOp() {
+        let grid = QuickGridView()
+
+        XCTAssertEqual(grid.thumbnailTaskCount, 0)
+        grid.cancelNonVisibleTasks(visibleIndices: Set([0, 1]))
+        XCTAssertEqual(grid.thumbnailTaskCount, 0,
+                       "No crash on empty thumbnailTasks")
+    }
+
+    func testCancelNonVisibleTasks_allOutOfView() {
+        let grid = QuickGridView()
+        injectMockTasks(into: grid, indices: [0, 1, 2, 3])
+
+        grid.cancelNonVisibleTasks(visibleIndices: Set())
+
+        XCTAssertEqual(grid.thumbnailTaskCount, 0,
+                       "All tasks should be cancelled when nothing is visible")
+    }
 }
