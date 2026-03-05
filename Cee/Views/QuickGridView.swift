@@ -297,27 +297,62 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         Self.columnsPerRow(availableWidth: gridScrollView.bounds.width, cellSize: currentCellSize)
     }
 
-    /// Calculate prefetch range based on scroll direction.
-    static func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
-        guard !visibleIndices.isEmpty, direction != .none else { return nil }
-        let minVis = visibleIndices.min()!
-        let maxVis = visibleIndices.max()!
-        let prefetchCount = cols * 2  // 2 rows ahead
+    /// Arithmetic O(1) visible index range from scroll geometry (static for unit testing).
+    /// Avoids indexPathsForVisibleItems() overhead in scroll handler hot path.
+    static func computeVisibleRange(
+        scrollOriginY: CGFloat, viewportHeight: CGFloat,
+        cellHeight: CGFloat, lineSpacing: CGFloat, topInset: CGFloat,
+        cols: Int, itemCount: Int
+    ) -> ClosedRange<Int>? {
+        guard itemCount > 0, cols > 0 else { return nil }
+        let rowHeight = cellHeight + lineSpacing
+        guard rowHeight > 0 else { return nil }
+        let totalRows = (itemCount + cols - 1) / cols
 
+        let firstRow = max(0, Int(floor((scrollOriginY - topInset) / rowHeight)))
+        let lastRowRaw = Int(ceil((scrollOriginY + viewportHeight - topInset) / rowHeight)) - 1
+        let lastRow = min(totalRows - 1, max(0, lastRowRaw))
+        let firstVisible = firstRow * cols
+        let lastVisible = min(lastRow * cols + cols - 1, itemCount - 1)
+        guard firstVisible <= lastVisible else { return nil }
+        return firstVisible...lastVisible
+    }
+
+    /// Instance wrapper using current layout state.
+    private func computeVisibleRange() -> ClosedRange<Int>? {
+        let bounds = gridScrollView.contentView.bounds
+        let cellHeight = currentCellSize * currentAspectRatio
+        return Self.computeVisibleRange(
+            scrollOriginY: bounds.origin.y, viewportHeight: bounds.height,
+            cellHeight: cellHeight, lineSpacing: Constants.quickGridSpacing,
+            topInset: Constants.quickGridInset,
+            cols: columnsPerRow(), itemCount: items.count)
+    }
+
+    /// Calculate prefetch range based on scroll direction (min/max overload for arithmetic visible range).
+    static func prefetchRange(minVisible: Int, maxVisible: Int, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
+        guard direction != .none else { return nil }
+        let prefetchCount = cols * 2  // 2 rows ahead
         switch direction {
         case .down:
-            let start = maxVis + 1
-            let end = min(itemCount - 1, maxVis + prefetchCount)
+            let start = maxVisible + 1
+            let end = min(itemCount - 1, maxVisible + prefetchCount)
             guard start <= end else { return nil }
             return start...end
         case .up:
-            let end = minVis - 1
-            let start = max(0, minVis - prefetchCount)
+            let end = minVisible - 1
+            let start = max(0, minVisible - prefetchCount)
             guard start <= end else { return nil }
             return start...end
         case .none:
             return nil
         }
+    }
+
+    /// Calculate prefetch range based on scroll direction (Set-based, delegates to min/max).
+    static func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
+        guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return nil }
+        return prefetchRange(minVisible: minVis, maxVisible: maxVis, direction: direction, itemCount: itemCount, cols: cols)
     }
 
     /// Instance wrapper using current state.
@@ -340,13 +375,24 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         }
     }
 
+    /// Cancel tasks outside the given keep range (visible ∪ prefetch, contiguous).
+    private func cancelTasksOutsideKeepRange(_ keepRange: ClosedRange<Int>) {
+        for (index, task) in thumbnailTasks where !keepRange.contains(index) {
+            task.cancel()
+            thumbnailTasks.removeValue(forKey: index)
+        }
+    }
+
     /// Start prefetch tasks for items in the prefetch range.
     private func prefetchThumbnails(visibleIndices: Set<Int>, direction: ScrollDirection) {
-        guard let range = prefetchRange(visibleIndices: visibleIndices, direction: direction) else { return }
-        let visibleCenter: Int = {
-            guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return 0 }
-            return (minVis + maxVis) / 2
-        }()
+        guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return }
+        prefetchThumbnails(minVisible: minVis, maxVisible: maxVis, direction: direction)
+    }
+
+    /// Start prefetch tasks for items in the prefetch range (min/max overload for arithmetic visible range).
+    private func prefetchThumbnails(minVisible: Int, maxVisible: Int, direction: ScrollDirection) {
+        guard let range = Self.prefetchRange(minVisible: minVisible, maxVisible: maxVisible, direction: direction, itemCount: items.count, cols: columnsPerRow()) else { return }
+        let visibleCenter = (minVisible + maxVisible) / 2
 
         for index in range {
             guard gridThumbnails[index] == nil,
@@ -567,38 +613,44 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         if detected != .none { scrollDirection = detected }
         lastClipOriginY = currentY
 
-        // 2. Visible indices + cache center for cellForItem priority
+        // 2. Visible range (arithmetic O(1), avoids indexPathsForVisibleItems overhead)
         let t2 = CFAbsoluteTimeGetCurrent()
-        let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
-        if let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() {
-            cachedVisibleCenter = (minVis + maxVis) / 2
+        guard let visibleRange = computeVisibleRange() else {
+            let totalMs = (CFAbsoluteTimeGetCurrent() - scrollStart) * 1000
+            GridPerfLog.log(String(format: "scrollHandler: total=%.2fms | visible=nil | cache=%d", totalMs, gridThumbnails.count))
+            return
         }
+        let minVis = visibleRange.lowerBound
+        let maxVis = visibleRange.upperBound
+        cachedVisibleCenter = (minVis + maxVis) / 2
         let visibleMs = (CFAbsoluteTimeGetCurrent() - t2) * 1000
 
-        // 3. Build keep set = visible ∪ prefetch range
-        var keepIndices = visibleIndices
-        if let range = prefetchRange(visibleIndices: visibleIndices, direction: scrollDirection) {
-            keepIndices.formUnion(range)
+        // 3. Build keep range = visible ∪ prefetch (contiguous)
+        var keepMin = minVis, keepMax = maxVis
+        if let prefetch = Self.prefetchRange(minVisible: minVis, maxVisible: maxVis, direction: scrollDirection, itemCount: items.count, cols: columnsPerRow()) {
+            keepMin = min(keepMin, prefetch.lowerBound)
+            keepMax = max(keepMax, prefetch.upperBound)
         }
+        let keepRange = keepMin...keepMax
 
-        // 4. Cancel tasks outside keep set
+        // 4. Cancel tasks outside keep range
         let t4 = CFAbsoluteTimeGetCurrent()
-        cancelTasksOutsideKeepSet(keepIndices)
+        cancelTasksOutsideKeepRange(keepRange)
         let cancelMs = (CFAbsoluteTimeGetCurrent() - t4) * 1000
 
         // 5. Evict thumbnails (±50 buffer covers prefetch range of ~6-10 items)
         let t5 = CFAbsoluteTimeGetCurrent()
-        evictNonVisibleThumbnails(visibleIndices: visibleIndices)
+        evictNonVisibleThumbnails(minVisible: minVis, maxVisible: maxVis)
         let evictMs = (CFAbsoluteTimeGetCurrent() - t5) * 1000
 
         // 6. Start prefetch
         let t6 = CFAbsoluteTimeGetCurrent()
-        prefetchThumbnails(visibleIndices: visibleIndices, direction: scrollDirection)
+        prefetchThumbnails(minVisible: minVis, maxVisible: maxVis, direction: scrollDirection)
         let prefetchMs = (CFAbsoluteTimeGetCurrent() - t6) * 1000
 
         let totalMs = (CFAbsoluteTimeGetCurrent() - scrollStart) * 1000
         GridPerfLog.log(String(format: "scrollHandler: total=%.2fms | visible(%d)=%.2fms | cancel(%d tasks)=%.2fms | evict=%.2fms | prefetch=%.2fms | cache=%d",
-                               totalMs, visibleIndices.count, visibleMs, thumbnailTasks.count, cancelMs, evictMs, prefetchMs, gridThumbnails.count))
+                               totalMs, visibleRange.count, visibleMs, thumbnailTasks.count, cancelMs, evictMs, prefetchMs, gridThumbnails.count))
     }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
@@ -758,13 +810,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Evict cached thumbnails outside visible + buffer window.
     /// Keeps entries within [minVisible - buffer, maxVisible + buffer].
     func evictNonVisibleThumbnails(visibleIndices: Set<Int>) {
-        guard !visibleIndices.isEmpty else { return }
-        let minVisible = visibleIndices.min()!
-        let maxVisible = visibleIndices.max()!
+        guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return }
+        evictNonVisibleThumbnails(minVisible: minVis, maxVisible: maxVis)
+    }
+
+    /// Evict cached thumbnails outside visible + buffer (min/max overload for arithmetic visible range).
+    private func evictNonVisibleThumbnails(minVisible: Int, maxVisible: Int) {
         let keepMin = max(0, minVisible - thumbnailCacheBuffer)
         let keepMax = maxVisible + thumbnailCacheBuffer
         let keepRange = keepMin...keepMax
-
         for key in gridThumbnails.keys where !keepRange.contains(key) {
             gridThumbnails.removeValue(forKey: key)
         }

@@ -31,7 +31,7 @@
     - Early cancellation guard in withThrottle closure (skip decode if Task cancelled)
     - **實測確認（2026-03-05, logs/1806-1809.txt）**：throttle avg waited 降低 75-90%，peak waiters 降低 45-89%
   - [ ] 3.3 PNG 磁碟縮圖快取 ~70 行，影片 PNG 84ms → 8ms
-  - [ ] 3.4 算術計算 Visible Range ~15 行，visible 計算 0.38ms → 0.05ms
+  - [x] 3.4 算術計算 Visible Range ~15 行，visible 計算 0.38ms → 0.05ms — 完成（2026-03-05）
   - [ ] 3.5 捲動速度自適應 ~25 行，快速捲動零 decode 開銷
 - [ ] **Phase 4** — 極端縮放問題（發現於 2026-03-05 實測）
   - [x] 4.1 **限制最小格子尺寸**（✅ 決策確認）— 完成（2026-03-05）

@@ -19,6 +19,80 @@ final class QuickGridPrefetchTests: XCTestCase {
         XCTAssertEqual(cols, 1)
     }
 
+    // MARK: - computeVisibleRange (static, Phase 3.4)
+
+    func testComputeVisibleRange_topOfDocument() {
+        // 3 cols, 100 items, cellH=90, spacing=4, inset=8, scrollY=0, viewportH=500
+        // rowHeight=94, rows visible = ceil((500-8)/94) = ceil(5.23) = 6 → rows 0..5
+        // firstVisible = 0, lastVisible = 5*3+2 = 17
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: 0, viewportHeight: 500,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 100)
+        XCTAssertEqual(range, 0...17)
+    }
+
+    func testComputeVisibleRange_normalScroll() {
+        // scrollY=200, viewportH=300 → content from 200 to 500
+        // rowHeight=94, firstRow = floor((200-8)/94) = floor(2.04) = 2
+        // lastRow = ceil((500-8)/94) - 1 = ceil(5.23) - 1 = 5
+        // firstVisible = 2*3 = 6, lastVisible = 5*3+2 = 17
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: 200, viewportHeight: 300,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 100)
+        XCTAssertEqual(range, 6...17)
+    }
+
+    func testComputeVisibleRange_bottomOfDocument() {
+        // scrollY near end: 100 items, 3 cols = 34 rows
+        // firstRow = floor((3000-8)/94) = 31, lastRow = min(33, ceil(3492/94)-1) = 33
+        // firstVisible = 93, lastVisible = 99
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: 3000, viewportHeight: 500,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 100)
+        XCTAssertEqual(range, 93...99)
+    }
+
+    func testComputeVisibleRange_negativeBounce() {
+        // scrollY < 0 (rubber band), firstRow clamped to 0
+        // lastRow = ceil((-100+500-8)/94)-1 = 4 → lastVisible = 14
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: -100, viewportHeight: 500,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 100)
+        XCTAssertEqual(range?.lowerBound, 0)
+        XCTAssertEqual(range?.upperBound, 14)
+    }
+
+    func testComputeVisibleRange_singleItem() {
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: 0, viewportHeight: 500,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 1)
+        XCTAssertEqual(range, 0...0)
+    }
+
+    func testComputeVisibleRange_emptyItems() {
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: 0, viewportHeight: 500,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 0)
+        XCTAssertNil(range)
+    }
+
+    func testComputeVisibleRange_partialLastRow() {
+        // 10 items, 3 cols → 4 rows, last row has 1 item (index 9)
+        // scrollY=0, viewportH=500 shows all 4 rows
+        // lastRow = 3, lastVisible = min(3*3+2, 9) = 9
+        let range = QuickGridView.computeVisibleRange(
+            scrollOriginY: 0, viewportHeight: 500,
+            cellHeight: 90, lineSpacing: 4, topInset: 8,
+            cols: 3, itemCount: 10)
+        XCTAssertEqual(range, 0...9)
+    }
+
     // MARK: - prefetchRange (static)
 
     func testPrefetchRange_down() {
@@ -71,6 +145,35 @@ final class QuickGridPrefetchTests: XCTestCase {
         } else {
             XCTFail("Expected non-nil prefetch range")
         }
+    }
+
+    // MARK: - prefetchRange min/max overload (Phase 3.4)
+
+    func testPrefetchRange_minMax_down() {
+        let range = QuickGridView.prefetchRange(
+            minVisible: 10, maxVisible: 15, direction: .down, itemCount: 100, cols: 3)
+        XCTAssertEqual(range, 16...21)
+    }
+
+    func testPrefetchRange_minMax_up() {
+        let range = QuickGridView.prefetchRange(
+            minVisible: 10, maxVisible: 15, direction: .up, itemCount: 100, cols: 3)
+        XCTAssertEqual(range, 4...9)
+    }
+
+    func testPrefetchRange_minMax_none() {
+        let range = QuickGridView.prefetchRange(
+            minVisible: 10, maxVisible: 15, direction: .none, itemCount: 100, cols: 3)
+        XCTAssertNil(range)
+    }
+
+    func testPrefetchRange_setDelegation() {
+        let visible: Set<Int> = Set(10...15)
+        let setRange = QuickGridView.prefetchRange(
+            visibleIndices: visible, direction: .down, itemCount: 100, cols: 3)
+        let minMaxRange = QuickGridView.prefetchRange(
+            minVisible: 10, maxVisible: 15, direction: .down, itemCount: 100, cols: 3)
+        XCTAssertEqual(setRange, minMaxRange)
     }
 
     // MARK: - detectDirection (static)
