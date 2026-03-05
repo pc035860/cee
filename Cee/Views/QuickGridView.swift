@@ -124,7 +124,8 @@ private final class GridCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
     var onDismiss: (() -> Void)?
     /// Callback for cell size changes (pinch gesture, non-animated).
-    var onCellSizeChange: ((CGFloat) -> Void)?
+    /// Parameters: newSize, gesture phase (began/changed/ended/cancelled)
+    var onCellSizeChange: ((CGFloat, NSEvent.Phase) -> Void)?
     /// Callback for animated cell size changes (keyboard shortcuts).
     var onAnimatedCellSizeChange: ((CGFloat) -> Void)?
     /// Current cell size — set by QuickGridView, read for incremental pinch calculation.
@@ -152,7 +153,9 @@ private final class GridCollectionView: NSCollectionView {
         // Incremental: newSize = currentSize * (1 + delta)
         // Matches ImageScrollView pattern (magnification + event.magnification)
         let newSize = currentCellSize * (1 + event.magnification)
-        onCellSizeChange?(newSize)
+        // Combine phase + momentumPhase for complete gesture state
+        let effectivePhase = event.phase.union(event.momentumPhase)
+        onCellSizeChange?(newSize, effectivePhase)
         // Do NOT call super — prevents event propagating to ImageScrollView
     }
 
@@ -281,6 +284,18 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     func _testSetCellSizeForTesting(_ size: CGFloat) {
         currentCellSize = size
     }
+
+    // MARK: - Deferred Tier Change (Pinch Optimization)
+
+    /// Deferred tier change reload work item (prevents pinch interruption)
+    private var tierChangeWorkItem: DispatchWorkItem?
+    /// Pending tier change to reload after pinch ends
+    private var pendingTierChange: Bool = false
+
+    /// Test-only: check if tier change is pending
+    var _testPendingTierChange: Bool { pendingTierChange }
+    /// Test-only: check if work item is scheduled
+    var _testTierChangeWorkItemScheduled: Bool { tierChangeWorkItem != nil }
 
     // MARK: - Memory Pressure
 
@@ -545,14 +560,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         }
 
         // Wire resize handlers (pinch + Cmd+Scroll — non-animated)
-        collectionView.onCellSizeChange = { [weak self] newSize in
-            self?.applyItemSize(newSize)
+        collectionView.onCellSizeChange = { [weak self] newSize, phase in
+            self?.applyItemSize(newSize, phase: phase)
         }
         collectionView.onAnimatedCellSizeChange = { [weak self] newSize in
-            self?.applyItemSize(newSize, animated: true)
+            self?.applyItemSize(newSize, animated: true, phase: [])  // immediate reload
         }
         gridScrollView.onCmdScroll = { [weak self] newSize in
-            self?.applyItemSize(newSize)
+            self?.applyItemSize(newSize, phase: [])  // immediate reload
         }
 
         // Size slider (bottom bar)
@@ -757,9 +772,27 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Apply a new cell size, clamped to the allowed range.
     /// Normally only invalidates layout (no cache clear). When crossing a thumbnail
     /// tier boundary (tier0→adaptive/tier1→240/tier2→480/tier3→720px), cancels in-flight tasks and reloads.
-    func applyItemSize(_ newSize: CGFloat, animated: Bool = false) {
+    /// - Parameters:
+    ///   - newSize: Target cell size (will be clamped to min/max range)
+    ///   - animated: Whether to animate the layout change
+    ///   - phase: Gesture phase (for pinch optimization). Empty means non-gesture trigger.
+    func applyItemSize(_ newSize: CGFloat, animated: Bool = false, phase: NSEvent.Phase = []) {
+        // Gesture cleanup at start
+        if phase.contains(.began) {
+            tierChangeWorkItem?.cancel()
+            tierChangeWorkItem = nil
+            pendingTierChange = false
+        }
+
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
+
+        // Handle gesture ended/cancelled even if size unchanged
+        // (pending tier change needs to be scheduled)
+        if (phase.contains(.ended) || phase.contains(.cancelled)) && pendingTierChange {
+            scheduleDeferredTierChangeReload()
+        }
+
         guard clamped != currentCellSize else { return }
 
         // Detect thumbnail tier change
@@ -783,12 +816,22 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             updateLayout()
         }
 
-        // Tier changed: cancel in-flight tasks (prevent stale resolution writeback)
-        // and progressively reload visible thumbnails at new tier resolution.
-        // No reloadData() — old thumbnails stay visible until new ones are ready.
+        // Tier changed
         if oldMaxSize != newMaxSize {
-            cancelPendingThumbnailTasks()
-            reloadVisibleThumbnails()
+            tierChangeWorkItem?.cancel()
+            tierChangeWorkItem = nil
+
+            // Non-gesture triggers (slider, keyboard) — immediate reload
+            if phase.isEmpty {
+                cancelPendingThumbnailTasks()
+                reloadVisibleThumbnails()
+            } else {
+                // Gesture — defer until gesture ends
+                pendingTierChange = true
+                if phase.contains(.ended) || phase.contains(.cancelled) {
+                    scheduleDeferredTierChangeReload()
+                }
+            }
         }
 
         // Sync current size to subviews for delta calculation
@@ -808,9 +851,22 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         updateScrollerVisibility()
     }
 
+    /// Schedule deferred tier change reload after pinch ends.
+    /// Delay ~150ms to allow gesture to complete smoothly.
+    private func scheduleDeferredTierChangeReload() {
+        tierChangeWorkItem?.cancel()  // Cancel any existing pending reload
+        tierChangeWorkItem = DispatchWorkItem { [weak self] in
+            guard let self, self.pendingTierChange else { return }
+            self.cancelPendingThumbnailTasks()
+            self.reloadVisibleThumbnails()
+            self.pendingTierChange = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: tierChangeWorkItem!)
+    }
+
     @objc private func sliderValueChanged(_ sender: NSSlider) {
         guard !isUpdatingSliderProgrammatically else { return }
-        applyItemSize(CGFloat(sender.doubleValue))
+        applyItemSize(CGFloat(sender.doubleValue), phase: [])  // immediate reload
     }
 
     // MARK: - Configuration
