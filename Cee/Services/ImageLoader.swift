@@ -43,6 +43,8 @@ actor ImageLoader {
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
     /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
     /// PDF 不支援，回傳 nil
+    /// - Parameter throttlePriority: Smaller = higher urgency. 0 = highest (default, for non-grid callers).
+    ///   Grid callers pass `abs(index - visibleCenter)` as distance-based priority.
     func loadThumbnail(at url: URL, maxSize: CGFloat = 512, priority: TaskPriority = .userInitiated, throttlePriority: Int = 0) async -> (image: NSImage, fullSize: CGSize)? {
         let cacheKey = ThumbnailCacheKey(url: url, maxSize: maxSize)
         if let cached = thumbnailCache[cacheKey] {
@@ -234,7 +236,7 @@ actor ImageLoader {
         ]
         // Phase 3.1: SubsampleFactor for JPEG/HEIF DCT fast path at micro-thumbnail sizes
         let subsample: Int
-        if maxSize <= 120 {
+        if maxSize <= Constants.quickGridSubsampleThresholdPx {
             subsample = 4
             options[kCGImageSourceSubsampleFactor] = subsample
         } else {

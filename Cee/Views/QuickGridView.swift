@@ -177,9 +177,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var gridThumbnailMaxSize: CGFloat {
         if currentCellSize <= Constants.quickGridTier0Boundary {
             let scale = collectionView.window?.backingScaleFactor ?? 2.0
-            let raw = max(currentCellSize * scale, 80)
-            // Quantize to 20px steps so pinch resize doesn't flush cache every frame
-            return ceil(raw / 20) * 20
+            let raw = max(currentCellSize * scale, Constants.quickGridTier0MinPx)
+            // Quantize to fixed steps so pinch resize doesn't flush cache every frame
+            let step = Constants.quickGridTier0QuantizeStep
+            return ceil(raw / step) * step
         }
         if currentCellSize <= Constants.quickGridTier1Boundary { return Constants.quickGridThumbnailSize1 }
         if currentCellSize <= Constants.quickGridTier2Boundary { return Constants.quickGridThumbnailSize2 }
@@ -852,10 +853,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
-                // Use visible center for eviction anchor (not the single loaded index)
-                let visibleItems = self.collectionView.indexPathsForVisibleItems().map(\.item)
-                let center = visibleItems.isEmpty ? index : (visibleItems.min()! + visibleItems.max()!) / 2
-                self.enforceGridThumbnailCap(currentIndex: center)
+                self.enforceGridThumbnailCap(currentIndex: self.cachedVisibleCenter)
 
                 // Verify cell is still displaying the same item before updating
                 if let visibleCell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
