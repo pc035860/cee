@@ -13,6 +13,7 @@ final class MemoryPressureMonitor {
     private var source: (any DispatchSourceMemoryPressure)?
 
     func start() {
+        guard source == nil else { return }  // Idempotent — avoid leaking duplicate sources
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         source.setEventHandler { [weak self] in
             guard let self else { return }

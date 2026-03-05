@@ -529,12 +529,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var lastLayoutWidth: CGFloat = 0
 
     /// Throttle cancel-sweep to ~20Hz (avoid per-frame indexPathsForVisibleItems on 120Hz displays).
-    private var lastCancelSweepTime: CFAbsoluteTime = 0
+    private var cancelSweepThrottle = NavigationThrottle(interval: 0.05)
 
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastCancelSweepTime >= 0.05 else { return } // 20Hz max
-        lastCancelSweepTime = now
+        guard cancelSweepThrottle.shouldProceed() else { return }
 
         // 1. Detect scroll direction
         let currentY = gridScrollView.contentView.bounds.origin.y
@@ -755,11 +753,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Clear cached thumbnails and cancel pending tasks without releasing loader.
     /// Used when folder content changes and the grid will be reconfigured.
+    private func resetScrollState() {
+        scrollDirection = .none
+        lastClipOriginY = 0
+    }
+
     func clearCache() {
         generationID += 1
         cancelAndClearThumbnails()
-        scrollDirection = .none
-        lastClipOriginY = 0
+        resetScrollState()
         // No need to clear ImageLoader.thumbnailCache — composite key (URL + maxSize)
         // prevents cross-contamination between grid and main view thumbnails.
     }
@@ -769,8 +771,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// but thumbnail decodes are fast (~16ms for JPEG) so the impact is minimal.
     func cleanup() {
         cancelAndClearThumbnails()
-        scrollDirection = .none
-        lastClipOriginY = 0
+        resetScrollState()
         memoryPressureMonitor.stop()
         // Composite key in ImageLoader prevents cross-contamination —
         // no need to clear thumbnailCache on grid dismiss.
@@ -785,7 +786,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     // MARK: - Thumbnail Loading
 
-    private func loadThumbnail(for index: Int, cell: QuickGridCell) {
+    private func loadThumbnail(for index: Int, cell: QuickGridCell, priority: TaskPriority = .userInitiated) {
         // Already cached locally
         if let cached = gridThumbnails[index] {
             cell.setThumbnail(cached)
@@ -802,10 +803,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard let loader else { return }
 
         let maxSize = gridThumbnailMaxSize
-        // Visible cells get higher priority; buffer cells use .utility to avoid starving UI
-        let isVisible = collectionView.indexPathsForVisibleItems()
-            .contains(IndexPath(item: index, section: 0))
-        let taskPriority: TaskPriority = isVisible ? .userInitiated : .utility
+        let taskPriority = priority
         let gen = generationID
         thumbnailTasks[index] = Task { [weak self] in
             let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: taskPriority)
@@ -815,7 +813,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
-                self.enforceGridThumbnailCap(currentIndex: index)
+                // Use visible center for eviction anchor (not the single loaded index)
+                let visibleItems = self.collectionView.indexPathsForVisibleItems().map(\.item)
+                let center = visibleItems.isEmpty ? index : (visibleItems.min()! + visibleItems.max()!) / 2
+                self.enforceGridThumbnailCap(currentIndex: center)
 
                 // Verify cell is still displaying the same item before updating
                 if let visibleCell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
