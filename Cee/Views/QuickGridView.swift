@@ -572,8 +572,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard let loader else { return }
 
         let maxSize = gridThumbnailMaxSize
+        // Visible cells get higher priority; buffer cells use .utility to avoid starving UI
+        let isVisible = collectionView.indexPathsForVisibleItems()
+            .contains(IndexPath(item: index, section: 0))
+        let taskPriority: TaskPriority = isVisible ? .userInitiated : .utility
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize)
+            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: taskPriority)
             guard !Task.isCancelled else { return }
             guard let self else { return }
 
