@@ -208,7 +208,10 @@ actor ImageLoader {
     /// 共用同一個 CGImageSource，避免二次開檔
     private static func decodeThumbnailWithDimensions(at url: URL, maxSize: CGFloat) -> (image: NSImage, fullSize: CGSize)? {
         guard !isPDFURL(url) else { return nil }
+        let decodeStart = CFAbsoluteTimeGetCurrent()
+
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let sourceMs = (CFAbsoluteTimeGetCurrent() - decodeStart) * 1000
 
         // 讀 full-res dimensions（同一個 source，零額外 I/O）
         let fullSize: CGSize
@@ -226,12 +229,20 @@ actor ImageLoader {
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxSize,
         ]
+        let thumbStart = CFAbsoluteTimeGetCurrent()
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else { return nil }
+        let thumbMs = (CFAbsoluteTimeGetCurrent() - thumbStart) * 1000
+
         let image = NSImage(cgImage: cgImage, size: NSSize(
             width: cgImage.width,
             height: cgImage.height
         ))
+        let totalMs = (CFAbsoluteTimeGetCurrent() - decodeStart) * 1000
+        GridPerfLog.log(String(format: "decode: total=%.2fms | source=%.2fms | thumb(%dx%d→%.0f)=%.2fms | %@",
+                               totalMs, sourceMs, cgImage.width, cgImage.height, maxSize, thumbMs,
+                               url.lastPathComponent))
+
         let effectiveSize = fullSize == .zero ? image.size : fullSize
         return (image, effectiveSize)
     }

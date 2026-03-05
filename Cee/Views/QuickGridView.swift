@@ -533,6 +533,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
         guard cancelSweepThrottle.shouldProceed() else { return }
+        let scrollStart = CFAbsoluteTimeGetCurrent()
 
         // 1. Detect scroll direction
         let currentY = gridScrollView.contentView.bounds.origin.y
@@ -541,7 +542,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         lastClipOriginY = currentY
 
         // 2. Visible indices
+        let t2 = CFAbsoluteTimeGetCurrent()
         let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
+        let visibleMs = (CFAbsoluteTimeGetCurrent() - t2) * 1000
 
         // 3. Build keep set = visible ∪ prefetch range
         var keepIndices = visibleIndices
@@ -550,13 +553,23 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         }
 
         // 4. Cancel tasks outside keep set
+        let t4 = CFAbsoluteTimeGetCurrent()
         cancelTasksOutsideKeepSet(keepIndices)
+        let cancelMs = (CFAbsoluteTimeGetCurrent() - t4) * 1000
 
         // 5. Evict thumbnails (±50 buffer covers prefetch range of ~6-10 items)
+        let t5 = CFAbsoluteTimeGetCurrent()
         evictNonVisibleThumbnails(visibleIndices: visibleIndices)
+        let evictMs = (CFAbsoluteTimeGetCurrent() - t5) * 1000
 
         // 6. Start prefetch
+        let t6 = CFAbsoluteTimeGetCurrent()
         prefetchThumbnails(visibleIndices: visibleIndices, direction: scrollDirection)
+        let prefetchMs = (CFAbsoluteTimeGetCurrent() - t6) * 1000
+
+        let totalMs = (CFAbsoluteTimeGetCurrent() - scrollStart) * 1000
+        GridPerfLog.log(String(format: "scrollHandler: total=%.2fms | visible(%d)=%.2fms | cancel(%d tasks)=%.2fms | evict=%.2fms | prefetch=%.2fms | cache=%d",
+                               totalMs, visibleIndices.count, visibleMs, thumbnailTasks.count, cancelMs, evictMs, prefetchMs, gridThumbnails.count))
     }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
@@ -839,6 +852,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         _ collectionView: NSCollectionView,
         itemForRepresentedObjectAt indexPath: IndexPath
     ) -> NSCollectionViewItem {
+        let cellStart = CFAbsoluteTimeGetCurrent()
         let cell = collectionView.makeItem(
             withIdentifier: QuickGridCell.identifier,
             for: indexPath
@@ -849,7 +863,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridCell.isCurrentImage = (index == currentIndex)
 
         // Load thumbnail (from cache or async)
+        let loadStart = CFAbsoluteTimeGetCurrent()
         loadThumbnail(for: index, cell: gridCell)
+        let loadMs = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
+
+        let totalMs = (CFAbsoluteTimeGetCurrent() - cellStart) * 1000
+        if totalMs > 1.0 {  // Only log slow cells (>1ms)
+            GridPerfLog.log(String(format: "cellForItem[%d]: total=%.2fms | loadThumb=%.2fms | cached=%@",
+                                   index, totalMs, loadMs, gridThumbnails[index] != nil ? "YES" : "NO"))
+        }
 
         return gridCell
     }
