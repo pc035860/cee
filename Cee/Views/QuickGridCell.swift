@@ -20,6 +20,8 @@ final class QuickGridCell: NSCollectionViewItem {
     override func loadView() {
         let container = NSView()
         container.wantsLayer = true
+        container.canDrawSubviewsIntoLayer = true
+        container.layerContentsRedrawPolicy = .onSetNeedsDisplay
         container.layer?.cornerRadius = 4
         container.layer?.masksToBounds = true
         container.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
