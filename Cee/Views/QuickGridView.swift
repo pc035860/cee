@@ -275,6 +275,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     private var lastClipOriginY: CGFloat = 0
     private var scrollDirection: ScrollDirection = .none
+    /// Cached visible center index, updated by scroll handler at ~20Hz.
+    /// Used by cellForItem to avoid per-cell indexPathsForVisibleItems calls.
+    private var cachedVisibleCenter: Int = 0
 
     /// Calculate columns per row for given layout parameters.
     static func columnsPerRow(availableWidth: CGFloat, cellSize: CGFloat) -> Int {
@@ -550,9 +553,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         if detected != .none { scrollDirection = detected }
         lastClipOriginY = currentY
 
-        // 2. Visible indices
+        // 2. Visible indices + cache center for cellForItem priority
         let t2 = CFAbsoluteTimeGetCurrent()
         let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
+        if let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() {
+            cachedVisibleCenter = (minVis + maxVis) / 2
+        }
         let visibleMs = (CFAbsoluteTimeGetCurrent() - t2) * 1000
 
         // 3. Build keep set = visible ∪ prefetch range
@@ -624,7 +630,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Apply a new cell size, clamped to the allowed range.
     /// Normally only invalidates layout (no cache clear). When crossing a thumbnail
-    /// tier boundary (240/480/1024px), cancels in-flight tasks and reloads.
+    /// tier boundary (tier0→adaptive/tier1→240/tier2→480/tier3→720px), cancels in-flight tasks and reloads.
     func applyItemSize(_ newSize: CGFloat, animated: Bool = false) {
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
@@ -682,6 +688,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     func configure(items: [ImageItem], currentIndex: Int, loader: ImageLoader) {
         self.items = items
         self.currentIndex = currentIndex
+        self.cachedVisibleCenter = currentIndex
         self.loader = loader
 
         // Sample folder images to determine optimal cell aspect ratio (~5ms for 50 images)
@@ -769,6 +776,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let visibleItems = collectionView.indexPathsForVisibleItems()
         let indices = visibleItems.map(\.item)
         let center = indices.isEmpty ? 0 : (indices.min()! + indices.max()!) / 2
+        cachedVisibleCenter = center
         for indexPath in visibleItems {
             if let cell = collectionView.item(at: indexPath) as? QuickGridCell {
                 loadThumbnail(for: indexPath.item, cell: cell, visibleCenter: center)
@@ -880,9 +888,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridCell.isCurrentImage = (index == currentIndex)
 
         // Load thumbnail (from cache or async)
-        // Use currentIndex as center approximation (avoids indexPathsForVisibleItems per cell)
+        // Use cachedVisibleCenter (updated at 20Hz by scroll handler)
         let loadStart = CFAbsoluteTimeGetCurrent()
-        loadThumbnail(for: index, cell: gridCell, visibleCenter: currentIndex ?? 0)
+        loadThumbnail(for: index, cell: gridCell, visibleCenter: cachedVisibleCenter)
         let loadMs = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
 
         let totalMs = (CFAbsoluteTimeGetCurrent() - cellStart) * 1000

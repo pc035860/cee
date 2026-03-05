@@ -50,7 +50,10 @@ actor ImageLoader {
         }
 
         let result = await thumbnailThrottle.withThrottle(priority: throttlePriority) {
-            await Task.detached(priority: priority) {
+            () async -> (image: NSImage, fullSize: CGSize)? in
+            // Skip expensive decode if caller was cancelled while waiting in queue
+            guard !Task.isCancelled else { return nil }
+            return await Task.detached(priority: priority) {
                 Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
             }.value
         }
