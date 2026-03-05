@@ -324,4 +324,69 @@ final class QuickGridViewTests: XCTestCase {
         XCTAssertEqual(grid.thumbnailTaskCount, 0,
                        "All tasks should be cancelled when nothing is visible")
     }
+
+    // MARK: - Window Cache Eviction
+
+    /// Helper: inject mock thumbnails at given indices.
+    private func injectMockThumbnails(into grid: QuickGridView, indices: [Int]) {
+        let image = NSImage(size: NSSize(width: 10, height: 10))
+        for index in indices {
+            grid._testSetThumbnail(image, forIndex: index)
+        }
+    }
+
+    func testEvictNonVisibleThumbnails_removesOutOfRange() {
+        let grid = QuickGridView()
+        // Populate cache with indices 0..99
+        injectMockThumbnails(into: grid, indices: Array(0..<100))
+        XCTAssertEqual(grid.gridThumbnailCount, 100)
+
+        // Visible is [40..60], buffer is 50 → keepRange = 0..110
+        // Since all are within 0..99, no eviction with default buffer=50
+        // Use a scenario where eviction happens:
+        // With 200 items and visible at [150..160], keep 100..210 → evict 0..99
+        injectMockThumbnails(into: grid, indices: Array(100..<200))
+        XCTAssertEqual(grid.gridThumbnailCount, 200)
+
+        grid.evictNonVisibleThumbnails(visibleIndices: Set(150...160))
+
+        // keepRange = max(0, 150-50)...160+50 = 100...210
+        // Items 0..99 should be evicted
+        XCTAssertLessThan(grid.gridThumbnailCount, 200,
+                          "Should evict thumbnails outside visible + buffer window")
+        XCTAssertEqual(grid.gridThumbnailCount, 100,
+                       "Should keep only entries in range 100..199")
+    }
+
+    func testEvictNonVisibleThumbnails_preservesVisibleAndBuffer() {
+        let grid = QuickGridView()
+        injectMockThumbnails(into: grid, indices: Array(0..<20))
+
+        // All within buffer range
+        grid.evictNonVisibleThumbnails(visibleIndices: Set(5...15))
+
+        // keepRange = max(0, 5-50)...15+50 = 0...65 → all 20 entries within range
+        XCTAssertEqual(grid.gridThumbnailCount, 20,
+                       "All entries within buffer should be preserved")
+    }
+
+    func testEvictNonVisibleThumbnails_emptyVisible_noOp() {
+        let grid = QuickGridView()
+        injectMockThumbnails(into: grid, indices: [0, 1, 2])
+
+        grid.evictNonVisibleThumbnails(visibleIndices: Set())
+
+        XCTAssertEqual(grid.gridThumbnailCount, 3,
+                       "Empty visible should not evict anything (guard clause)")
+    }
+
+    func testEvictNonVisibleThumbnails_smallCache_noEviction() {
+        let grid = QuickGridView()
+        injectMockThumbnails(into: grid, indices: [5, 6, 7])
+
+        grid.evictNonVisibleThumbnails(visibleIndices: Set([5, 6, 7]))
+
+        XCTAssertEqual(grid.gridThumbnailCount, 3,
+                       "Small cache within visible range should not evict")
+    }
 }

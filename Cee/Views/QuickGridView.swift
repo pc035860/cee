@@ -201,6 +201,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         thumbnailTasks[index] = task
     }
 
+    /// Test-only: inject a cached thumbnail at the given index.
+    func _testSetThumbnail(_ image: NSImage, forIndex index: Int) {
+        gridThumbnails[index] = image
+    }
+
     // MARK: - Initialization
 
     override init(frame frameRect: NSRect) {
@@ -502,8 +507,16 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridThumbnails.removeAll()
     }
 
+    /// Number of items beyond visible range to keep in cache (buffer zone).
+    private let thumbnailCacheBuffer = 50
+
+    /// Evict cached thumbnails outside visible + buffer window.
+    /// Keeps entries within [minVisible - buffer, maxVisible + buffer].
+    func evictNonVisibleThumbnails(visibleIndices: Set<Int>) {
+        // TODO: Implement window-based cache eviction
+    }
+
     /// Cancel in-flight thumbnail tasks for items not in the visible set.
-    /// Does NOT evict gridThumbnails cache (that's 1.4 Window Cache scope).
     func cancelNonVisibleTasks(visibleIndices: Set<Int>) {
         for (index, task) in thumbnailTasks where !visibleIndices.contains(index) {
             task.cancel()
