@@ -22,7 +22,7 @@ enum Constants {
 
     // Quick Grid
     static let quickGridCellSize: CGFloat = 160    // matches min; slider left = this size
-    static let quickGridMinCellSize: CGFloat = 160  // Phase 4.1: tier2 decode 480px; user-preferred min zoom
+    static let quickGridMinCellSize: CGFloat = 160  // tier2 decode 480px; user-preferred min zoom
     static let quickGridMaxCellSize: CGFloat = 512
     static let quickGridSliderMaxWidth: CGFloat = 400  // Finder-style centered slider
     static let quickGridSpacing: CGFloat = 4

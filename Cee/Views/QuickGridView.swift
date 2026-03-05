@@ -242,7 +242,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         handleMemoryPressure(level)
     }
 
-    /// Test-only: set cell size without clamping. Used to verify tier0 logic (unreachable via UI after Phase 4.1).
+    /// Test-only: set cell size without clamping for tier0 logic tests.
     func _testSetCellSizeForTesting(_ size: CGFloat) {
         currentCellSize = size
     }
@@ -329,7 +329,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             cols: columnsPerRow(), itemCount: items.count)
     }
 
-    /// Calculate prefetch range based on scroll direction (min/max overload for arithmetic visible range).
+    /// Calculate prefetch range based on scroll direction.
     static func prefetchRange(minVisible: Int, maxVisible: Int, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
         guard direction != .none else { return nil }
         let prefetchCount = cols * 2  // 2 rows ahead
@@ -349,7 +349,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         }
     }
 
-    /// Calculate prefetch range based on scroll direction (Set-based, delegates to min/max).
     static func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
         guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return nil }
         return prefetchRange(minVisible: minVis, maxVisible: maxVis, direction: direction, itemCount: itemCount, cols: cols)
@@ -389,7 +388,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         prefetchThumbnails(minVisible: minVis, maxVisible: maxVis, direction: direction)
     }
 
-    /// Start prefetch tasks for items in the prefetch range (min/max overload for arithmetic visible range).
     private func prefetchThumbnails(minVisible: Int, maxVisible: Int, direction: ScrollDirection) {
         guard let range = Self.prefetchRange(minVisible: minVisible, maxVisible: maxVisible, direction: direction, itemCount: items.count, cols: columnsPerRow()) else { return }
         let visibleCenter = (minVisible + maxVisible) / 2
@@ -539,7 +537,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             sliderContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
             sliderContainer.heightAnchor.constraint(equalToConstant: 24),
 
-            // Finder-style: centered, max 400pt width, min 8pt edge padding
             sizeSlider.centerXAnchor.constraint(equalTo: sliderContainer.centerXAnchor),
             sizeSlider.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
             sizeSlider.widthAnchor.constraint(lessThanOrEqualToConstant: Constants.quickGridSliderMaxWidth),
@@ -814,7 +811,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         evictNonVisibleThumbnails(minVisible: minVis, maxVisible: maxVis)
     }
 
-    /// Evict cached thumbnails outside visible + buffer (min/max overload for arithmetic visible range).
     private func evictNonVisibleThumbnails(minVisible: Int, maxVisible: Int) {
         let keepMin = max(0, minVisible - thumbnailCacheBuffer)
         let keepMax = maxVisible + thumbnailCacheBuffer
