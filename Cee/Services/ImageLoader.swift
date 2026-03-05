@@ -49,7 +49,7 @@ actor ImageLoader {
             return (cached.image, cached.fullSize)
         }
 
-        let result = await thumbnailThrottle.withThrottle {
+        let result = await thumbnailThrottle.withThrottle(priority: throttlePriority) {
             await Task.detached(priority: priority) {
                 Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
             }.value

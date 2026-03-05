@@ -350,9 +350,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
             let maxSize = gridThumbnailMaxSize
             let center = visibleCenter
+            let distance = abs(index - center)
             let gen = generationID
             thumbnailTasks[index] = Task { [weak self] in
-                let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: .utility)
+                let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize,
+                                                         priority: .utility,
+                                                         throttlePriority: distance)
                 guard !Task.isCancelled else { return }
                 guard let self else { return }
                 guard self.generationID == gen else { return }  // Stale folder — discard
@@ -763,9 +766,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// when they scroll into view. Old images stay in cells (no reloadData = no flash).
     private func reloadVisibleThumbnails() {
         gridThumbnails.removeAll()
-        for indexPath in collectionView.indexPathsForVisibleItems() {
+        let visibleItems = collectionView.indexPathsForVisibleItems()
+        let indices = visibleItems.map(\.item)
+        let center = indices.isEmpty ? 0 : (indices.min()! + indices.max()!) / 2
+        for indexPath in visibleItems {
             if let cell = collectionView.item(at: indexPath) as? QuickGridCell {
-                loadThumbnail(for: indexPath.item, cell: cell)
+                loadThumbnail(for: indexPath.item, cell: cell, visibleCenter: center)
             }
         }
     }
@@ -806,7 +812,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     // MARK: - Thumbnail Loading
 
-    private func loadThumbnail(for index: Int, cell: QuickGridCell, priority: TaskPriority = .userInitiated) {
+    private func loadThumbnail(for index: Int, cell: QuickGridCell,
+                               priority: TaskPriority = .userInitiated,
+                               visibleCenter: Int = 0) {
         // Already cached locally
         if let cached = gridThumbnails[index] {
             cell.setThumbnail(cached)
@@ -824,9 +832,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         let maxSize = gridThumbnailMaxSize
         let taskPriority = priority
+        let distance = abs(index - visibleCenter)
         let gen = generationID
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: taskPriority)
+            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize,
+                                                     priority: taskPriority,
+                                                     throttlePriority: distance)
             guard !Task.isCancelled else { return }
             guard let self else { return }
             guard self.generationID == gen else { return }  // Stale folder — discard
@@ -869,8 +880,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridCell.isCurrentImage = (index == currentIndex)
 
         // Load thumbnail (from cache or async)
+        // Use currentIndex as center approximation (avoids indexPathsForVisibleItems per cell)
         let loadStart = CFAbsoluteTimeGetCurrent()
-        loadThumbnail(for: index, cell: gridCell)
+        loadThumbnail(for: index, cell: gridCell, visibleCenter: currentIndex ?? 0)
         let loadMs = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
 
         let totalMs = (CFAbsoluteTimeGetCurrent() - cellStart) * 1000
