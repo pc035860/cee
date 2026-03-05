@@ -18,9 +18,16 @@
   - [x] 2.2 Memory Pressure Notification — DispatchSource warning/critical + idempotent start
   - [x] 2.3 Generation ID — Int counter on clearCache, stale-write guard in Task closures
   - [x] 2.4 Layer-backed Cell — canDrawSubviewsIntoLayer + onSetNeedsDisplay
-- [ ] **Phase 3** — 未開始（推薦實作順序：3.1 → 3.2 → 3.3 → 3.4 → 3.5）
-  - [ ] 3.1 自適應解析度 + SubsampleFactor ⭐ ~10 行，JPEG decode 降 60-70%
-  - [ ] 3.2 優先級隊列 + 批次送出 ⭐ ~45 行，首屏 2.3s → 200-400ms
+- [ ] **Phase 3** — 部分完成（推薦實作順序：3.1 → 3.2 → 3.3 → 3.4 → 3.5）
+  - [x] 3.1 自適應解析度 + SubsampleFactor — 完成（2026-03-05, branch `feat/grid-performance-phase3`）
+    - Tier0 adaptive resolution: ≤60pt cells use quantized `max(cellSize*scale, 80)` in 20px steps
+    - SubsampleFactor=4 for JPEG/HEIF when maxSize ≤ 120px (DCT fast path)
+    - Constants: `quickGridTier0Boundary`, `quickGridTier0MinPx`, `quickGridTier0QuantizeStep`, `quickGridSubsampleThresholdPx`
+  - [x] 3.2 優先級隊列 + 批次送出 — 完成（2026-03-05, branch `feat/grid-performance-phase3`）
+    - ThumbnailThrottle FIFO → priority dequeue (smaller = higher urgency, FIFO tie-break)
+    - `throttlePriority` pass-through: ImageLoader → ThumbnailThrottle
+    - `cachedVisibleCenter` updated at 20Hz by scroll handler, used in cellForItem
+    - Early cancellation guard in withThrottle closure (skip decode if Task cancelled)
   - [ ] 3.3 PNG 磁碟縮圖快取 ~70 行，影片 PNG 84ms → 8ms
   - [ ] 3.4 算術計算 Visible Range ~15 行，visible 計算 0.38ms → 0.05ms
   - [ ] 3.5 捲動速度自適應 ~25 行，快速捲動零 decode 開銷
