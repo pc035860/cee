@@ -1,25 +1,48 @@
 # Quick Grid UX 優化 Roadmap（精煉版）
 
 > **研究日期**：2026-03-05  
+> **實作日期**：2026-03-06
 > **來源**：todo_260325.md 四項任務 + 程式碼探索結果  
-> **狀態**：已決策，可實作
+> **狀態**：✅ 已完成
 
 ---
 
 ## 總覽
 
-| # | 任務 | 複雜度 | 依賴 | 建議順序 |
-|---|------|--------|------|----------|
-| 1 | Scrollbar 優化 | 低 | 無 | 1st |
-| 2 | 進入/離開 Grid 時捲動到當前圖片 | 低 | 無 | 2nd |
-| 3 | Pinch zoom 高 loading 時中斷 | 中 | 無 | 3rd |
-| 4 | PageUp/PageDown 支援 | 低 | #1 | 4th |
+| # | 任務 | 複雜度 | 依賴 | 建議順序 | 狀態 |
+|---|------|--------|------|----------|------|
+| 1 | Scrollbar 優化 | 低 | 無 | 1st | ✅ 完成 |
+| 2 | 進入/離開 Grid 時捲動到當前圖片 | 低 | 無 | 2nd | ✅ 完成（併入 #1） |
+| 3 | Pinch zoom 高 loading 時中斷 | 中 | 無 | 3rd | ✅ 完成 |
+| 4 | PageUp/PageDown 支援 | 低 | #1 | 4th | ✅ 完成 |
 
-**建議實作順序**：1 → 2 → 3 → 4（#4 依賴 #1 顯示捲軸後才有意義）
+**實作順序**：1 → 3 → 4（#2 功能已併入 #1 實作）
 
 ---
 
-## 1. Scrollbar 優化
+## Completion Status
+
+### #1 Scrollbar 優化
+- 實作：`GridScrollView.wantsVerticalScroller` 動態屬性
+- 設定：`scrollerStyle = .overlay`, `autohidesScrollers = true`
+- 更新位置：`gridFrameDidChange()`, `configure()`, `applyItemSize()`
+
+### #2 捲動到當前圖片
+- 實作：在 `configure()` 中使用 `layoutSubtreeIfNeeded()` + `scrollItemIntoView(at:animated:)`
+- 取代不可靠的 `scrollToItems`
+
+### #3 Pinch zoom 中斷
+- 實作：延遲 tier change reload ~150ms（gesture ended 後執行）
+- 新增 `tierChangeWorkItem`, `pendingTierChange` 屬性
+- 支援 `phase` 參數（結合 `momentumPhase`）
+
+### #4 PageUp/PageDown 支援
+- 實作：`scrollGridPage(by:)` 方法
+- 支援 Space 鍵（等同 PageDown）
+
+---
+
+## 1. Scrollbar 優化 ✅
 
 ### 現況
 
