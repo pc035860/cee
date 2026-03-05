@@ -12,8 +12,9 @@ actor ThumbnailThrottle {
     }
 
     /// Primary API: execute an operation with throttled concurrency.
+    /// Priority: smaller = higher priority (0 = highest, default for non-grid callers).
     /// Guarantees release via defer even if the task is cancelled.
-    func withThrottle<T: Sendable>(_ operation: @Sendable () async -> T) async -> T {
+    func withThrottle<T: Sendable>(priority: Int = 0, _ operation: @Sendable () async -> T) async -> T {
         let waitStart = CFAbsoluteTimeGetCurrent()
         await acquire()
         let waitMs = (CFAbsoluteTimeGetCurrent() - waitStart) * 1000

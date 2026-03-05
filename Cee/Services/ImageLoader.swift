@@ -43,7 +43,7 @@ actor ImageLoader {
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
     /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
     /// PDF 不支援，回傳 nil
-    func loadThumbnail(at url: URL, maxSize: CGFloat = 512, priority: TaskPriority = .userInitiated) async -> (image: NSImage, fullSize: CGSize)? {
+    func loadThumbnail(at url: URL, maxSize: CGFloat = 512, priority: TaskPriority = .userInitiated, throttlePriority: Int = 0) async -> (image: NSImage, fullSize: CGSize)? {
         let cacheKey = ThumbnailCacheKey(url: url, maxSize: maxSize)
         if let cached = thumbnailCache[cacheKey] {
             return (cached.image, cached.fullSize)
