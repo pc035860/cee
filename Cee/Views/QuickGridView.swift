@@ -212,6 +212,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         fatalError("init(coder:) not supported")
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     private func setupUI() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
@@ -309,6 +313,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self, selector: #selector(gridFrameDidChange),
             name: NSView.frameDidChangeNotification, object: gridScrollView)
 
+        // Monitor scroll to cancel non-visible thumbnail tasks
+        gridScrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(clipViewBoundsDidChange(_:)),
+            name: NSView.boundsDidChangeNotification, object: gridScrollView.contentView)
+
         registerForDraggedTypes([.fileURL])
     }
 
@@ -341,6 +351,16 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Last width used for space-around calculation; skip redundant recalcs (e.g. height-only resize).
     private var lastLayoutWidth: CGFloat = 0
+
+    /// Throttle cancel-sweep to ~20Hz (avoid per-frame indexPathsForVisibleItems on 120Hz displays).
+    private var lastCancelSweepTime: CFAbsoluteTime = 0
+
+    @objc private func clipViewBoundsDidChange(_ note: Notification) {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastCancelSweepTime >= 0.05 else { return } // 20Hz max
+        lastCancelSweepTime = now
+        cancelNonVisibleTasks(visibleIndices: Set(collectionView.indexPathsForVisibleItems().map(\.item)))
+    }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
         let width = gridScrollView.bounds.width
@@ -485,7 +505,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Cancel in-flight thumbnail tasks for items not in the visible set.
     /// Does NOT evict gridThumbnails cache (that's 1.4 Window Cache scope).
     func cancelNonVisibleTasks(visibleIndices: Set<Int>) {
-        // TODO: Implement scroll-based cancellation
+        for (index, task) in thumbnailTasks where !visibleIndices.contains(index) {
+            task.cancel()
+            thumbnailTasks.removeValue(forKey: index)
+        }
     }
 
     /// Cancel in-flight thumbnail tasks only (keep cached images for smooth tier transitions).
