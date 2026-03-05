@@ -16,15 +16,17 @@ protocol QuickGridViewDelegate: AnyObject {
 /// NSScrollView subclass that intercepts Cmd+Scroll for grid cell size adjustment.
 /// NSScrollView captures scrollWheel before documentView, so subclassing is required
 /// (same pattern as ImageScrollView).
-private final class GridScrollView: NSScrollView {
+final class GridScrollView: NSScrollView {
     var onCmdScroll: ((CGFloat) -> Void)?
     /// Read by scrollWheel to compute delta-based size. Updated by QuickGridView.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
+    /// Controls vertical scroller visibility. Set by QuickGridView.updateScrollerVisibility().
+    var wantsVerticalScroller: Bool = false
 
     // NSCollectionView re-enables scrollers during layout passes / reloadData.
-    // Override to lock them off permanently.
+    // Override to control visibility via wantsVerticalScroller property.
     override var hasVerticalScroller: Bool {
-        get { false }
+        get { wantsVerticalScroller }
         set { /* ignore — NSCollectionView tries to enable this */ }
     }
     override var hasHorizontalScroller: Bool {
@@ -35,6 +37,8 @@ private final class GridScrollView: NSScrollView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         allowsMagnification = false  // defensive: prevent pinch event consumption
+        scrollerStyle = .overlay  // floating, semi-transparent, modern appearance
+        autohidesScrollers = true  // hide when not scrolling
     }
 
     required init?(coder: NSCoder) {
@@ -230,6 +234,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var gridThumbnails: [Int: NSImage] = [:]
     /// Test-only: number of cached grid thumbnails.
     var gridThumbnailCount: Int { gridThumbnails.count }
+
+    /// Test-only accessor for gridScrollView (for scrollbar tests).
+    var _testGridScrollView: GridScrollView { gridScrollView }
+
     /// Active thumbnail loading tasks (keyed by item index)
     private var thumbnailTasks: [Int: Task<Void, Never>] = [:]
     /// Test-only: number of active thumbnail loading tasks.
@@ -701,6 +709,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard width != lastLayoutWidth else { return }
         updateSpaceAroundLayout()
         collectionView.collectionViewLayout?.invalidateLayout()
+        updateScrollerVisibility()
+    }
+
+    /// Update vertical scrollbar visibility based on content overflow.
+    /// Called after frame changes, configuration, and cell size changes.
+    private func updateScrollerVisibility() {
+        let documentHeight = collectionView.frame.height
+        let visibleHeight = gridScrollView.bounds.height
+        gridScrollView.wantsVerticalScroller = documentHeight > visibleHeight
     }
 
     /// Sample image headers to compute median aspect ratio (height/width).
@@ -785,6 +802,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Notify for persistence
         onCellSizeDidChange?(clamped)
+
+        // Update scrollbar visibility (cell size change affects document height)
+        collectionView.layoutSubtreeIfNeeded()
+        updateScrollerVisibility()
     }
 
     @objc private func sliderValueChanged(_ sender: NSSlider) {
@@ -818,10 +839,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         // Defer scroll to after layout pass
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.collectionView.scrollToItems(
-                at: [indexPath],
-                scrollPosition: .centeredVertically
-            )
+            self.collectionView.layoutSubtreeIfNeeded()
+            self.updateScrollerVisibility()
+            self.scrollItemIntoView(at: indexPath, animated: false)
             self.collectionView.selectionIndexPaths = [indexPath]
         }
     }
