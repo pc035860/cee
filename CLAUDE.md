@@ -20,7 +20,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Entry point** — `main.swift` (not `@main`/`@NSApplicationMain`).
 - **Single window reuse** — `ImageWindowController.shared`.
 - **project.yml** — source of truth for Xcode project. `.xcodeproj` is gitignored.
-- **Test targets** — `CeeTests` (unit) and `CeeUITests` (E2E). `TestHelpers.swift` provides shared `minimalPNG()`.
+- **Test targets** — `CeeTests` (unit) and `CeeUITests` (E2E). `TestHelpers.swift` provides shared `minimalPNG()`, `createJPEG(width:height:)`, `createPNG(width:height:)`.
 - **URL comparison gotcha** — `URL ==` can fail between manually constructed URLs and URLs from `contentsOfDirectory`. Use `.path` comparison.
 
 ## Swift 6 Gotchas
@@ -104,7 +104,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 ## Quick Grid
 
 - **`QuickGridView`** — NSCollectionView overlay (G key toggle). Grid-local thumbnail cache separate from `ImageLoader.thumbnailCache`.
-- **Grid cell resize** — Pinch, Cmd+Scroll, Cmd+=+-, slider. All route through `applyItemSize()` → `invalidateLayout()` (never `reloadData()`). Three thumbnail tiers: ≤tier1→240px, ≤tier2→480px, >tier2→720px; tier change clears thumbnails + reloads.
+- **Grid cell resize** — Pinch, Cmd+Scroll, Cmd+=+-, slider. All route through `applyItemSize()` → `invalidateLayout()` (never `reloadData()`). Four thumbnail tiers: ≤tier0→adaptive (quantized 20px steps), ≤tier1→240px, ≤tier2→480px, >tier2→720px; tier change clears thumbnails + reloads.
 - **Dynamic cell aspect ratio** — `sampleMedianAspectRatio()` reads image headers (no decode). EXIF orientation 5-8 requires swapping w/h.
 - **Space-around layout** — `max(0, remaining)` + `floor(gap)` guards: negative remaining crashes FlowLayout; unrounded gaps cause line wrapping. Width-cache skips height-only recalcs.
 - **Grid persists across folder changes** — `clearCache()` + `configure()` instead of dismiss.
@@ -114,9 +114,13 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Generation ID pattern** — Int counter incremented on `clearCache()`, captured in Task closure, checked before cache write. Prevents stale folder thumbnails from overwriting new folder's cache. Same concept as `ImageViewController.currentLoadRequestID` (UUID) but simpler.
 - **DispatchSource idempotent start** — `DispatchSource.makeMemoryPressureSource` must guard `source == nil` before creating; repeated `start()` leaks un-cancelled sources.
 - **Reuse `NavigationThrottle`** — For any CFAbsoluteTime-based throttle (scroll handlers, etc.), use the existing `NavigationThrottle` struct instead of inline `lastTimestamp` + `guard` patterns.
+- **Grid performance (Phase 3.1-3.2)** — Tier0 adaptive resolution (`max(cellSize*scale, 80)` quantized to 20px steps) + `kCGImageSourceSubsampleFactor: 4` for JPEG/HEIF ≤120px. Priority dequeue in `ThumbnailThrottle` (smaller priority = higher urgency, FIFO tie-break). `cachedVisibleCenter` updated at 20Hz by scroll handler for `cellForItem` priority. Early `Task.isCancelled` guard after throttle acquire, before decode.
+- **`cachedVisibleCenter` pattern** — Avoid calling `indexPathsForVisibleItems()` per-cell in data source. Cache the visible center in the scroll handler (20Hz) and reuse in `cellForItem` + eviction. Initialize in `configure()` to `currentIndex`.
+- **Quantize to prevent cache churn** — When computed `maxSize` varies continuously (e.g., during pinch), quantize to fixed steps (`ceil(raw / step) * step`) so tier comparisons don't flush cache every frame.
 
 ## Recent Significant Changes
 
+- **Grid performance Phase 3.1-3.2:** Tier0 adaptive resolution + SubsampleFactor, priority dequeue throttle, cachedVisibleCenter, early cancellation guard, magic numbers extracted to Constants.
 - **Grid performance Phase 2:** Prefetch pipeline (scroll direction + keep-set cancel), MemoryPressureMonitor, generation ID stale-write guard, layer-backed cell optimization, NavigationThrottle reuse.
 - **Grid view fixes:** Highlight border clipping fix (inset frame + zPosition), visual redesign (blue tint for active, orange border for cursor), cell drag-drop passthrough, keyboard auto-scroll.
 - **Grid layout Phase 3-4:** Dynamic cell aspect ratio (EXIF-aware), smooth resize, space-around layout, thumbnail tiers with cache isolation.
