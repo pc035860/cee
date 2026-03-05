@@ -24,6 +24,7 @@ actor ImageLoader {
         let maxSize: CGFloat
     }
     private var thumbnailCache: [ThumbnailCacheKey: ThumbnailEntry] = [:]
+    private let thumbnailThrottle = ThumbnailThrottle()
     private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
@@ -48,9 +49,11 @@ actor ImageLoader {
             return (cached.image, cached.fullSize)
         }
 
-        let result = await Task.detached(priority: .userInitiated) {
-            Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
-        }.value
+        let result = await thumbnailThrottle.withThrottle {
+            await Task.detached(priority: .userInitiated) {
+                Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
+            }.value
+        }
 
         // Don't cache if caller's Task was cancelled (e.g. Quick Grid dismissed).
         if let result, !Task.isCancelled {

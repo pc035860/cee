@@ -12,8 +12,28 @@ actor ThumbnailThrottle {
     /// Primary API: execute an operation with throttled concurrency.
     /// Guarantees release via defer even if the task is cancelled.
     func withThrottle<T: Sendable>(_ operation: @Sendable () async -> T) async -> T {
-        // TODO: Implement acquire/release throttling
+        await acquire()
+        defer { release() }
         return await operation()
+    }
+
+    private func acquire() async {
+        if active < maxConcurrent {
+            active += 1
+            return
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            waiters.append(continuation)
+        }
+    }
+
+    private func release() {
+        active -= 1
+        if !waiters.isEmpty {
+            active += 1
+            let next = waiters.removeFirst()
+            next.resume()
+        }
     }
 
     // Test support
