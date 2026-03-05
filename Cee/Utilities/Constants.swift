@@ -21,9 +21,10 @@ enum Constants {
     static let statusBarHeight: CGFloat = 22
 
     // Quick Grid
-    static let quickGridCellSize: CGFloat = 120
-    static let quickGridMinCellSize: CGFloat = 40
+    static let quickGridCellSize: CGFloat = 160    // matches min; slider left = this size
+    static let quickGridMinCellSize: CGFloat = 160  // Phase 4.1: tier2 decode 480px; user-preferred min zoom
     static let quickGridMaxCellSize: CGFloat = 512
+    static let quickGridSliderMaxWidth: CGFloat = 400  // Finder-style centered slider
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
     static let quickGridCellAspectRatio: CGFloat = 9.0 / 16.0  // height / width, fallback default

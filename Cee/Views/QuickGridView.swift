@@ -242,6 +242,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         handleMemoryPressure(level)
     }
 
+    /// Test-only: set cell size without clamping. Used to verify tier0 logic (unreachable via UI after Phase 4.1).
+    func _testSetCellSizeForTesting(_ size: CGFloat) {
+        currentCellSize = size
+    }
+
     // MARK: - Memory Pressure
 
     private let memoryPressureMonitor = MemoryPressureMonitor()
@@ -488,10 +493,18 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             sliderContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
             sliderContainer.heightAnchor.constraint(equalToConstant: 24),
 
-            sizeSlider.leadingAnchor.constraint(equalTo: sliderContainer.leadingAnchor, constant: 8),
-            sizeSlider.trailingAnchor.constraint(equalTo: sliderContainer.trailingAnchor, constant: -8),
+            // Finder-style: centered, max 400pt width, min 8pt edge padding
+            sizeSlider.centerXAnchor.constraint(equalTo: sliderContainer.centerXAnchor),
             sizeSlider.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
+            sizeSlider.widthAnchor.constraint(lessThanOrEqualToConstant: Constants.quickGridSliderMaxWidth),
+            sizeSlider.leadingAnchor.constraint(greaterThanOrEqualTo: sliderContainer.leadingAnchor, constant: 8),
+            sizeSlider.trailingAnchor.constraint(lessThanOrEqualTo: sliderContainer.trailingAnchor, constant: -8),
         ])
+
+        // Prefer 400pt width when container is wide enough
+        let widthConstraint = sizeSlider.widthAnchor.constraint(equalToConstant: Constants.quickGridSliderMaxWidth)
+        widthConstraint.priority = .defaultLow
+        widthConstraint.isActive = true
 
         // Respond to window resize: re-center items
         gridScrollView.postsFrameChangedNotifications = true

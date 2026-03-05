@@ -23,14 +23,28 @@
     - Tier0 adaptive resolution: ≤60pt cells use quantized `max(cellSize*scale, 80)` in 20px steps
     - SubsampleFactor=4 for JPEG/HEIF when maxSize ≤ 120px (DCT fast path)
     - Constants: `quickGridTier0Boundary`, `quickGridTier0MinPx`, `quickGridTier0QuantizeStep`, `quickGridSubsampleThresholdPx`
+    - **實測確認（2026-03-05, logs/1816.txt）**：ss=4 在極小 zoom 100% 觸發
   - [x] 3.2 優先級隊列 + 批次送出 — 完成（2026-03-05, branch `feat/grid-performance-phase3`）
     - ThumbnailThrottle FIFO → priority dequeue (smaller = higher urgency, FIFO tie-break)
     - `throttlePriority` pass-through: ImageLoader → ThumbnailThrottle
     - `cachedVisibleCenter` updated at 20Hz by scroll handler, used in cellForItem
     - Early cancellation guard in withThrottle closure (skip decode if Task cancelled)
+    - **實測確認（2026-03-05, logs/1806-1809.txt）**：throttle avg waited 降低 75-90%，peak waiters 降低 45-89%
   - [ ] 3.3 PNG 磁碟縮圖快取 ~70 行，影片 PNG 84ms → 8ms
   - [ ] 3.4 算術計算 Visible Range ~15 行，visible 計算 0.38ms → 0.05ms
   - [ ] 3.5 捲動速度自適應 ~25 行，快速捲動零 decode 開銷
+- [ ] **Phase 4** — 極端縮放問題（發現於 2026-03-05 實測）
+  - [x] 4.1 **限制最小格子尺寸**（✅ 決策確認）— 完成（2026-03-05）
+    - **根因**：visible=2827 >> cache cap=828，永久有 ~1999 格空白，throttle 崩潰（avg 1596ms, max 8151ms）
+    - **做法**：調整 zoom slider 最小值 40→160pt，讓最小 cell 對應 decode target 480px（tier2 範圍）
+    - **效果**：visible 格數回到設計舒適區，避免 visible >> cache cap 的根本問題
+    - **改動**：Constants.quickGridMinCellSize 40→160；quickGridCellSize 預設 160；ViewerSettings 預設 160；slider 改 Finder 風格（置中、max 400pt）
+  - [ ] 4.2 **Idle 後補發遺漏 task**（低優先，4.1 後決定是否實作）
+    - **重新診斷（2026-03-05）**：logs/1816.txt 的 7 秒空窗根因是 **throttle 飽和**（2819 waiters，4 workers 消化不完），而非 cancel 後不重載
+    - **正常 cancel 流程沒有 bug**：cell 離開 viewport → cancel → 再回來 → NSCollectionView 重呼 `cellForItem` → OK
+    - **真正存在的 edge case**：Tier change 時快速捲動導致部分 visible cell 沒有 task，或捲動停止後 prefetchRange 外的 visible cell 無 thumbnail 也無 task
+    - **修法候選**：scroll 停止 ~150ms 後，掃描 visible 中無 thumbnail 且無 task 的 cell，補發 `loadThumbnailAsync`
+    - **優先級**：4.1 實作後 visible 降至 ~500-900，throttle 能正常消化，此 edge case 極少發生 → 低優先
 
 ---
 
