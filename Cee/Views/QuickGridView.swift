@@ -128,6 +128,10 @@ private final class GridCollectionView: NSCollectionView {
     var onCellSizeChange: ((CGFloat, NSEvent.Phase) -> Void)?
     /// Callback for animated cell size changes (keyboard shortcuts).
     var onAnimatedCellSizeChange: ((CGFloat) -> Void)?
+    /// Callback for PageDown key
+    var onPageDown: (() -> Void)?
+    /// Callback for PageUp key
+    var onPageUp: (() -> Void)?
     /// Current cell size — set by QuickGridView, read for incremental pinch calculation.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
 
@@ -144,6 +148,12 @@ private final class GridCollectionView: NSCollectionView {
             onAnimatedCellSizeChange?(currentCellSize + 10)
         case 27 where modifiers == .command:  // Cmd+- (ANSI keyCode 27) — shrink by 10pt
             onAnimatedCellSizeChange?(currentCellSize - 10)
+        case 121:  // PageDown
+            onPageDown?()
+        case 116:  // PageUp
+            onPageUp?()
+        case 49 where modifiers == []:  // Space (same as PageDown)
+            onPageDown?()
         default:
             super.keyDown(with: event)
         }
@@ -570,6 +580,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self?.applyItemSize(newSize, phase: [])  // immediate reload
         }
 
+        // Wire PageUp/PageDown handlers
+        collectionView.onPageDown = { [weak self] in
+            self?.scrollGridPageDown()
+        }
+        collectionView.onPageUp = { [weak self] in
+            self?.scrollGridPageUp()
+        }
+
         // Size slider (bottom bar)
         sliderContainer.wantsLayer = true
         sliderContainer.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
@@ -733,6 +751,33 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let documentHeight = collectionView.frame.height
         let visibleHeight = gridScrollView.bounds.height
         gridScrollView.wantsVerticalScroller = documentHeight > visibleHeight
+    }
+
+    // MARK: - PageUp/PageDown Scroll
+
+    private func scrollGridPageDown() {
+        let clipView = gridScrollView.contentView
+        var origin = clipView.bounds.origin
+        let pageHeight = clipView.bounds.height
+        let documentHeight = collectionView.frame.height
+        let visibleHeight = clipView.bounds.height
+        let maxScrollY = max(0, documentHeight - visibleHeight)
+
+        // NSCollectionView uses flipped coordinates: y=0 is visual top
+        origin.y += pageHeight  // Visual down = increase Y
+        origin.y = min(maxScrollY, origin.y)  // Clamp to bottom
+        clipView.setBoundsOrigin(origin)
+    }
+
+    private func scrollGridPageUp() {
+        let clipView = gridScrollView.contentView
+        var origin = clipView.bounds.origin
+        let pageHeight = clipView.bounds.height
+
+        // NSCollectionView uses flipped coordinates: y=0 is visual top
+        origin.y -= pageHeight  // Visual up = decrease Y
+        origin.y = max(0, origin.y)  // Clamp to top
+        clipView.setBoundsOrigin(origin)
     }
 
     /// Sample image headers to compute median aspect ratio (height/width).
