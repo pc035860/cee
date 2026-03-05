@@ -86,4 +86,40 @@ final class ImageLoaderTests: XCTestCase {
         XCTAssertNotNil(second, "Same maxSize should hit cache even after file deletion")
         #endif
     }
+
+    // MARK: - Dual Priority Loading
+
+    func testLoadThumbnail_utilityPriority_stillWorks() async throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createPNG")
+        #else
+        let url = try createPNG(width: 200, height: 200)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = ImageLoader()
+        let result = await loader.loadThumbnail(at: url, maxSize: 128, priority: .utility)
+
+        XCTAssertNotNil(result, "Utility priority should still produce a valid thumbnail")
+        let size = result!.image.size
+        XCTAssertLessThanOrEqual(max(size.width, size.height), 128 + 1)
+        #endif
+    }
+
+    func testLoadThumbnail_bothPriorities_sameCache() async throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createPNG")
+        #else
+        let url = try createPNG(width: 300, height: 300)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = ImageLoader()
+        // Load with userInitiated first
+        _ = await loader.loadThumbnail(at: url, maxSize: 240, priority: .userInitiated)
+        // Delete file — second call with utility must hit cache
+        try FileManager.default.removeItem(at: url)
+        let second = await loader.loadThumbnail(at: url, maxSize: 240, priority: .utility)
+
+        XCTAssertNotNil(second, "Different priority should still hit same cache key")
+        #endif
+    }
 }
