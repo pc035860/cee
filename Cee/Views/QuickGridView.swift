@@ -522,6 +522,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     deinit {
+        // Note: Cannot access tierChangeWorkItem from nonisolated deinit.
+        // Cleanup is handled in cleanup() which should be called before deinit.
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -1019,6 +1021,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Note: Task.detached inside ImageLoader.loadThumbnail won't propagate cancellation,
     /// but thumbnail decodes are fast (~16ms for JPEG) so the impact is minimal.
     func cleanup() {
+        tierChangeWorkItem?.cancel()
+        tierChangeWorkItem = nil
         cancelAndClearThumbnails()
         resetScrollState()
         memoryPressureMonitor.stop()
