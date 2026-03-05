@@ -212,9 +212,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Test-only accessor for gridThumbnailMaxCount.
     var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
 
-    /// Enforce memory cap: evict farthest entries from given center index.
+    /// Enforce memory cap: evict entries farthest from given center index.
     func enforceGridThumbnailCap(currentIndex: Int) {
-        // Stub — to be implemented
+        guard gridThumbnails.count > gridThumbnailMaxCount else { return }
+        let sorted = gridThumbnails.keys.sorted { abs($0 - currentIndex) > abs($1 - currentIndex) }
+        let excess = gridThumbnails.count - gridThumbnailMaxCount
+        for key in sorted.prefix(excess) {
+            gridThumbnails.removeValue(forKey: key)
+        }
     }
 
     // MARK: - Initialization
@@ -627,6 +632,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
+                self.enforceGridThumbnailCap(currentIndex: index)
 
                 // Verify cell is still displaying the same item before updating
                 if let visibleCell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
