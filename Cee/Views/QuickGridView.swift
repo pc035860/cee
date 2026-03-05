@@ -462,11 +462,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     /// Start prefetch tasks for items in the prefetch range.
-    private func prefetchThumbnails(visibleIndices: Set<Int>, direction: ScrollDirection) {
-        guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return }
-        prefetchThumbnails(minVisible: minVis, maxVisible: maxVis, direction: direction)
-    }
-
     private func prefetchThumbnails(minVisible: Int, maxVisible: Int, direction: ScrollDirection) {
         guard let range = Self.prefetchRange(minVisible: minVisible, maxVisible: maxVisible, direction: direction, itemCount: items.count, cols: columnsPerRow()) else { return }
         let visibleCenter = (minVisible + maxVisible) / 2
@@ -582,10 +577,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Wire PageUp/PageDown handlers
         collectionView.onPageDown = { [weak self] in
-            self?.scrollGridPageDown()
+            self?.scrollGridPage(by: self?.gridScrollView.contentView.bounds.height ?? 0)
         }
         collectionView.onPageUp = { [weak self] in
-            self?.scrollGridPageUp()
+            self?.scrollGridPage(by: -(self?.gridScrollView.contentView.bounds.height ?? 0))
         }
 
         // Size slider (bottom bar)
@@ -755,28 +750,17 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     // MARK: - PageUp/PageDown Scroll
 
-    private func scrollGridPageDown() {
+    /// Scroll grid by one page. Positive delta = visual down, negative = visual up.
+    private func scrollGridPage(by delta: CGFloat) {
         let clipView = gridScrollView.contentView
         var origin = clipView.bounds.origin
-        let pageHeight = clipView.bounds.height
         let documentHeight = collectionView.frame.height
         let visibleHeight = clipView.bounds.height
         let maxScrollY = max(0, documentHeight - visibleHeight)
 
         // NSCollectionView uses flipped coordinates: y=0 is visual top
-        origin.y += pageHeight  // Visual down = increase Y
-        origin.y = min(maxScrollY, origin.y)  // Clamp to bottom
-        clipView.setBoundsOrigin(origin)
-    }
-
-    private func scrollGridPageUp() {
-        let clipView = gridScrollView.contentView
-        var origin = clipView.bounds.origin
-        let pageHeight = clipView.bounds.height
-
-        // NSCollectionView uses flipped coordinates: y=0 is visual top
-        origin.y -= pageHeight  // Visual up = decrease Y
-        origin.y = max(0, origin.y)  // Clamp to top
+        origin.y += delta
+        origin.y = max(0, min(maxScrollY, origin.y))
         clipView.setBoundsOrigin(origin)
     }
 
