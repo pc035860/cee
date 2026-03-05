@@ -172,9 +172,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var currentAspectRatio: CGFloat = Constants.quickGridCellAspectRatio
 
     /// Dynamic thumbnail maxSize based on current cell size.
-    /// Three tiers to balance sharpness vs memory:
-    /// ≤ tier1 → 240px, ≤ tier2 → 480px, > tier2 → 1024px
+    /// Four tiers to balance sharpness vs memory:
+    /// ≤ tier0 → adaptive (quantized 20px steps), ≤ tier1 → 240px, ≤ tier2 → 480px, > tier2 → 720px
     private var gridThumbnailMaxSize: CGFloat {
+        if currentCellSize <= Constants.quickGridTier0Boundary {
+            let scale = collectionView.window?.backingScaleFactor ?? 2.0
+            let raw = max(currentCellSize * scale, 80)
+            // Quantize to 20px steps so pinch resize doesn't flush cache every frame
+            return ceil(raw / 20) * 20
+        }
         if currentCellSize <= Constants.quickGridTier1Boundary { return Constants.quickGridThumbnailSize1 }
         if currentCellSize <= Constants.quickGridTier2Boundary { return Constants.quickGridThumbnailSize2 }
         return Constants.quickGridThumbnailSize3

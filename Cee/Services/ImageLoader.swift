@@ -224,11 +224,19 @@ actor ImageLoader {
             fullSize = .zero  // fallback: caller 會用 thumbnail size
         }
 
-        let options: [CFString: Any] = [
+        var options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxSize,
         ]
+        // Phase 3.1: SubsampleFactor for JPEG/HEIF DCT fast path at micro-thumbnail sizes
+        let subsample: Int
+        if maxSize <= 120 {
+            subsample = 4
+            options[kCGImageSourceSubsampleFactor] = subsample
+        } else {
+            subsample = 1
+        }
         let thumbStart = CFAbsoluteTimeGetCurrent()
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else { return nil }
@@ -239,8 +247,8 @@ actor ImageLoader {
             height: cgImage.height
         ))
         let totalMs = (CFAbsoluteTimeGetCurrent() - decodeStart) * 1000
-        GridPerfLog.log(String(format: "decode: total=%.2fms | source=%.2fms | thumb(%dx%d→%.0f)=%.2fms | %@",
-                               totalMs, sourceMs, cgImage.width, cgImage.height, maxSize, thumbMs,
+        GridPerfLog.log(String(format: "decode: total=%.2fms | source=%.2fms | thumb(%dx%d→%.0f,ss=%d)=%.2fms | %@",
+                               totalMs, sourceMs, cgImage.width, cgImage.height, maxSize, subsample, thumbMs,
                                url.lastPathComponent))
 
         let effectiveSize = fullSize == .zero ? image.size : fullSize
