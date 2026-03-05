@@ -364,7 +364,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let now = CFAbsoluteTimeGetCurrent()
         guard now - lastCancelSweepTime >= 0.05 else { return } // 20Hz max
         lastCancelSweepTime = now
-        cancelNonVisibleTasks(visibleIndices: Set(collectionView.indexPathsForVisibleItems().map(\.item)))
+        let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
+        cancelNonVisibleTasks(visibleIndices: visibleIndices)
+        evictNonVisibleThumbnails(visibleIndices: visibleIndices)
     }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
@@ -513,7 +515,16 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Evict cached thumbnails outside visible + buffer window.
     /// Keeps entries within [minVisible - buffer, maxVisible + buffer].
     func evictNonVisibleThumbnails(visibleIndices: Set<Int>) {
-        // TODO: Implement window-based cache eviction
+        guard !visibleIndices.isEmpty else { return }
+        let minVisible = visibleIndices.min()!
+        let maxVisible = visibleIndices.max()!
+        let keepMin = max(0, minVisible - thumbnailCacheBuffer)
+        let keepMax = maxVisible + thumbnailCacheBuffer
+        let keepRange = keepMin...keepMax
+
+        for key in gridThumbnails.keys where !keepRange.contains(key) {
+            gridThumbnails.removeValue(forKey: key)
+        }
     }
 
     /// Cancel in-flight thumbnail tasks for items not in the visible set.
