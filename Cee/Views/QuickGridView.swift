@@ -201,9 +201,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         thumbnailTasks[index] = task
     }
 
-    /// Test-only: inject a cached thumbnail at the given index.
     /// Test-only accessor for gridThumbnailMaxSize computed property.
     var currentGridThumbnailMaxSize: CGFloat { gridThumbnailMaxSize }
+
+    /// Test-only: inject a cached thumbnail at the given index.
 
     func _testSetThumbnail(_ image: NSImage, forIndex index: Int) {
         gridThumbnails[index] = image
@@ -533,7 +534,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Example: 8GB Mac → 400MB budget → ~200 thumbnails.
     private let gridThumbnailMaxCount: Int = {
         let budget = Double(ProcessInfo.processInfo.physicalMemory) * 0.05
-        let estimatedImageBytes: Double = 720 * 720 * 4
+        let side = Double(Constants.quickGridThumbnailSize3)
+        let estimatedImageBytes = side * side * 4
         return max(50, Int(budget / estimatedImageBytes))
     }()
 
