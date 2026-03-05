@@ -209,6 +209,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridThumbnails[index] = image
     }
 
+    /// Test-only accessor for gridThumbnailMaxCount.
+    var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
+
+    /// Enforce memory cap: evict farthest entries from given center index.
+    func enforceGridThumbnailCap(currentIndex: Int) {
+        // Stub — to be implemented
+    }
+
     // MARK: - Initialization
 
     override init(frame frameRect: NSRect) {
@@ -514,6 +522,15 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Number of items beyond visible range to keep in cache (buffer zone).
     private let thumbnailCacheBuffer = 50
+
+    /// Maximum number of grid thumbnails to cache, based on system RAM.
+    /// Formula: 5% of physical memory / estimated per-image size (720×720×4 ≈ 2MB).
+    /// Example: 8GB Mac → 400MB budget → ~200 thumbnails.
+    private let gridThumbnailMaxCount: Int = {
+        let budget = Double(ProcessInfo.processInfo.physicalMemory) * 0.05
+        let estimatedImageBytes: Double = 720 * 720 * 4
+        return max(50, Int(budget / estimatedImageBytes))
+    }()
 
     /// Evict cached thumbnails outside visible + buffer window.
     /// Keeps entries within [minVisible - buffer, maxVisible + buffer].

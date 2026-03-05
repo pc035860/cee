@@ -404,4 +404,31 @@ final class QuickGridViewTests: XCTestCase {
         XCTAssertEqual(Constants.quickGridThumbnailSize3, 720,
                        "quickGridThumbnailSize3 should be 720 for memory optimization")
     }
+
+    // MARK: - Memory Cap
+
+    func testGridThumbnailMaxCount_isReasonable() {
+        let grid = QuickGridView()
+        let maxCount = grid._testGridThumbnailMaxCount
+        XCTAssertGreaterThanOrEqual(maxCount, 50,
+                                    "Max count floor should be at least 50")
+        XCTAssertLessThan(maxCount, 10000,
+                          "Max count should be reasonable (not millions)")
+    }
+
+    func testGridThumbnails_enforcesMemoryCap() {
+        let grid = QuickGridView()
+        let maxCount = grid._testGridThumbnailMaxCount
+
+        // Inject maxCount + 20 thumbnails
+        let overCount = maxCount + 20
+        injectMockThumbnails(into: grid, indices: Array(0..<overCount))
+        XCTAssertEqual(grid.gridThumbnailCount, overCount, "Pre-condition: all injected")
+
+        // Trigger cap enforcement
+        grid.enforceGridThumbnailCap(currentIndex: overCount / 2)
+
+        XCTAssertLessThanOrEqual(grid.gridThumbnailCount, maxCount,
+                                  "Cache should not exceed memory cap after enforcement")
+    }
 }
