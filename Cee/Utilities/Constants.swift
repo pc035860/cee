@@ -34,7 +34,7 @@ enum Constants {
     static let quickGridTier2Boundary: CGFloat = 240   // ≤240pt → tier2 size
     static let quickGridThumbnailSize1: CGFloat = 240  // low-res tier
     static let quickGridThumbnailSize2: CGFloat = 480  // mid-res tier
-    static let quickGridThumbnailSize3: CGFloat = 1024 // high-res tier
+    static let quickGridThumbnailSize3: CGFloat = 720  // high-res tier (was 1024; halves memory per image)
 
     // Option+Scroll Fast Navigation (Phase 3)
     static let optionScrollThresholdTrackpad: CGFloat = 40   // trackpad 每張圖的累積閾值
