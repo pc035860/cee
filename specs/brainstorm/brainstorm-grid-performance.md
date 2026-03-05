@@ -13,7 +13,11 @@
   - [x] 1.4 Grid Window Cache — evict outside visible ± 50 buffer on scroll
   - [x] 1.5 Resolution Cap — highest tier 1024px → 720px (~2MB/image)
   - [x] 1.6 Dynamic Memory Cap — 5% system RAM, evict farthest on overflow
-- [ ] **Phase 2** — 未開始
+- [x] **Phase 2** — 完成（2026-03-05, branch `feat/grid-performance-phase2`）
+  - [x] 2.1 Manual Prefetch Pipeline — scroll direction detect + 2-row ahead prefetch + keep-set cancel
+  - [x] 2.2 Memory Pressure Notification — DispatchSource warning/critical + idempotent start
+  - [x] 2.3 Generation ID — Int counter on clearCache, stale-write guard in Task closures
+  - [x] 2.4 Layer-backed Cell — canDrawSubviewsIntoLayer + onSetNeedsDisplay
 - [ ] **Phase 3** — 未開始
 
 ---
