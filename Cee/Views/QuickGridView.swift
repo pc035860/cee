@@ -202,6 +202,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     /// Test-only: inject a cached thumbnail at the given index.
+    /// Test-only accessor for gridThumbnailMaxSize computed property.
+    var currentGridThumbnailMaxSize: CGFloat { gridThumbnailMaxSize }
+
     func _testSetThumbnail(_ image: NSImage, forIndex index: Int) {
         gridThumbnails[index] = image
     }

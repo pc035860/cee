@@ -389,4 +389,19 @@ final class QuickGridViewTests: XCTestCase {
         XCTAssertEqual(grid.gridThumbnailCount, 3,
                        "Small cache within visible range should not evict")
     }
+
+    // MARK: - Resolution Cap
+
+    func testGridThumbnailMaxSize_highTier_returns720() {
+        let grid = QuickGridView()
+        // Set cell size above tier2 boundary (240pt) to trigger highest tier
+        grid.applyItemSize(300)
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 720,
+                       "Highest thumbnail tier should be 720px (not 1024)")
+    }
+
+    func testConstants_thumbnailSize3_is720() {
+        XCTAssertEqual(Constants.quickGridThumbnailSize3, 720,
+                       "quickGridThumbnailSize3 should be 720 for memory optimization")
+    }
 }
