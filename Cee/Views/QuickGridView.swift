@@ -1,6 +1,11 @@
 import AppKit
 import ImageIO
 
+/// Scroll direction for prefetch pipeline.
+enum ScrollDirection: Equatable {
+    case up, down, none
+}
+
 @MainActor
 protocol QuickGridViewDelegate: AnyObject {
     func quickGridView(_ view: QuickGridView, didSelectItemAt index: Int)
@@ -212,6 +217,26 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Test-only accessor for gridThumbnailMaxCount.
     var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
+
+    // MARK: - Prefetch Pipeline Stubs (TDD RED — to be implemented)
+
+    /// Calculate columns per row for given layout parameters.
+    static func columnsPerRow(availableWidth: CGFloat, cellSize: CGFloat) -> Int {
+        // TODO: Implement in GREEN phase
+        return 0
+    }
+
+    /// Calculate prefetch range based on scroll direction.
+    static func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
+        // TODO: Implement in GREEN phase
+        return nil
+    }
+
+    /// Detect scroll direction from clip origin Y delta.
+    static func detectDirection(currentY: CGFloat, lastY: CGFloat, deadZone: CGFloat = 1) -> ScrollDirection {
+        // TODO: Implement in GREEN phase
+        return .none
+    }
 
     /// Enforce memory cap: evict entries farthest from given center index.
     func enforceGridThumbnailCap(currentIndex: Int) {
