@@ -218,12 +218,16 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Test-only accessor for gridThumbnailMaxCount.
     var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
 
+    /// Generation counter: incremented on folder change to prevent stale cache writes.
+    private var generationID: Int = 0
+
     /// Test-only accessor for generationID.
-    var _testGenerationID: Int { 0 }  // TODO: Implement in GREEN phase
+    var _testGenerationID: Int { generationID }
 
     /// Test-only: write thumbnail only if generation matches current.
     func _testWriteThumbnailIfCurrentGeneration(_ image: NSImage, forIndex index: Int, generation: Int) {
-        // TODO: Implement in GREEN phase
+        guard generationID == generation else { return }
+        gridThumbnails[index] = image
     }
 
     /// Test-only: simulate memory pressure response.
@@ -340,10 +344,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
             let maxSize = gridThumbnailMaxSize
             let center = visibleCenter
+            let gen = generationID
             thumbnailTasks[index] = Task { [weak self] in
                 let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: .utility)
                 guard !Task.isCancelled else { return }
                 guard let self else { return }
+                guard self.generationID == gen else { return }  // Stale folder — discard
 
                 if let image = result?.image {
                     self.gridThumbnails[index] = image
@@ -750,6 +756,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Clear cached thumbnails and cancel pending tasks without releasing loader.
     /// Used when folder content changes and the grid will be reconfigured.
     func clearCache() {
+        generationID += 1
         cancelAndClearThumbnails()
         scrollDirection = .none
         lastClipOriginY = 0
@@ -799,10 +806,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let isVisible = collectionView.indexPathsForVisibleItems()
             .contains(IndexPath(item: index, section: 0))
         let taskPriority: TaskPriority = isVisible ? .userInitiated : .utility
+        let gen = generationID
         thumbnailTasks[index] = Task { [weak self] in
             let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: taskPriority)
             guard !Task.isCancelled else { return }
             guard let self else { return }
+            guard self.generationID == gen else { return }  // Stale folder — discard
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
