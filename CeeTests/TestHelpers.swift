@@ -23,6 +23,36 @@ func minimalPNG() -> Data {
 }
 
 #if canImport(AppKit)
+/// Creates a JPEG file of given dimensions (for SubsampleFactor tests).
+/// Returns temp file URL. Caller should delete when done.
+func createJPEG(width: Int, height: Int) throws -> URL {
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 3,
+        hasAlpha: false,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else { throw NSError(domain: "TestHelpers", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap"]) }
+    if let ctx = NSGraphicsContext(bitmapImageRep: rep) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        ctx.cgContext.setFillColor(CGColor.white)
+        ctx.cgContext.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    guard let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+        throw NSError(domain: "TestHelpers", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to encode JPEG"])
+    }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+    try jpegData.write(to: url)
+    return url
+}
+
 /// Creates a PNG file of given dimensions (for thumbnail / resize tests).
 /// Returns temp file URL. Caller should delete when done.
 func createPNG(width: Int, height: Int) throws -> URL {

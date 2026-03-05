@@ -22,7 +22,7 @@ enum Constants {
 
     // Quick Grid
     static let quickGridCellSize: CGFloat = 120
-    static let quickGridMinCellSize: CGFloat = 80
+    static let quickGridMinCellSize: CGFloat = 40
     static let quickGridMaxCellSize: CGFloat = 512
     static let quickGridSpacing: CGFloat = 4
     static let quickGridInset: CGFloat = 8
@@ -30,6 +30,7 @@ enum Constants {
     static let quickGridAspectRatioSampleCount: Int = 50       // 取樣數量 for median ratio
 
     // Grid Thumbnail Tiers — cell size boundary → thumbnail resolution
+    static let quickGridTier0Boundary: CGFloat = 60    // ≤60pt → adaptive micro-thumbnail (Phase 3.1)
     static let quickGridTier1Boundary: CGFloat = 120   // ≤120pt → tier1 size
     static let quickGridTier2Boundary: CGFloat = 240   // ≤240pt → tier2 size
     static let quickGridThumbnailSize1: CGFloat = 240  // low-res tier

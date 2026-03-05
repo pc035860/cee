@@ -140,7 +140,7 @@ final class QuickGridViewTests: XCTestCase {
 
     func testApplyItemSize_clampsToMinimum() {
         let grid = QuickGridView()
-        grid.applyItemSize(50)
+        grid.applyItemSize(10)
         XCTAssertEqual(grid.currentCellSize, Constants.quickGridMinCellSize,
                        "Cell size below minimum should clamp to \(Constants.quickGridMinCellSize)")
     }
@@ -403,6 +403,75 @@ final class QuickGridViewTests: XCTestCase {
     func testConstants_thumbnailSize3_is720() {
         XCTAssertEqual(Constants.quickGridThumbnailSize3, 720,
                        "quickGridThumbnailSize3 should be 720 for memory optimization")
+    }
+
+    // MARK: - Tier 0 Adaptive Resolution (Phase 3.1)
+
+    func testGridThumbnailMaxSize_tier0_returnsQuantizedAdaptiveSize() {
+        let grid = QuickGridView()
+        grid.applyItemSize(40) // tier0: 40 * 2.0 = 80 → ceil(80/20)*20 = 80
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 80,
+                       "Tier0 at 40pt should return quantized adaptive size 80")
+    }
+
+    func testGridThumbnailMaxSize_tier0_quantizationRoundsUp() {
+        let grid = QuickGridView()
+        grid.applyItemSize(45) // tier0: 45 * 2.0 = 90 → ceil(90/20)*20 = 100
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 100,
+                       "Tier0 at 45pt should quantize 90→100 (rounds up to 20px step)")
+    }
+
+    func testGridThumbnailMaxSize_tier0Boundary_exactBoundary() {
+        let grid = QuickGridView()
+        grid.applyItemSize(60) // tier0: 60 * 2.0 = 120 → ceil(120/20)*20 = 120
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 120,
+                       "Tier0 at exact boundary 60pt should return 120")
+    }
+
+    func testGridThumbnailMaxSize_aboveTier0_returnsTier1() {
+        let grid = QuickGridView()
+        grid.applyItemSize(61) // above tier0 boundary → tier1 = 240
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 240,
+                       "Above tier0 boundary should fall to tier1 (240)")
+    }
+
+    func testApplyItemSize_crossTier0Boundary_clearsGridThumbnails() {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 3)
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+
+        // Start in tier0 (≤60pt)
+        grid.applyItemSize(40)
+        injectMockThumbnails(into: grid, indices: [0, 1, 2])
+        XCTAssertEqual(grid.gridThumbnailCount, 3, "Pre-condition: 3 thumbnails cached")
+
+        // Cross to tier1 (>60pt, ≤120pt) — should clear gridThumbnails
+        grid.applyItemSize(80)
+        XCTAssertEqual(grid.gridThumbnailCount, 0,
+                       "Crossing tier0→tier1 boundary should clear grid thumbnails")
+    }
+
+    func testApplyItemSize_withinTier0SameQuantized_noCacheClear() {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 3)
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+
+        // Set to cellSize=41 (tier0, quantized maxSize=100)
+        grid.applyItemSize(41)
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 100,
+                       "Pre-condition: cellSize=41 should produce quantized maxSize=100")
+
+        injectMockThumbnails(into: grid, indices: [0, 1, 2])
+        let countBefore = grid.gridThumbnailCount
+
+        // Change to cellSize=45 (tier0, quantized maxSize=100 — same band)
+        grid.applyItemSize(45)
+        XCTAssertEqual(grid.currentGridThumbnailMaxSize, 100,
+                       "cellSize=45 should still produce quantized maxSize=100")
+        XCTAssertEqual(grid.gridThumbnailCount, countBefore,
+                       "Same quantized tier should not clear thumbnails")
     }
 
     // MARK: - Memory Cap
