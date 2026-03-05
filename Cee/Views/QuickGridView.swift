@@ -193,6 +193,35 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     var gridThumbnailCount: Int { gridThumbnails.count }
     /// Active thumbnail loading tasks (keyed by item index)
     private var thumbnailTasks: [Int: Task<Void, Never>] = [:]
+    /// Test-only: number of active thumbnail loading tasks.
+    var thumbnailTaskCount: Int { thumbnailTasks.count }
+
+    /// Test-only: inject a mock task at the given index.
+    func _testSetTask(_ task: Task<Void, Never>, forIndex index: Int) {
+        thumbnailTasks[index] = task
+    }
+
+    /// Test-only accessor for gridThumbnailMaxSize computed property.
+    var currentGridThumbnailMaxSize: CGFloat { gridThumbnailMaxSize }
+
+    /// Test-only: inject a cached thumbnail at the given index.
+
+    func _testSetThumbnail(_ image: NSImage, forIndex index: Int) {
+        gridThumbnails[index] = image
+    }
+
+    /// Test-only accessor for gridThumbnailMaxCount.
+    var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
+
+    /// Enforce memory cap: evict entries farthest from given center index.
+    func enforceGridThumbnailCap(currentIndex: Int) {
+        guard gridThumbnails.count > gridThumbnailMaxCount else { return }
+        let sorted = gridThumbnails.keys.sorted { abs($0 - currentIndex) > abs($1 - currentIndex) }
+        let excess = gridThumbnails.count - gridThumbnailMaxCount
+        for key in sorted.prefix(excess) {
+            gridThumbnails.removeValue(forKey: key)
+        }
+    }
 
     // MARK: - Initialization
 
@@ -203,6 +232,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not supported")
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     private func setupUI() {
@@ -302,6 +335,12 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             self, selector: #selector(gridFrameDidChange),
             name: NSView.frameDidChangeNotification, object: gridScrollView)
 
+        // Monitor scroll to cancel non-visible thumbnail tasks
+        gridScrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(clipViewBoundsDidChange(_:)),
+            name: NSView.boundsDidChangeNotification, object: gridScrollView.contentView)
+
         registerForDraggedTypes([.fileURL])
     }
 
@@ -334,6 +373,18 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Last width used for space-around calculation; skip redundant recalcs (e.g. height-only resize).
     private var lastLayoutWidth: CGFloat = 0
+
+    /// Throttle cancel-sweep to ~20Hz (avoid per-frame indexPathsForVisibleItems on 120Hz displays).
+    private var lastCancelSweepTime: CFAbsoluteTime = 0
+
+    @objc private func clipViewBoundsDidChange(_ note: Notification) {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastCancelSweepTime >= 0.05 else { return } // 20Hz max
+        lastCancelSweepTime = now
+        let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
+        cancelNonVisibleTasks(visibleIndices: visibleIndices)
+        evictNonVisibleThumbnails(visibleIndices: visibleIndices)
+    }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
         let width = gridScrollView.bounds.width
@@ -475,6 +526,42 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         gridThumbnails.removeAll()
     }
 
+    /// Number of items beyond visible range to keep in cache (buffer zone).
+    private let thumbnailCacheBuffer = 50
+
+    /// Maximum number of grid thumbnails to cache, based on system RAM.
+    /// Formula: 5% of physical memory / estimated per-image size (720×720×4 ≈ 2MB).
+    /// Example: 8GB Mac → 400MB budget → ~200 thumbnails.
+    private let gridThumbnailMaxCount: Int = {
+        let budget = Double(ProcessInfo.processInfo.physicalMemory) * 0.05
+        let side = Double(Constants.quickGridThumbnailSize3)
+        let estimatedImageBytes = side * side * 4
+        return max(50, Int(budget / estimatedImageBytes))
+    }()
+
+    /// Evict cached thumbnails outside visible + buffer window.
+    /// Keeps entries within [minVisible - buffer, maxVisible + buffer].
+    func evictNonVisibleThumbnails(visibleIndices: Set<Int>) {
+        guard !visibleIndices.isEmpty else { return }
+        let minVisible = visibleIndices.min()!
+        let maxVisible = visibleIndices.max()!
+        let keepMin = max(0, minVisible - thumbnailCacheBuffer)
+        let keepMax = maxVisible + thumbnailCacheBuffer
+        let keepRange = keepMin...keepMax
+
+        for key in gridThumbnails.keys where !keepRange.contains(key) {
+            gridThumbnails.removeValue(forKey: key)
+        }
+    }
+
+    /// Cancel in-flight thumbnail tasks for items not in the visible set.
+    func cancelNonVisibleTasks(visibleIndices: Set<Int>) {
+        for (index, task) in thumbnailTasks where !visibleIndices.contains(index) {
+            task.cancel()
+            thumbnailTasks.removeValue(forKey: index)
+        }
+    }
+
     /// Cancel in-flight thumbnail tasks only (keep cached images for smooth tier transitions).
     private func cancelPendingThumbnailTasks() {
         for (_, task) in thumbnailTasks { task.cancel() }
@@ -536,13 +623,18 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard let loader else { return }
 
         let maxSize = gridThumbnailMaxSize
+        // Visible cells get higher priority; buffer cells use .utility to avoid starving UI
+        let isVisible = collectionView.indexPathsForVisibleItems()
+            .contains(IndexPath(item: index, section: 0))
+        let taskPriority: TaskPriority = isVisible ? .userInitiated : .utility
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize)
+            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: taskPriority)
             guard !Task.isCancelled else { return }
             guard let self else { return }
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
+                self.enforceGridThumbnailCap(currentIndex: index)
 
                 // Verify cell is still displaying the same item before updating
                 if let visibleCell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {

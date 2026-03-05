@@ -24,6 +24,7 @@ actor ImageLoader {
         let maxSize: CGFloat
     }
     private var thumbnailCache: [ThumbnailCacheKey: ThumbnailEntry] = [:]
+    private let thumbnailThrottle = ThumbnailThrottle()
     private var pdfCache: [PDFCacheKey: NSImage] = [:]
     private var pdfDocumentCache: [URL: PDFDocument] = [:]
     private let cacheRadius = Constants.cacheRadius
@@ -42,15 +43,17 @@ actor ImageLoader {
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速載入低解析度縮圖（JPEG ~16ms）
     /// 同時回傳 full-res dimensions（從同一個 CGImageSource 讀取，避免二次開檔）
     /// PDF 不支援，回傳 nil
-    func loadThumbnail(at url: URL, maxSize: CGFloat = 512) async -> (image: NSImage, fullSize: CGSize)? {
+    func loadThumbnail(at url: URL, maxSize: CGFloat = 512, priority: TaskPriority = .userInitiated) async -> (image: NSImage, fullSize: CGSize)? {
         let cacheKey = ThumbnailCacheKey(url: url, maxSize: maxSize)
         if let cached = thumbnailCache[cacheKey] {
             return (cached.image, cached.fullSize)
         }
 
-        let result = await Task.detached(priority: .userInitiated) {
-            Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
-        }.value
+        let result = await thumbnailThrottle.withThrottle {
+            await Task.detached(priority: priority) {
+                Self.decodeThumbnailWithDimensions(at: url, maxSize: maxSize)
+            }.value
+        }
 
         // Don't cache if caller's Task was cancelled (e.g. Quick Grid dismissed).
         if let result, !Task.isCancelled {

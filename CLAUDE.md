@@ -95,7 +95,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Fast Browse
 
-- **`ImageLoader.loadThumbnail`** returns `(image, fullSize)` tuple. `ThumbnailCacheKey(url, maxSize)` composite key isolates grid vs main view caches. **Known issue**: `fullSize` doesn't handle EXIF orientation — rotated images report swapped dimensions.
+- **`ImageLoader.loadThumbnail`** returns `(image, fullSize)` tuple. `ThumbnailCacheKey(url, maxSize)` composite key isolates grid vs main view caches. `priority` parameter (default `.userInitiated`) allows `.utility` for buffer cells. Throttled by `ThumbnailThrottle` actor (max 4 concurrent). **Known issue**: `fullSize` doesn't handle EXIF orientation — rotated images report swapped dimensions.
 - **Navigation throttle** ~20fps; `scheduleFullResLoad` 100ms after last key. Full-res must use scroll intent (`.top`/`.bottom`), never `.preserve`.
 - **Thumbnail fallback is opt-in** — `settings.thumbnailFallback` (default off).
 - **`applyInitialScrollPosition`** must run after `applyCenteringInsetsIfNeeded`. For `.bottom`, defer one frame.
@@ -104,10 +104,11 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 ## Quick Grid
 
 - **`QuickGridView`** — NSCollectionView overlay (G key toggle). Grid-local thumbnail cache separate from `ImageLoader.thumbnailCache`.
-- **Grid cell resize** — Pinch, Cmd+Scroll, Cmd+=+-, slider. All route through `applyItemSize()` → `invalidateLayout()` (never `reloadData()`). Three thumbnail tiers: ≤tier1→240px, ≤tier2→480px, >tier2→1024px; tier change clears thumbnails + reloads.
+- **Grid cell resize** — Pinch, Cmd+Scroll, Cmd+=+-, slider. All route through `applyItemSize()` → `invalidateLayout()` (never `reloadData()`). Three thumbnail tiers: ≤tier1→240px, ≤tier2→480px, >tier2→720px; tier change clears thumbnails + reloads.
 - **Dynamic cell aspect ratio** — `sampleMedianAspectRatio()` reads image headers (no decode). EXIF orientation 5-8 requires swapping w/h.
 - **Space-around layout** — `max(0, remaining)` + `floor(gap)` guards: negative remaining crashes FlowLayout; unrounded gaps cause line wrapping. Width-cache skips height-only recalcs.
 - **Grid persists across folder changes** — `clearCache()` + `configure()` instead of dismiss.
+- **Grid performance (Phase 1)** — `ThumbnailThrottle` actor limits concurrent decodes to 4. Scroll handler (20Hz) cancels non-visible tasks + evicts cache outside visible ± 50 buffer. Visible cells use `.userInitiated`, buffer cells `.utility`. Memory capped at 5% system RAM.
 
 ## Recent Significant Changes
 
