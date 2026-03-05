@@ -756,6 +756,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private func resetScrollState() {
         scrollDirection = .none
         lastClipOriginY = 0
+        cancelSweepThrottle = NavigationThrottle(interval: 0.05)  // Reset so first scroll event isn't eaten
     }
 
     func clearCache() {
