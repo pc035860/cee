@@ -4,6 +4,18 @@
 > **研究日期**：2026-03-05
 > **研究方法**：4 角度平行研究（捲動效能、執行緒管理、記憶體管理、業界實踐）
 
+## Implementation Status
+
+- [x] **Phase 1** — 完成（2026-03-05, branch `feat/grid-performance`）
+  - [x] 1.1 ThumbnailThrottle Actor — FIFO async semaphore, maxConcurrent=4
+  - [x] 1.2 Cancel Non-Visible Tasks — 20Hz scroll observer + task cancellation
+  - [x] 1.3 Dual Priority Loading — visible=.userInitiated, buffer=.utility
+  - [x] 1.4 Grid Window Cache — evict outside visible ± 50 buffer on scroll
+  - [x] 1.5 Resolution Cap — highest tier 1024px → 720px (~2MB/image)
+  - [x] 1.6 Dynamic Memory Cap — 5% system RAM, evict farthest on overflow
+- [ ] **Phase 2** — 未開始
+- [ ] **Phase 3** — 未開始
+
 ---
 
 ## 問題分析
