@@ -218,6 +218,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Test-only accessor for gridThumbnailMaxCount.
     var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
 
+    /// Test-only: simulate memory pressure response.
+    func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        // TODO: Implement in GREEN phase
+    }
+
     // MARK: - Prefetch Pipeline
 
     private var lastClipOriginY: CGFloat = 0
