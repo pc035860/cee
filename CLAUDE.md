@@ -109,9 +109,15 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Space-around layout** — `max(0, remaining)` + `floor(gap)` guards: negative remaining crashes FlowLayout; unrounded gaps cause line wrapping. Width-cache skips height-only recalcs.
 - **Grid persists across folder changes** — `clearCache()` + `configure()` instead of dismiss.
 - **Grid performance (Phase 1)** — `ThumbnailThrottle` actor limits concurrent decodes to 4. Scroll handler (20Hz) cancels non-visible tasks + evicts cache outside visible ± 50 buffer. Visible cells use `.userInitiated`, buffer cells `.utility`. Memory capped at 5% system RAM.
+- **Grid performance (Phase 2)** — Scroll-direction-aware prefetch (2 rows ahead), `MemoryPressureMonitor` (DispatchSource warning/critical), `generationID` stale-write guard on folder change, layer-backed cell optimization (`canDrawSubviewsIntoLayer` + `.onSetNeedsDisplay`).
+- **Keep-set cancel pattern** — When prefetch + cancel coexist, cancel must use `keepSet = visible ∪ prefetchRange`, not just visible indices. Otherwise prefetch tasks are immediately cancelled by the scroll handler.
+- **Generation ID pattern** — Int counter incremented on `clearCache()`, captured in Task closure, checked before cache write. Prevents stale folder thumbnails from overwriting new folder's cache. Same concept as `ImageViewController.currentLoadRequestID` (UUID) but simpler.
+- **DispatchSource idempotent start** — `DispatchSource.makeMemoryPressureSource` must guard `source == nil` before creating; repeated `start()` leaks un-cancelled sources.
+- **Reuse `NavigationThrottle`** — For any CFAbsoluteTime-based throttle (scroll handlers, etc.), use the existing `NavigationThrottle` struct instead of inline `lastTimestamp` + `guard` patterns.
 
 ## Recent Significant Changes
 
+- **Grid performance Phase 2:** Prefetch pipeline (scroll direction + keep-set cancel), MemoryPressureMonitor, generation ID stale-write guard, layer-backed cell optimization, NavigationThrottle reuse.
 - **Grid view fixes:** Highlight border clipping fix (inset frame + zPosition), visual redesign (blue tint for active, orange border for cursor), cell drag-drop passthrough, keyboard auto-scroll.
 - **Grid layout Phase 3-4:** Dynamic cell aspect ratio (EXIF-aware), smooth resize, space-around layout, thumbnail tiers with cache isolation.
 - **Option+scroll fast nav:** OptionScrollAccumulator, PositionHUDView, mouse sensitivity fix.

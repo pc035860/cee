@@ -1,6 +1,11 @@
 import AppKit
 import ImageIO
 
+/// Scroll direction for prefetch pipeline.
+enum ScrollDirection: Equatable {
+    case up, down, none
+}
+
 @MainActor
 protocol QuickGridViewDelegate: AnyObject {
     func quickGridView(_ view: QuickGridView, didSelectItemAt index: Int)
@@ -213,6 +218,152 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Test-only accessor for gridThumbnailMaxCount.
     var _testGridThumbnailMaxCount: Int { gridThumbnailMaxCount }
 
+    /// Generation counter: incremented on folder change to prevent stale cache writes.
+    private var generationID: Int = 0
+
+    /// Test-only accessor for generationID.
+    var _testGenerationID: Int { generationID }
+
+    /// Test-only: write thumbnail only if generation matches current.
+    func _testWriteThumbnailIfCurrentGeneration(_ image: NSImage, forIndex index: Int, generation: Int) {
+        guard generationID == generation else { return }
+        gridThumbnails[index] = image
+    }
+
+    /// Test-only: simulate memory pressure response.
+    func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        handleMemoryPressure(level)
+    }
+
+    // MARK: - Memory Pressure
+
+    private let memoryPressureMonitor = MemoryPressureMonitor()
+
+    func setupMemoryPressureMonitor() {
+        memoryPressureMonitor.onPressure = { [weak self] level in
+            guard let self else { return }
+            self.handleMemoryPressure(level)
+        }
+        memoryPressureMonitor.start()
+    }
+
+    private func handleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        switch level {
+        case .warning:
+            // Clear non-visible thumbnails and cancel all pending tasks
+            let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
+            evictNonVisibleThumbnails(visibleIndices: visibleIndices)
+            cancelPendingThumbnailTasks()
+        case .critical:
+            // Nuclear: clear ALL thumbnails and tasks
+            gridThumbnails.removeAll()
+            cancelPendingThumbnailTasks()
+            // Also clear ImageLoader cache (actor-isolated, fire-and-forget)
+            Task { [weak self] in
+                await self?.loader?.clearThumbnailCache()
+            }
+        }
+    }
+
+    // MARK: - Prefetch Pipeline
+
+    private var lastClipOriginY: CGFloat = 0
+    private var scrollDirection: ScrollDirection = .none
+
+    /// Calculate columns per row for given layout parameters.
+    static func columnsPerRow(availableWidth: CGFloat, cellSize: CGFloat) -> Int {
+        let minSpacing = Constants.quickGridSpacing
+        let baseInset = Constants.quickGridInset
+        return max(1, Int(floor((availableWidth - baseInset * 2 + minSpacing) / (cellSize + minSpacing))))
+    }
+
+    /// Instance wrapper using current layout state.
+    func columnsPerRow() -> Int {
+        Self.columnsPerRow(availableWidth: gridScrollView.bounds.width, cellSize: currentCellSize)
+    }
+
+    /// Calculate prefetch range based on scroll direction.
+    static func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
+        guard !visibleIndices.isEmpty, direction != .none else { return nil }
+        let minVis = visibleIndices.min()!
+        let maxVis = visibleIndices.max()!
+        let prefetchCount = cols * 2  // 2 rows ahead
+
+        switch direction {
+        case .down:
+            let start = maxVis + 1
+            let end = min(itemCount - 1, maxVis + prefetchCount)
+            guard start <= end else { return nil }
+            return start...end
+        case .up:
+            let end = minVis - 1
+            let start = max(0, minVis - prefetchCount)
+            guard start <= end else { return nil }
+            return start...end
+        case .none:
+            return nil
+        }
+    }
+
+    /// Instance wrapper using current state.
+    func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection) -> ClosedRange<Int>? {
+        Self.prefetchRange(visibleIndices: visibleIndices, direction: direction, itemCount: items.count, cols: columnsPerRow())
+    }
+
+    /// Detect scroll direction from clip origin Y delta.
+    static func detectDirection(currentY: CGFloat, lastY: CGFloat, deadZone: CGFloat = 1) -> ScrollDirection {
+        if currentY > lastY + deadZone { return .down }
+        if currentY < lastY - deadZone { return .up }
+        return .none  // within dead zone
+    }
+
+    /// Cancel tasks outside the given keep set (visible ∪ prefetch).
+    private func cancelTasksOutsideKeepSet(_ keepIndices: Set<Int>) {
+        for (index, task) in thumbnailTasks where !keepIndices.contains(index) {
+            task.cancel()
+            thumbnailTasks.removeValue(forKey: index)
+        }
+    }
+
+    /// Start prefetch tasks for items in the prefetch range.
+    private func prefetchThumbnails(visibleIndices: Set<Int>, direction: ScrollDirection) {
+        guard let range = prefetchRange(visibleIndices: visibleIndices, direction: direction) else { return }
+        let visibleCenter: Int = {
+            guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return 0 }
+            return (minVis + maxVis) / 2
+        }()
+
+        for index in range {
+            guard gridThumbnails[index] == nil,
+                  thumbnailTasks[index] == nil,
+                  index < items.count else { continue }
+
+            let item = items[index]
+            guard !item.isPDF else { continue }
+            guard let loader else { continue }
+
+            let maxSize = gridThumbnailMaxSize
+            let center = visibleCenter
+            let gen = generationID
+            thumbnailTasks[index] = Task { [weak self] in
+                let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: .utility)
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+                guard self.generationID == gen else { return }  // Stale folder — discard
+
+                if let image = result?.image {
+                    self.gridThumbnails[index] = image
+                    self.enforceGridThumbnailCap(currentIndex: center)
+
+                    if let cell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
+                        cell.setThumbnail(image)
+                    }
+                }
+                self.thumbnailTasks.removeValue(forKey: index)
+            }
+        }
+    }
+
     /// Enforce memory cap: evict entries farthest from given center index.
     func enforceGridThumbnailCap(currentIndex: Int) {
         guard gridThumbnails.count > gridThumbnailMaxCount else { return }
@@ -342,6 +493,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             name: NSView.boundsDidChangeNotification, object: gridScrollView.contentView)
 
         registerForDraggedTypes([.fileURL])
+
+        // Memory pressure safety net
+        setupMemoryPressureMonitor()
     }
 
     /// Item size derived directly from `currentCellSize` (Finder-style: smooth resize, columns change naturally).
@@ -357,10 +511,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         lastLayoutWidth = available
 
         let cellWidth = currentCellSize
-        let minSpacing = Constants.quickGridSpacing
         let baseInset = Constants.quickGridInset
 
-        let cols = max(1, floor((available - baseInset * 2 + minSpacing) / (cellWidth + minSpacing)))
+        // Use shared columnsPerRow() as single source of truth, cast to CGFloat for gap math
+        let cols = CGFloat(columnsPerRow())
         // space-around: available = cols * cellWidth + 2G * cols  →  G = remaining / (2 * cols)
         let remaining = max(0, available - cols * cellWidth)
         let gap = floor(remaining / (cols * 2))
@@ -375,15 +529,34 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var lastLayoutWidth: CGFloat = 0
 
     /// Throttle cancel-sweep to ~20Hz (avoid per-frame indexPathsForVisibleItems on 120Hz displays).
-    private var lastCancelSweepTime: CFAbsoluteTime = 0
+    private var cancelSweepThrottle = NavigationThrottle(interval: 0.05)
 
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastCancelSweepTime >= 0.05 else { return } // 20Hz max
-        lastCancelSweepTime = now
+        guard cancelSweepThrottle.shouldProceed() else { return }
+
+        // 1. Detect scroll direction
+        let currentY = gridScrollView.contentView.bounds.origin.y
+        let detected = Self.detectDirection(currentY: currentY, lastY: lastClipOriginY)
+        if detected != .none { scrollDirection = detected }
+        lastClipOriginY = currentY
+
+        // 2. Visible indices
         let visibleIndices = Set(collectionView.indexPathsForVisibleItems().map(\.item))
-        cancelNonVisibleTasks(visibleIndices: visibleIndices)
+
+        // 3. Build keep set = visible ∪ prefetch range
+        var keepIndices = visibleIndices
+        if let range = prefetchRange(visibleIndices: visibleIndices, direction: scrollDirection) {
+            keepIndices.formUnion(range)
+        }
+
+        // 4. Cancel tasks outside keep set
+        cancelTasksOutsideKeepSet(keepIndices)
+
+        // 5. Evict thumbnails (±50 buffer covers prefetch range of ~6-10 items)
         evictNonVisibleThumbnails(visibleIndices: visibleIndices)
+
+        // 6. Start prefetch
+        prefetchThumbnails(visibleIndices: visibleIndices, direction: scrollDirection)
     }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
@@ -555,11 +728,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     /// Cancel in-flight thumbnail tasks for items not in the visible set.
+    /// Thin wrapper preserving existing test API; internally delegates to cancelTasksOutsideKeepSet.
     func cancelNonVisibleTasks(visibleIndices: Set<Int>) {
-        for (index, task) in thumbnailTasks where !visibleIndices.contains(index) {
-            task.cancel()
-            thumbnailTasks.removeValue(forKey: index)
-        }
+        cancelTasksOutsideKeepSet(visibleIndices)
     }
 
     /// Cancel in-flight thumbnail tasks only (keep cached images for smooth tier transitions).
@@ -582,8 +753,16 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Clear cached thumbnails and cancel pending tasks without releasing loader.
     /// Used when folder content changes and the grid will be reconfigured.
+    private func resetScrollState() {
+        scrollDirection = .none
+        lastClipOriginY = 0
+        cancelSweepThrottle = NavigationThrottle(interval: 0.05)  // Reset so first scroll event isn't eaten
+    }
+
     func clearCache() {
+        generationID += 1
         cancelAndClearThumbnails()
+        resetScrollState()
         // No need to clear ImageLoader.thumbnailCache — composite key (URL + maxSize)
         // prevents cross-contamination between grid and main view thumbnails.
     }
@@ -593,6 +772,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// but thumbnail decodes are fast (~16ms for JPEG) so the impact is minimal.
     func cleanup() {
         cancelAndClearThumbnails()
+        resetScrollState()
+        memoryPressureMonitor.stop()
         // Composite key in ImageLoader prevents cross-contamination —
         // no need to clear thumbnailCache on grid dismiss.
         loader = nil
@@ -606,7 +787,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     // MARK: - Thumbnail Loading
 
-    private func loadThumbnail(for index: Int, cell: QuickGridCell) {
+    private func loadThumbnail(for index: Int, cell: QuickGridCell, priority: TaskPriority = .userInitiated) {
         // Already cached locally
         if let cached = gridThumbnails[index] {
             cell.setThumbnail(cached)
@@ -623,18 +804,20 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard let loader else { return }
 
         let maxSize = gridThumbnailMaxSize
-        // Visible cells get higher priority; buffer cells use .utility to avoid starving UI
-        let isVisible = collectionView.indexPathsForVisibleItems()
-            .contains(IndexPath(item: index, section: 0))
-        let taskPriority: TaskPriority = isVisible ? .userInitiated : .utility
+        let taskPriority = priority
+        let gen = generationID
         thumbnailTasks[index] = Task { [weak self] in
             let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize, priority: taskPriority)
             guard !Task.isCancelled else { return }
             guard let self else { return }
+            guard self.generationID == gen else { return }  // Stale folder — discard
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
-                self.enforceGridThumbnailCap(currentIndex: index)
+                // Use visible center for eviction anchor (not the single loaded index)
+                let visibleItems = self.collectionView.indexPathsForVisibleItems().map(\.item)
+                let center = visibleItems.isEmpty ? index : (visibleItems.min()! + visibleItems.max()!) / 2
+                self.enforceGridThumbnailCap(currentIndex: center)
 
                 // Verify cell is still displaying the same item before updating
                 if let visibleCell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
