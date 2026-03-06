@@ -3,7 +3,7 @@ import XCTest
 
 /// Tests for #1 Scrollbar Optimization.
 /// These tests verify that the GridScrollView shows/hides scrollbars
-/// based on content overflow, with overlay style and auto-hide behavior.
+/// based on content overflow, with fixed-visible legacy scrollers.
 @MainActor
 final class QuickGridScrollbarTests: XCTestCase {
 
@@ -112,26 +112,38 @@ final class QuickGridScrollbarTests: XCTestCase {
         let _ = scrollView.wantsVerticalScroller
     }
 
-    // MARK: - Test 4: Scroller style is overlay
+    // MARK: - Test 4: Scroller style is fixed visible
 
-    /// The scroller should use overlay style (floating, semi-transparent).
-    func testScrollerStyleIsOverlay() {
+    /// The scroller should use legacy style so overflow is always visible.
+    func testScrollerStyleIsLegacy() {
         let grid = QuickGridView()
         let scrollView = grid._testGridScrollView
 
-        XCTAssertEqual(scrollView.scrollerStyle, NSScroller.Style.overlay,
-                       "Scroller style should be overlay for modern appearance")
+        XCTAssertEqual(scrollView.scrollerStyle, NSScroller.Style.legacy,
+                       "Scroller style should be legacy so overflow stays visible")
     }
 
-    // MARK: - Test 5: Autohides scrollers enabled
+    // MARK: - Test 5: Autohides scrollers disabled
 
-    /// The scroller should auto-hide when not in use.
-    func testAutohidesScrollersEnabled() {
+    /// The scroller should remain visible instead of auto-hiding.
+    func testAutohidesScrollersDisabled() {
         let grid = QuickGridView()
         let scrollView = grid._testGridScrollView
 
-        XCTAssertTrue(scrollView.autohidesScrollers,
-                      "Autohides scrollers should be enabled for clean UI")
+        XCTAssertFalse(scrollView.autohidesScrollers,
+                       "Autohides scrollers should be disabled so overflow is always visible")
+    }
+
+    func testVerticalScrollerSubviewExistsWhenEnabled() {
+        let grid = QuickGridView()
+        let scrollView = grid._testGridScrollView
+
+        scrollView.wantsVerticalScroller = true
+
+        XCTAssertNotNil(scrollView.verticalScroller,
+                        "Enabling the scrollbar should create a concrete NSScroller subview")
+        XCTAssertFalse(scrollView.verticalScroller?.isHidden ?? true,
+                       "Vertical scroller should not remain hidden when overflow requests it")
     }
 
     // MARK: - Test 6: Scrollbar updates after cell size change

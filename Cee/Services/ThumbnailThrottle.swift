@@ -2,11 +2,18 @@ import Foundation
 
 /// Limits concurrent thumbnail decoding to prevent CPU saturation during grid scrolling.
 /// Uses a priority queue: smaller priority value = higher urgency (closer to visible center).
-/// Equal priorities preserve FIFO insertion order (Swift min(by:) stability guarantee).
+/// Equal priorities preserve FIFO insertion order via an explicit enqueue sequence.
 actor ThumbnailThrottle {
+    private struct Waiter {
+        let priority: Int
+        let sequence: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     private let maxConcurrent: Int
     private var active = 0
-    private var waiters: [(priority: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var waiters: [Waiter] = []
+    private var nextSequence = 0
 
     init(maxConcurrent: Int = 4) {
         self.maxConcurrent = maxConcurrent
@@ -34,16 +41,23 @@ actor ThumbnailThrottle {
             return
         }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            waiters.append((priority: priority, continuation: continuation))
+            waiters.append(Waiter(priority: priority, sequence: nextSequence, continuation: continuation))
+            nextSequence += 1
         }
     }
 
     private func release() {
         active -= 1
         guard !waiters.isEmpty else { return }
-        // Pick waiter with smallest priority (closest to visible center).
-        // Swift's min(by:) is stable — for equal priorities, first-inserted wins (FIFO).
-        let minIdx = waiters.indices.min(by: { waiters[$0].priority < waiters[$1].priority })!
+        // Pick smallest priority first, then preserve enqueue order for ties.
+        let minIdx = waiters.indices.min { lhs, rhs in
+            let left = waiters[lhs]
+            let right = waiters[rhs]
+            if left.priority == right.priority {
+                return left.sequence < right.sequence
+            }
+            return left.priority < right.priority
+        }!
         let next = waiters.remove(at: minIdx)
         active += 1
         next.continuation.resume()

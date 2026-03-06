@@ -198,7 +198,7 @@ final class QuickGridViewTests: XCTestCase {
 
     // MARK: - Thumbnail Tier Boundary
 
-    func testApplyItemSize_crossTierBoundary_clearsGridThumbnails() {
+    func testApplyItemSize_crossTierBoundary_preservesExistingGridThumbnails() {
         let grid = QuickGridView()
         let loader = ImageLoader()
         let items = makeItems(count: 3)
@@ -209,12 +209,14 @@ final class QuickGridViewTests: XCTestCase {
         injectMockThumbnails(into: grid, indices: [0, 1, 2])
         XCTAssertEqual(grid.gridThumbnailCount, 3, "Pre-condition: 3 thumbnails cached")
 
-        // Cross to tier3 (>240pt) — should clear gridThumbnails
+        // Cross to tier3 (>240pt) — old thumbnails stay until new tier loads in.
         grid.applyItemSize(260)
-        XCTAssertEqual(grid.gridThumbnailCount, 0,
-                       "Crossing tier2→tier3 boundary should clear grid thumbnails")
+        XCTAssertEqual(grid.gridThumbnailCount, 3,
+                       "Crossing tier2→tier3 boundary should preserve old thumbnails during progressive reload")
+        XCTAssertNotEqual(grid._testCachedThumbnailSize(forIndex: 0), grid.currentGridThumbnailMaxSize,
+                          "Cached thumbnail tier should remain old tier until replacement images finish loading")
 
-        // Items should still be intact after reloadData
+        // Items should still be intact after progressive reload scheduling
         let count = grid.collectionView(dummyCV, numberOfItemsInSection: 0)
         XCTAssertEqual(count, 3, "Items should survive tier change reload")
     }

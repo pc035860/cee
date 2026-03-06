@@ -71,6 +71,29 @@ final class PinchZoomInterruptTests: XCTestCase {
                       "Reload work item should be scheduled after gesture ended")
     }
 
+    // MARK: - Test 1b: Pinch keeps cached thumbnails intact
+
+    /// Crossing tiers during an active pinch should not clear cached thumbnails.
+    func testPinchDoesNotClearCacheMidGesture() async {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 20)
+
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+        grid.applyItemSize(160, phase: [])
+        await waitForLayout(grid: grid)
+
+        let image = NSImage(size: NSSize(width: 10, height: 10))
+        grid._testSetThumbnail(image, forIndex: 0)
+        grid._testSetThumbnail(image, forIndex: 1)
+
+        grid.applyItemSize(160, phase: .began)
+        grid.applyItemSize(300, phase: .changed)
+
+        XCTAssertEqual(grid.gridThumbnailCount, 2,
+                       "Pinch should keep existing thumbnails until replacement tier finishes")
+    }
+
     // MARK: - Test 2: Deferred reload cancelled on new gesture
 
     /// When a new gesture starts before deferred reload executes,
@@ -158,8 +181,7 @@ final class PinchZoomInterruptTests: XCTestCase {
 
     // MARK: - Test 5: Slider triggers immediate reload
 
-    /// Slider changes (non-gesture) should trigger immediate reload,
-    /// not deferred.
+    /// Slider changes (non-gesture) should trigger reload without clearing cache first.
     func testSliderTriggersImmediateReload() async {
         let grid = QuickGridView()
         let loader = ImageLoader()
@@ -175,14 +197,15 @@ final class PinchZoomInterruptTests: XCTestCase {
         grid._testSetThumbnail(image, forIndex: 1)
         XCTAssertEqual(grid.gridThumbnailCount, 2, "Pre-condition: 2 thumbnails cached")
 
-        // Slider change (phase = []) should immediate reload
+        // Slider change (phase = []) should reload progressively
         grid.applyItemSize(300, phase: [])
 
-        // Immediate reload clears thumbnails
         XCTAssertFalse(grid._testPendingTierChange,
                        "Slider change should not set pending tier change")
         XCTAssertFalse(grid._testTierChangeWorkItemScheduled,
                        "Slider change should not schedule deferred work")
+        XCTAssertEqual(grid.gridThumbnailCount, 2,
+                       "Progressive reload should keep existing thumbnails while new tier loads")
     }
 
     // MARK: - Test 6: Cancelled gesture still reloads

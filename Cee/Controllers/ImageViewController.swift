@@ -1552,8 +1552,20 @@ extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int) { navigatePrevious(amount: amount) }
     func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) { goToFirstImage() }
     func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
-    func scrollViewRequestPageDown(_ scrollView: ImageScrollView) { scrollPageDownOrNext() }
-    func scrollViewRequestPageUp(_ scrollView: ImageScrollView) { scrollPageUpOrPrev() }
+    func scrollViewRequestPageDown(_ scrollView: ImageScrollView) {
+        if let grid = quickGridView {
+            grid.pageDown()
+            return
+        }
+        scrollPageDownOrNext()
+    }
+    func scrollViewRequestPageUp(_ scrollView: ImageScrollView) {
+        if let grid = quickGridView {
+            grid.pageUp()
+            return
+        }
+        scrollPageUpOrPrev()
+    }
 
     // MARK: - Drag and Drop (Phase 2: Browse Mode)
 

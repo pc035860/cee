@@ -6,6 +6,43 @@ enum ScrollDirection: Equatable {
     case up, down, none
 }
 
+private enum QuickGridPinchDebug {
+    static let isEnabled: Bool = {
+        let processInfo = ProcessInfo.processInfo
+        if processInfo.environment["CEE_DEBUG_QUICKGRID_PINCH"] == "1" {
+            return true
+        }
+        return processInfo.arguments.contains("--debug-quickgrid-pinch")
+    }()
+
+    static func log(_ message: @autoclosure () -> String) {
+        guard isEnabled else { return }
+        let text = message()
+        GridPerfLog.log("pinch: \(text)")
+        fputs("[QuickGridPinch] \(text)\n", stderr)
+    }
+
+    static func measureIfSlow(_ label: String, thresholdMs: Double = 4, body: () -> Void) {
+        guard isEnabled else { return body() }
+        let start = CFAbsoluteTimeGetCurrent()
+        body()
+        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        guard ms >= thresholdMs else { return }
+        log(String(format: "%@ slow=%.2fms", label, ms))
+    }
+
+    static func phaseText(_ phase: NSEvent.Phase) -> String {
+        var parts: [String] = []
+        if phase.contains(.began) { parts.append("began") }
+        if phase.contains(.stationary) { parts.append("stationary") }
+        if phase.contains(.changed) { parts.append("changed") }
+        if phase.contains(.ended) { parts.append("ended") }
+        if phase.contains(.cancelled) { parts.append("cancelled") }
+        if phase.contains(.mayBegin) { parts.append("mayBegin") }
+        return parts.isEmpty ? "[]" : parts.joined(separator: "|")
+    }
+}
+
 @MainActor
 protocol QuickGridViewDelegate: AnyObject {
     func quickGridView(_ view: QuickGridView, didSelectItemAt index: Int)
@@ -17,11 +54,42 @@ protocol QuickGridViewDelegate: AnyObject {
 /// NSScrollView captures scrollWheel before documentView, so subclassing is required
 /// (same pattern as ImageScrollView).
 final class GridScrollView: NSScrollView {
+    private final class VisibleScroller: NSScroller {
+        override class func scrollerWidth(for controlSize: NSControl.ControlSize,
+                                          scrollerStyle: NSScroller.Style) -> CGFloat {
+            12
+        }
+
+        override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {
+            let inset = slotRect.insetBy(dx: 2, dy: 2)
+            NSColor.white.withAlphaComponent(0.10).setFill()
+            NSBezierPath(roundedRect: inset, xRadius: 4, yRadius: 4).fill()
+        }
+
+        override func drawKnob() {
+            let knobRect = rect(for: .knob).insetBy(dx: 2, dy: 2)
+            guard knobRect.width > 0, knobRect.height > 0 else { return }
+            NSColor.white.withAlphaComponent(0.55).setFill()
+            NSBezierPath(roundedRect: knobRect, xRadius: 4, yRadius: 4).fill()
+        }
+    }
+
     var onCmdScroll: ((CGFloat) -> Void)?
     /// Read by scrollWheel to compute delta-based size. Updated by QuickGridView.
     var currentCellSize: CGFloat = Constants.quickGridCellSize
     /// Controls vertical scroller visibility. Set by QuickGridView.updateScrollerVisibility().
-    var wantsVerticalScroller: Bool = false
+    var wantsVerticalScroller: Bool = false {
+        didSet {
+            guard wantsVerticalScroller != oldValue else { return }
+            super.hasVerticalScroller = wantsVerticalScroller
+            verticalScroller?.isHidden = !wantsVerticalScroller
+            verticalScroller?.alphaValue = wantsVerticalScroller ? 1 : 0
+            verticalScroller?.needsDisplay = true
+            tile()
+            reflectScrolledClipView(contentView)
+            needsLayout = true
+        }
+    }
 
     // NSCollectionView re-enables scrollers during layout passes / reloadData.
     // Override to control visibility via wantsVerticalScroller property.
@@ -37,8 +105,16 @@ final class GridScrollView: NSScrollView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         allowsMagnification = false  // defensive: prevent pinch event consumption
-        scrollerStyle = .overlay  // floating, semi-transparent, modern appearance
-        autohidesScrollers = true  // hide when not scrolling
+        scrollerStyle = .legacy  // fixed visible when content overflows
+        autohidesScrollers = false
+        scrollerKnobStyle = .light
+        drawsBackground = false
+        super.hasHorizontalScroller = false
+        super.hasVerticalScroller = false
+        verticalScroller = VisibleScroller(frame: .zero)
+        verticalScroller?.controlSize = .regular
+        verticalScroller?.alphaValue = 0
+        verticalScroller?.isHidden = true
     }
 
     required init?(coder: NSCoder) {
@@ -165,6 +241,17 @@ private final class GridCollectionView: NSCollectionView {
         let newSize = currentCellSize * (1 + event.magnification)
         // Combine phase + momentumPhase for complete gesture state
         let effectivePhase = event.phase.union(event.momentumPhase)
+        QuickGridPinchDebug.log(
+            String(
+                format: "magnify current=%.1f mag=%.4f phase=%@ momentum=%@ effective=%@ target=%.1f",
+                currentCellSize,
+                event.magnification,
+                QuickGridPinchDebug.phaseText(event.phase),
+                QuickGridPinchDebug.phaseText(event.momentumPhase),
+                QuickGridPinchDebug.phaseText(effectivePhase),
+                newSize
+            )
+        )
         onCellSizeChange?(newSize, effectivePhase)
         // Do NOT call super — prevents event propagating to ImageScrollView
     }
@@ -245,6 +332,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var loader: ImageLoader?
     /// Grid-local thumbnail cache (not evicted by navigation's updateCache)
     private var gridThumbnails: [Int: NSImage] = [:]
+    /// Tracks which decode tier each cached thumbnail belongs to.
+    private var gridThumbnailSizes: [Int: CGFloat] = [:]
     /// Test-only: number of cached grid thumbnails.
     var gridThumbnailCount: Int { gridThumbnails.count }
 
@@ -268,6 +357,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     func _testSetThumbnail(_ image: NSImage, forIndex index: Int) {
         gridThumbnails[index] = image
+        gridThumbnailSizes[index] = gridThumbnailMaxSize
     }
 
     /// Test-only accessor for gridThumbnailMaxCount.
@@ -283,6 +373,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     func _testWriteThumbnailIfCurrentGeneration(_ image: NSImage, forIndex index: Int, generation: Int) {
         guard generationID == generation else { return }
         gridThumbnails[index] = image
+        gridThumbnailSizes[index] = gridThumbnailMaxSize
     }
 
     /// Test-only: simulate memory pressure response.
@@ -306,6 +397,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     var _testPendingTierChange: Bool { pendingTierChange }
     /// Test-only: check if work item is scheduled
     var _testTierChangeWorkItemScheduled: Bool { tierChangeWorkItem != nil }
+    /// Test-only: cached decode tier for a given index.
+    func _testCachedThumbnailSize(forIndex index: Int) -> CGFloat? {
+        gridThumbnailSizes[index]
+    }
 
     // MARK: - Memory Pressure
 
@@ -329,6 +424,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         case .critical:
             // Nuclear: clear ALL thumbnails and tasks
             gridThumbnails.removeAll()
+            gridThumbnailSizes.removeAll()
             cancelPendingThumbnailTasks()
             // Also clear ImageLoader cache (actor-isolated, fire-and-forget)
             Task { [weak self] in
@@ -354,7 +450,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Instance wrapper using current layout state.
     func columnsPerRow() -> Int {
-        Self.columnsPerRow(availableWidth: gridScrollView.bounds.width, cellSize: currentCellSize)
+        Self.columnsPerRow(availableWidth: availableLayoutWidth, cellSize: currentCellSize)
+    }
+
+    private var availableLayoutWidth: CGFloat {
+        gridScrollView.contentView.bounds.width
     }
 
     /// Arithmetic O(1) visible index range from scroll geometry (static for unit testing).
@@ -489,6 +589,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
                 if let image = result?.image {
                     self.gridThumbnails[index] = image
+                    self.gridThumbnailSizes[index] = maxSize
                     self.enforceGridThumbnailCap(currentIndex: center)
 
                     if let cell = self.collectionView.item(at: IndexPath(item: index, section: 0)) as? QuickGridCell {
@@ -507,6 +608,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let excess = gridThumbnails.count - gridThumbnailMaxCount
         for key in sorted.prefix(excess) {
             gridThumbnails.removeValue(forKey: key)
+            gridThumbnailSizes.removeValue(forKey: key)
         }
     }
 
@@ -659,7 +761,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Update section insets + inter-item spacing for space-around distribution.
     /// Each item gets equal gap on both sides; edge gap = G, between items = 2G.
     private func updateSpaceAroundLayout() {
-        let available = gridScrollView.bounds.width
+        let available = availableLayoutWidth
         guard available > 0 else { return }
         lastLayoutWidth = available
 
@@ -735,7 +837,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     @objc private func gridFrameDidChange(_ note: Notification) {
-        let width = gridScrollView.bounds.width
+        let width = availableLayoutWidth
         guard width != lastLayoutWidth else { return }
         updateSpaceAroundLayout()
         collectionView.collectionViewLayout?.invalidateLayout()
@@ -746,8 +848,13 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Called after frame changes, configuration, and cell size changes.
     private func updateScrollerVisibility() {
         let documentHeight = collectionView.frame.height
-        let visibleHeight = gridScrollView.bounds.height
+        let visibleHeight = gridScrollView.contentView.bounds.height
+        let previousWidth = availableLayoutWidth
         gridScrollView.wantsVerticalScroller = documentHeight > visibleHeight
+        if availableLayoutWidth != previousWidth {
+            updateSpaceAroundLayout()
+            collectionView.collectionViewLayout?.invalidateLayout()
+        }
     }
 
     // MARK: - PageUp/PageDown Scroll
@@ -764,6 +871,16 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         origin.y += delta
         origin.y = max(0, min(maxScrollY, origin.y))
         clipView.setBoundsOrigin(origin)
+        gridScrollView.reflectScrolledClipView(clipView)
+        makeCollectionViewFirstResponder()
+    }
+
+    func pageDown() {
+        scrollGridPage(by: gridScrollView.contentView.bounds.height)
+    }
+
+    func pageUp() {
+        scrollGridPage(by: -gridScrollView.contentView.bounds.height)
     }
 
     /// Sample image headers to compute median aspect ratio (height/width).
@@ -801,14 +918,13 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     // MARK: - Cell Size
 
     /// Apply a new cell size, clamped to the allowed range.
-    /// Normally only invalidates layout (no cache clear). When crossing a thumbnail
-    /// tier boundary (tier0→adaptive/tier1→240/tier2→480/tier3→720px), cancels in-flight tasks and reloads.
+    /// Normally only invalidates layout. Tier changes are committed progressively
+    /// after the active interaction path settles.
     /// - Parameters:
     ///   - newSize: Target cell size (will be clamped to min/max range)
     ///   - animated: Whether to animate the layout change
     ///   - phase: Gesture phase (for pinch optimization). Empty means non-gesture trigger.
     func applyItemSize(_ newSize: CGFloat, animated: Bool = false, phase: NSEvent.Phase = []) {
-        // Gesture cleanup at start
         if phase.contains(.began) {
             tierChangeWorkItem?.cancel()
             tierChangeWorkItem = nil
@@ -818,24 +934,50 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
 
-        // Handle gesture ended/cancelled even if size unchanged
-        // (pending tier change needs to be scheduled)
-        if (phase.contains(.ended) || phase.contains(.cancelled)) && pendingTierChange {
-            scheduleDeferredTierChangeReload()
-        }
+        QuickGridPinchDebug.log(
+            String(
+                format: "apply size old=%.1f input=%.1f clamped=%.1f animated=%@ phase=%@ pending=%@ tier=%.0f",
+                currentCellSize,
+                newSize,
+                clamped,
+                animated ? "yes" : "no",
+                QuickGridPinchDebug.phaseText(phase),
+                pendingTierChange ? "yes" : "no",
+                gridThumbnailMaxSize
+            )
+        )
 
-        guard clamped != currentCellSize else { return }
+        if clamped == currentCellSize {
+            if (phase.contains(.ended) || phase.contains(.cancelled)) && pendingTierChange {
+                QuickGridPinchDebug.log("apply unchanged-size gesture end -> schedule deferred tier reload")
+                scheduleDeferredTierChangeReload()
+            }
+            return
+        }
 
         // Detect thumbnail tier change
         let oldMaxSize = gridThumbnailMaxSize
         currentCellSize = clamped
         let newMaxSize = gridThumbnailMaxSize
 
+        if oldMaxSize != newMaxSize {
+            QuickGridPinchDebug.log(
+                String(
+                    format: "tier crossing %.0f -> %.0f phase=%@",
+                    oldMaxSize,
+                    newMaxSize,
+                    QuickGridPinchDebug.phaseText(phase)
+                )
+            )
+        }
+
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
         let updateLayout = {
-            self.flowLayout.itemSize = self.currentItemSize
-            self.updateSpaceAroundLayout()
-            self.collectionView.collectionViewLayout?.invalidateLayout()
+            QuickGridPinchDebug.measureIfSlow("pinch updateLayout", thresholdMs: 4) {
+                self.flowLayout.itemSize = self.currentItemSize
+                self.updateSpaceAroundLayout()
+                self.collectionView.collectionViewLayout?.invalidateLayout()
+            }
         }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
@@ -852,13 +994,13 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             tierChangeWorkItem?.cancel()
             tierChangeWorkItem = nil
 
-            // Non-gesture triggers (slider, keyboard) — immediate reload
             if phase.isEmpty {
+                QuickGridPinchDebug.log("tier change without gesture -> immediate visible reload")
                 cancelPendingThumbnailTasks()
-                reloadVisibleThumbnails()
+                reloadVisibleThumbnails(forceReloadVisible: true)
             } else {
-                // Gesture — defer until gesture ends
                 pendingTierChange = true
+                QuickGridPinchDebug.log("tier change during gesture -> defer reload")
                 if phase.contains(.ended) || phase.contains(.cancelled) {
                     scheduleDeferredTierChangeReload()
                 }
@@ -877,19 +1019,23 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         // Notify for persistence
         onCellSizeDidChange?(clamped)
 
-        // Update scrollbar visibility (cell size change affects document height)
-        collectionView.layoutSubtreeIfNeeded()
+        QuickGridPinchDebug.measureIfSlow("pinch layoutSubtreeIfNeeded", thresholdMs: 4) {
+            collectionView.layoutSubtreeIfNeeded()
+        }
         updateScrollerVisibility()
     }
 
-    /// Schedule deferred tier change reload after pinch ends.
-    /// Delay ~150ms to allow gesture to complete smoothly.
+    /// Schedule tier reload after the gesture lifecycle fully settles.
     private func scheduleDeferredTierChangeReload() {
-        tierChangeWorkItem?.cancel()  // Cancel any existing pending reload
+        tierChangeWorkItem?.cancel()
+        QuickGridPinchDebug.log("schedule deferred tier reload")
         tierChangeWorkItem = DispatchWorkItem { [weak self] in
-            guard let self, self.pendingTierChange else { return }
+            guard let self else { return }
+            defer { self.tierChangeWorkItem = nil }
+            guard self.pendingTierChange else { return }
+            QuickGridPinchDebug.log("run deferred tier reload")
             self.cancelPendingThumbnailTasks()
-            self.reloadVisibleThumbnails()
+            self.reloadVisibleThumbnails(forceReloadVisible: true)
             self.pendingTierChange = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.quickGridTierChangeDelay, execute: tierChangeWorkItem!)
@@ -942,6 +1088,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         for (_, task) in thumbnailTasks { task.cancel() }
         thumbnailTasks.removeAll()
         gridThumbnails.removeAll()
+        gridThumbnailSizes.removeAll()
     }
 
     /// Number of items beyond visible range to keep in cache (buffer zone).
@@ -970,6 +1117,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         let keepRange = keepMin...keepMax
         for key in gridThumbnails.keys where !keepRange.contains(key) {
             gridThumbnails.removeValue(forKey: key)
+            gridThumbnailSizes.removeValue(forKey: key)
         }
     }
 
@@ -986,17 +1134,29 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     }
 
     /// Reload thumbnails for visible cells at the current tier resolution.
-    /// Clears entire gridThumbnails cache so off-screen cells also reload at new tier
-    /// when they scroll into view. Old images stay in cells (no reloadData = no flash).
-    private func reloadVisibleThumbnails() {
-        gridThumbnails.removeAll()
+    /// Existing images remain onscreen until the replacement tier finishes loading.
+    private func reloadVisibleThumbnails(forceReloadVisible: Bool = false) {
         let visibleItems = collectionView.indexPathsForVisibleItems()
         let indices = visibleItems.map(\.item)
         let center = indices.isEmpty ? 0 : (indices.min()! + indices.max()!) / 2
         cachedVisibleCenter = center
+        QuickGridPinchDebug.log(
+            String(
+                format: "reloadVisible force=%@ visible=%d center=%d tier=%.0f",
+                forceReloadVisible ? "yes" : "no",
+                visibleItems.count,
+                center,
+                gridThumbnailMaxSize
+            )
+        )
         for indexPath in visibleItems {
             if let cell = collectionView.item(at: indexPath) as? QuickGridCell {
-                loadThumbnail(for: indexPath.item, cell: cell, visibleCenter: center)
+                loadThumbnail(
+                    for: indexPath.item,
+                    cell: cell,
+                    visibleCenter: center,
+                    forceReload: forceReloadVisible
+                )
             }
         }
     }
@@ -1041,11 +1201,19 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     private func loadThumbnail(for index: Int, cell: QuickGridCell,
                                priority: TaskPriority = .userInitiated,
-                               visibleCenter: Int = 0) {
-        // Already cached locally
-        if let cached = gridThumbnails[index] {
+                               visibleCenter: Int = 0,
+                               forceReload: Bool = false) {
+        let targetMaxSize = gridThumbnailMaxSize
+
+        if let cached = gridThumbnails[index],
+           gridThumbnailSizes[index] == targetMaxSize,
+           !forceReload {
             cell.setThumbnail(cached)
             return
+        }
+
+        if let stale = gridThumbnails[index] {
+            cell.setThumbnail(stale)
         }
 
         let item = items[index]
@@ -1057,12 +1225,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         guard let loader else { return }
 
-        let maxSize = gridThumbnailMaxSize
         let taskPriority = priority
         let distance = abs(index - visibleCenter)
         let gen = generationID
         thumbnailTasks[index] = Task { [weak self] in
-            let result = await loader.loadThumbnail(at: item.url, maxSize: maxSize,
+            let result = await loader.loadThumbnail(at: item.url, maxSize: targetMaxSize,
                                                      priority: taskPriority,
                                                      throttlePriority: distance)
             guard !Task.isCancelled else { return }
@@ -1071,6 +1238,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
             if let image = result?.image {
                 self.gridThumbnails[index] = image
+                self.gridThumbnailSizes[index] = targetMaxSize
                 self.enforceGridThumbnailCap(currentIndex: self.cachedVisibleCenter)
 
                 // Verify cell is still displaying the same item before updating

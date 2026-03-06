@@ -79,28 +79,40 @@ final class ThumbnailThrottleTests: XCTestCase {
         let gate = ManagedGate()
 
         // First operation holds the slot
-        async let op1: Void = throttle.withThrottle {
-            order.append(1)
-            await gate.wait()
+        let op1 = Task {
+            await throttle.withThrottle {
+                order.append(1)
+                await gate.wait()
+            }
         }
 
         try? await Task.sleep(nanoseconds: 30_000_000)
 
         // Queue operations 2 and 3 (should wait in FIFO order)
-        async let op2: Void = throttle.withThrottle {
-            order.append(2)
+        let op2 = Task {
+            await throttle.withThrottle {
+                order.append(2)
+            }
         }
-        async let op3: Void = throttle.withThrottle {
-            order.append(3)
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        let waitersAfterSecond = await throttle.waiterCount
+        XCTAssertEqual(waitersAfterSecond, 1, "Second operation should enqueue before third starts")
+
+        let op3 = Task {
+            await throttle.withThrottle {
+                order.append(3)
+            }
         }
 
         try? await Task.sleep(nanoseconds: 30_000_000)
+        let waitersAfterThird = await throttle.waiterCount
+        XCTAssertEqual(waitersAfterThird, 2, "Second and third operations should both be waiting")
 
         // Release gate
         gate.open()
-        await op1
-        await op2
-        await op3
+        await op1.value
+        await op2.value
+        await op3.value
 
         XCTAssertEqual(order.values, [1, 2, 3], "Operations should complete in FIFO order")
     }
