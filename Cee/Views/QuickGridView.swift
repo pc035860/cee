@@ -7,6 +7,9 @@ enum ScrollDirection: Equatable {
 }
 
 private enum QuickGridPinchDebug {
+    static let gestureFrameBudgetMs: Double = 8
+    static let gestureFrameSevereBudgetMs: Double = 12
+
     static let isEnabled: Bool = {
         let processInfo = ProcessInfo.processInfo
         if processInfo.environment["CEE_DEBUG_QUICKGRID_PINCH"] == "1" {
@@ -29,6 +32,23 @@ private enum QuickGridPinchDebug {
         let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
         guard ms >= thresholdMs else { return }
         log(String(format: "%@ slow=%.2fms", label, ms))
+    }
+
+    static func measure<T>(_ label: String, body: () -> T) -> T {
+        guard isEnabled else { return body() }
+        let start = CFAbsoluteTimeGetCurrent()
+        let result = body()
+        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        log(String(format: "%@=%.2fms", label, ms))
+        return result
+    }
+
+    @discardableResult
+    static func timed<T>(_ body: () -> T) -> (result: T, ms: Double) {
+        let start = CFAbsoluteTimeGetCurrent()
+        let result = body()
+        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        return (result, ms)
     }
 
     static func phaseText(_ phase: NSEvent.Phase) -> String {
@@ -392,6 +412,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     private var tierChangeWorkItem: DispatchWorkItem?
     /// Pending tier change to reload after pinch ends
     private var pendingTierChange: Bool = false
+    /// Test-only: count of gesture-phase flushes skipped to avoid pinch interruption.
+    private(set) var deferredGestureSyncLayoutCount: Int = 0
 
     /// Test-only: check if tier change is pending
     var _testPendingTierChange: Bool { pendingTierChange }
@@ -925,11 +947,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     ///   - animated: Whether to animate the layout change
     ///   - phase: Gesture phase (for pinch optimization). Empty means non-gesture trigger.
     func applyItemSize(_ newSize: CGFloat, animated: Bool = false, phase: NSEvent.Phase = []) {
+        let applyStart = CFAbsoluteTimeGetCurrent()
         if phase.contains(.began) {
             tierChangeWorkItem?.cancel()
             tierChangeWorkItem = nil
             pendingTierChange = false
         }
+
+        let isActiveGesturePhase = !phase.isEmpty && !phase.contains(.ended) && !phase.contains(.cancelled)
 
         let clamped = max(Constants.quickGridMinCellSize,
                           min(Constants.quickGridMaxCellSize, newSize))
@@ -973,11 +998,23 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         // Update layout (invalidateLayout only — NOT reloadData, ~1-5ms for 1000+ items)
         let updateLayout = {
-            QuickGridPinchDebug.measureIfSlow("pinch updateLayout", thresholdMs: 4) {
+            let itemSizeMs = QuickGridPinchDebug.timed {
                 self.flowLayout.itemSize = self.currentItemSize
+            }.ms
+            let spaceAroundMs = QuickGridPinchDebug.timed {
                 self.updateSpaceAroundLayout()
+            }.ms
+            let invalidateMs = QuickGridPinchDebug.timed {
                 self.collectionView.collectionViewLayout?.invalidateLayout()
-            }
+            }.ms
+            QuickGridPinchDebug.log(
+                String(
+                    format: "pinch layout itemSize=%.2fms spaceAround=%.2fms invalidate=%.2fms",
+                    itemSizeMs,
+                    spaceAroundMs,
+                    invalidateMs
+                )
+            )
         }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
@@ -1016,13 +1053,50 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         sizeSlider.doubleValue = Double(clamped)
         isUpdatingSliderProgrammatically = false
 
-        // Notify for persistence
-        onCellSizeDidChange?(clamped)
+        let persistMs = QuickGridPinchDebug.timed {
+            onCellSizeDidChange?(clamped)
+        }.ms
+        QuickGridPinchDebug.log(String(format: "pinch onCellSizeDidChange=%.2fms", persistMs))
 
-        QuickGridPinchDebug.measureIfSlow("pinch layoutSubtreeIfNeeded", thresholdMs: 4) {
-            collectionView.layoutSubtreeIfNeeded()
+        if isActiveGesturePhase {
+            deferredGestureSyncLayoutCount += 1
+            QuickGridPinchDebug.log(
+                String(
+                    format: "gesture phase=%@ skip sync flush count=%d",
+                    QuickGridPinchDebug.phaseText(phase),
+                    deferredGestureSyncLayoutCount
+                )
+            )
+        } else {
+            QuickGridPinchDebug.measure("pinch layoutSubtreeIfNeeded") {
+                collectionView.layoutSubtreeIfNeeded()
+            }
+            QuickGridPinchDebug.measure("pinch updateScrollerVisibility") {
+                updateScrollerVisibility()
+            }
         }
-        updateScrollerVisibility()
+
+        let totalMs = (CFAbsoluteTimeGetCurrent() - applyStart) * 1000
+        let budgetLabel: String
+        if isActiveGesturePhase && totalMs >= QuickGridPinchDebug.gestureFrameSevereBudgetMs {
+            budgetLabel = "gesture-frame-severe"
+        } else if isActiveGesturePhase && totalMs >= QuickGridPinchDebug.gestureFrameBudgetMs {
+            budgetLabel = "gesture-frame-over"
+        } else {
+            budgetLabel = "applyItemSize"
+        }
+        QuickGridPinchDebug.log(
+            String(
+                format: "%@ total=%.2fms phase=%@ activeGesture=%@ cachedCenter=%d tasks=%d pending=%@",
+                budgetLabel,
+                totalMs,
+                QuickGridPinchDebug.phaseText(phase),
+                isActiveGesturePhase ? "yes" : "no",
+                cachedVisibleCenter,
+                thumbnailTasks.count,
+                pendingTierChange ? "yes" : "no"
+            )
+        )
     }
 
     /// Schedule tier reload after the gesture lifecycle fully settles.
@@ -1033,9 +1107,22 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             guard let self else { return }
             defer { self.tierChangeWorkItem = nil }
             guard self.pendingTierChange else { return }
-            QuickGridPinchDebug.log("run deferred tier reload")
-            self.cancelPendingThumbnailTasks()
-            self.reloadVisibleThumbnails(forceReloadVisible: true)
+            let visibleCount = self.collectionView.indexPathsForVisibleItems().count
+            QuickGridPinchDebug.log(
+                String(
+                    format: "run deferred tier reload visible=%d tasks=%d pending=%@ tier=%.0f",
+                    visibleCount,
+                    self.thumbnailTasks.count,
+                    self.pendingTierChange ? "yes" : "no",
+                    self.gridThumbnailMaxSize
+                )
+            )
+            QuickGridPinchDebug.measure("pinch deferred cancelPendingThumbnailTasks") {
+                self.cancelPendingThumbnailTasks()
+            }
+            QuickGridPinchDebug.measure("pinch deferred reloadVisibleThumbnails") {
+                self.reloadVisibleThumbnails(forceReloadVisible: true)
+            }
             self.pendingTierChange = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.quickGridTierChangeDelay, execute: tierChangeWorkItem!)

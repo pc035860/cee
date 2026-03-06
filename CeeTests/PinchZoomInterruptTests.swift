@@ -94,6 +94,50 @@ final class PinchZoomInterruptTests: XCTestCase {
                        "Pinch should keep existing thumbnails until replacement tier finishes")
     }
 
+    /// Active pinch phases should avoid forcing synchronous layout flushes on every event.
+    func testPinchChangedDefersSyncLayoutFlush() async {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 20)
+
+        grid.configure(items: items, currentIndex: 0, loader: loader)
+        grid.applyItemSize(160, phase: [])
+        await waitForLayout(grid: grid)
+
+        XCTAssertEqual(grid.deferredGestureSyncLayoutCount, 0)
+
+        grid.applyItemSize(170, phase: .began)
+        grid.applyItemSize(180, phase: .changed)
+
+        XCTAssertEqual(grid.deferredGestureSyncLayoutCount, 2,
+                       "Active pinch phases should skip sync layout flushes")
+
+        grid.applyItemSize(180, phase: .ended)
+
+        XCTAssertEqual(grid.deferredGestureSyncLayoutCount, 2,
+                       "Gesture end should flush once without increasing deferred count")
+    }
+
+    /// Gesture-phase diagnostics should not require visible item enumeration as part of logging.
+    func testPinchChangedDiagnosticsDoNotDependOnVisibleEnumeration() async {
+        let grid = QuickGridView()
+        let loader = ImageLoader()
+        let items = makeItems(count: 20)
+
+        grid.configure(items: items, currentIndex: 7, loader: loader)
+        grid.applyItemSize(160, phase: [])
+        await waitForLayout(grid: grid)
+
+        let before = grid.deferredGestureSyncLayoutCount
+
+        grid.applyItemSize(190, phase: .changed)
+
+        XCTAssertEqual(grid.deferredGestureSyncLayoutCount, before + 1,
+                       "Gesture-phase diagnostics should preserve the no-sync-flush path")
+        XCTAssertEqual(grid._testPendingTierChange, false,
+                       "Non-tier pinch changes should remain free of deferred reload state")
+    }
+
     // MARK: - Test 2: Deferred reload cancelled on new gesture
 
     /// When a new gesture starts before deferred reload executes,
