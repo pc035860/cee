@@ -3,7 +3,7 @@
   "checkpoint_id": "d2a885a6375c",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 3,
+  "checkpoints_count": 5,
   "files_touched": [
     "Cee/App/AppDelegate.swift",
     "Cee/Controllers/ImageViewController.swift",
@@ -15,13 +15,19 @@
       "transcript": "/d2/a885a6375c/0/full.jsonl",
       "content_hash": "/d2/a885a6375c/0/content_hash.txt",
       "prompt": "/d2/a885a6375c/0/prompt.txt"
+    },
+    {
+      "metadata": "/d2/a885a6375c/1/metadata.json",
+      "transcript": "/d2/a885a6375c/1/full.jsonl",
+      "content_hash": "/d2/a885a6375c/1/content_hash.txt",
+      "prompt": "/d2/a885a6375c/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 63,
-    "cache_creation_tokens": 96593,
-    "cache_read_tokens": 3122999,
-    "output_tokens": 25336,
-    "api_call_count": 46
+    "input_tokens": 79,
+    "cache_creation_tokens": 131877,
+    "cache_read_tokens": 3312064,
+    "output_tokens": 29028,
+    "api_call_count": 54
   }
 }

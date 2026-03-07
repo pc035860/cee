@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "d2a885a6375c",
+  "session_id": "b6e593fb-e7ac-45b3-978d-c7f4484a6cac",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-07T14:40:19.504523Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Cee/App/AppDelegate.swift",
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Models/ViewerSettings.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "d33dd22ae1b2",
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 35284,
+    "cache_read_tokens": 189065,
+    "output_tokens": 3692,
+    "api_call_count": 8
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T14:40:19.468521Z",
+    "agent_lines": 74,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 74,
+    "agent_percentage": 100
+  }
+}
