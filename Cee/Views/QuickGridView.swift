@@ -458,9 +458,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             cancelPendingThumbnailTasks()
         case .critical:
             // Nuclear: clear ALL thumbnails and tasks
-            gridThumbnails.removeAll()
-            gridThumbnailSizes.removeAll()
-            cancelPendingThumbnailTasks()
+            cancelAndClearThumbnails()
             // Also clear ImageLoader cache (actor-isolated, fire-and-forget)
             Task { [weak self] in
                 await self?.loader?.clearThumbnailCache()
@@ -578,11 +576,6 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     static func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection, itemCount: Int, cols: Int) -> ClosedRange<Int>? {
         guard let minVis = visibleIndices.min(), let maxVis = visibleIndices.max() else { return nil }
         return prefetchRange(minVisible: minVis, maxVisible: maxVis, direction: direction, itemCount: itemCount, cols: cols)
-    }
-
-    /// Instance wrapper using current state.
-    func prefetchRange(visibleIndices: Set<Int>, direction: ScrollDirection) -> ClosedRange<Int>? {
-        Self.prefetchRange(visibleIndices: visibleIndices, direction: direction, itemCount: items.count, cols: columnsPerRow())
     }
 
     /// Detect scroll direction from clip origin Y delta.
@@ -1219,8 +1212,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Cancel all in-flight thumbnail tasks and clear the grid-local cache.
     private func cancelAndClearThumbnails() {
-        for (_, task) in thumbnailTasks { task.cancel() }
-        thumbnailTasks.removeAll()
+        cancelPendingThumbnailTasks()
         gridThumbnails.removeAll()
         gridThumbnailSizes.removeAll()
     }
@@ -1317,6 +1309,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     func cleanup() {
         tierChangeWorkItem?.cancel()
         tierChangeWorkItem = nil
+        scrollCursorWorkItem?.cancel()
+        scrollCursorWorkItem = nil
         cancelAndClearThumbnails()
         resetScrollState()
         memoryPressureMonitor.stop()
@@ -1359,12 +1353,11 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
         guard let loader else { return }
 
-        let taskPriority = priority
         let distance = abs(index - visibleCenter)
         let gen = generationID
         thumbnailTasks[index] = Task { [weak self] in
             let result = await loader.loadThumbnail(at: item.url, maxSize: targetMaxSize,
-                                                     priority: taskPriority,
+                                                     priority: priority,
                                                      throttlePriority: distance)
             guard !Task.isCancelled else { return }
             guard let self else { return }

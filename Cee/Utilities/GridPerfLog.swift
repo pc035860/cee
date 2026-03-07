@@ -5,7 +5,7 @@ import os.log
 /// Output visible in Console.app → filter by "GridPerf".
 /// Toggle at runtime: `GridPerfLog.enabled = false` to silence.
 enum GridPerfLog {
-    nonisolated(unsafe) static var enabled = true
+    nonisolated(unsafe) static var enabled = false
 
     private static let log = OSLog(subsystem: "com.cee.app", category: "GridPerf")
 
@@ -18,10 +18,10 @@ enum GridPerfLog {
         os_log(.debug, log: log, "%{public}@: %.2fms", label, ms)
     }
 
-    /// Log a single metric value.
-    static func log(_ message: String) {
+    /// Log a single metric value. Uses @autoclosure to avoid String construction when disabled.
+    static func log(_ message: @autoclosure () -> String) {
         guard enabled else { return }
-        os_log(.debug, log: log, "%{public}@", message)
+        os_log(.debug, log: log, "%{public}@", message())
     }
 
     /// Log a timed async operation (thumbnail decode, etc.). Call from Task context.
