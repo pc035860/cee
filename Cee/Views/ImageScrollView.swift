@@ -83,6 +83,13 @@ class ImageScrollView: NSScrollView {
     private var isMouseDragging = false
     private var lastDragPoint: NSPoint = .zero
 
+    // Click to turn page state
+    var clickToTurnPage: Bool = false
+    private var mouseDownLocation: NSPoint = .zero
+    private var mouseDownTime: TimeInterval = 0
+    private let clickDistanceThreshold: CGFloat = 5  // pixels
+    private let clickTimeThreshold: TimeInterval = 0.3  // seconds
+
     // Phase 3: Option+scroll fast navigation
     private var optionScrollAccumulator = OptionScrollAccumulator()
     private var lastOptionScrollTime: CFAbsoluteTime = 0
@@ -299,6 +306,10 @@ class ImageScrollView: NSScrollView {
         if window?.firstResponder !== self {
             window?.makeFirstResponder(self)
         }
+        // 記錄點擊起始位置與時間（用於判斷是否為 click 而非 drag）
+        mouseDownLocation = event.locationInWindow
+        mouseDownTime = CACurrentMediaTime()
+
         // 只在無修飾鍵時啟動拖曳 pan（Cmd+click 等不觸發）
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard modifiers.isEmpty else {
@@ -325,10 +336,30 @@ class ImageScrollView: NSScrollView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        let wasDragging = isMouseDragging
         if isMouseDragging {
             isMouseDragging = false
             NSCursor.pop()
         }
+
+        // 判斷是否為 click（非 drag）：移動距離小且時間短
+        let currentLocation = event.locationInWindow
+        let distance = hypot(currentLocation.x - mouseDownLocation.x,
+                             currentLocation.y - mouseDownLocation.y)
+        let elapsed = CACurrentMediaTime() - mouseDownTime
+        let isClick = distance <= clickDistanceThreshold && elapsed <= clickTimeThreshold
+
+        // clickToTurnPage 啟用時，click 觸發換頁
+        if isClick && clickToTurnPage {
+            let isShift = event.modifierFlags.contains(.shift)
+            if isShift {
+                scrollDelegate?.scrollViewRequestPreviousImage(self, amount: 1)
+            } else {
+                scrollDelegate?.scrollViewRequestNextImage(self, amount: 1)
+            }
+            return
+        }
+
         super.mouseUp(with: event)
     }
 

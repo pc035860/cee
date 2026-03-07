@@ -80,6 +80,8 @@ struct ViewerSettings: Codable {
     // MARK: - Navigation Behavior
     /// true = 回到上一頁時從圖片底端開始（預設）；false = 從頂端開始
     var scrollToBottomOnPrevious: Bool = true
+    /// true = 點擊/輕拍換下一頁；Shift+點擊換上一頁
+    var clickToTurnPage: Bool = false
 
     // MARK: - Codable (backward-compatible decoding)
 
@@ -110,6 +112,7 @@ struct ViewerSettings: Codable {
         duoPageRTLNavigation = (try? c.decode(Bool.self, forKey: .duoPageRTLNavigation)) ?? d.duoPageRTLNavigation
         singlePageRTLNavigation = (try? c.decode(Bool.self, forKey: .singlePageRTLNavigation)) ?? d.singlePageRTLNavigation
         scrollToBottomOnPrevious = (try? c.decode(Bool.self, forKey: .scrollToBottomOnPrevious)) ?? d.scrollToBottomOnPrevious
+        clickToTurnPage = (try? c.decode(Bool.self, forKey: .clickToTurnPage)) ?? d.clickToTurnPage
         quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
         reuseWindow = (try? c.decode(Bool.self, forKey: .reuseWindow)) ?? d.reuseWindow
     }

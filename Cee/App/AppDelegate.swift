@@ -157,6 +157,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         navigationMenu.addItem(makeItem("Navigate with Left/Right Arrows", action: #selector(ImageViewController.toggleArrowLeftRightNav(_:)), key: ""))
         navigationMenu.addItem(makeItem("Navigate with Up/Down Arrows",    action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
         navigationMenu.addItem(makeItem("Scroll to Bottom on Previous", action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
+        navigationMenu.addItem(makeItem("Click to Turn Page",           action: #selector(ImageViewController.toggleClickToTurnPage(_:)),           key: ""))
 
         // Trackpad Page-Turn Sensitivity submenu
         let trackpadMenuItem = NSMenuItem(title: "Trackpad Page-Turn Sensitivity", action: nil, keyEquivalent: "")

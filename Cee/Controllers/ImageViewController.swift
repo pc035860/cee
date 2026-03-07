@@ -162,6 +162,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         scrollView.isRTLNavigation = effectiveRTLNavigation
         scrollView.arrowLeftRightNavigation = settings.arrowLeftRightNavigation
         scrollView.arrowUpDownNavigation = settings.arrowUpDownNavigation
+        scrollView.clickToTurnPage = settings.clickToTurnPage
         if settings.floatOnTop { view.window?.level = .floating }
         applyStatusBar()  // 內部已呼叫 applyCenteringInsetsIfNeeded
     }
@@ -1148,6 +1149,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
     }
 
+    @objc func toggleClickToTurnPage(_ sender: Any? = nil) {
+        settings.clickToTurnPage.toggle()
+        settings.save()
+        scrollView.clickToTurnPage = settings.clickToTurnPage
+    }
+
     @objc func toggleFullScreen(_ sender: Any? = nil) {
         let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
         DebugCentering.log(
@@ -1386,6 +1393,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return !settings.dualPageEnabled
         case #selector(toggleScrollToBottomOnPrevious(_:)):
             menuItem.state = settings.scrollToBottomOnPrevious ? .on : .off
+            return true
+        case #selector(toggleClickToTurnPage(_:)):
+            menuItem.state = settings.clickToTurnPage ? .on : .off
             return true
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
