@@ -30,3 +30,7 @@ Read the output file to retrieve the result: /private/tmp/claude-501/-Users-pc03
 ---
 
 一併看一下 git log，既上次更新 claude.md 後，有沒有什麼值得寫的
+
+---
+
+/commit --auto
