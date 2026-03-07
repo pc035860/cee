@@ -1,0 +1,20 @@
+我想提報一個問題，應該是跟我們用 Trackpad 縮放或換頁的行為有關係。
+
+我在操作 Trackpad 換頁之後，當滑鼠在介面上移動時，有機會突然感覺圖片又被滑了一下，好像有人還在滑 Trackpad 一樣。
+
+我不確定是什麼原因，可能和我們的 debounce 或是 throttle 之類的機制有關係，請幫我查一下。
+
+整理一下，跟我討論下一步動作
+
+- 使用 適合的subagent 或 @agent-general-purpose (run in foreground) 來做程式碼的分析\
+- 使用 @agent-Explore (haiku, run in foreground) 來做廣泛的程式碼探索與資料蒐集\
+- IMPORTANT: run subagents in parallel\
+- First, use the TaskList tool to plan tasks in the user's best interest. Organize parallelization effectively for optimal results.
+
+---
+
+我體感那個滑動的感覺，因為它滑到邊緣還有那種 bounce 的效果，所以很不像是程式的滑動，很像是被 Trackpad 觸發的滑動。只是這個 Trackpad 觸發，好像是我在動滑鼠的時候，它突然彈出來的這樣。
+
+---
+
+說明一下精細的方案

@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "50840bde3f8a",
+  "session_id": "51ec2c92-3ff1-48bd-a78b-6e618533a008",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-07T18:00:24.932487Z",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Models/ViewerSettings.swift",
+    "Cee/Views/ImageScrollView.swift"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "b666d35bf39d",
+  "token_usage": {
+    "input_tokens": 56,
+    "cache_creation_tokens": 46314,
+    "cache_read_tokens": 305059,
+    "output_tokens": 7650,
+    "api_call_count": 10
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T18:00:24.788424Z",
+    "agent_lines": 2,
+    "human_added": 43,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 45,
+    "agent_percentage": 4.444444444444445
+  }
+}
