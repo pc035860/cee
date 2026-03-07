@@ -1,0 +1,9 @@
+最近六個 commit 我們做了些什麼事情？你可以整理一下嗎？
+
+---
+
+/simplify last 6 commits
+
+---
+
+/review-loop gemini
