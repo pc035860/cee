@@ -152,6 +152,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let rtlItem = makeItem("Reading: Left to Right",       action: #selector(ImageViewController.toggleReadingDirection(_:)),     key: "k")
         rtlItem.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(rtlItem)
+        viewMenu.addItem(makeItem("Right-to-Left Navigation",  action: #selector(ImageViewController.toggleDuoPageRTLNavigation(_:)), key: ""))
+        viewMenu.addItem(makeItem("Right-to-Left Navigation (Single Page)", action: #selector(ImageViewController.toggleSinglePageRTLNavigation(_:)), key: ""))
 
         // ── Go Menu ─────────────────────────────────────────────────────
         // Bare arrow/Home/End keys are handled by ImageScrollView.keyDown.
@@ -164,6 +166,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         goMenu.addItem(makeItem("Previous Image", action: #selector(ImageViewController.goToPreviousImage), key: "["))
         goMenu.addItem(makeItem("First Image",    action: #selector(ImageViewController.goToFirstImage),    key: ""))
         goMenu.addItem(makeItem("Last Image",     action: #selector(ImageViewController.goToLastImage),     key: ""))
+        goMenu.addItem(.separator())
+        goMenu.addItem(makeItem("Scroll to Bottom on Previous", action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
 
         // ── Window Menu ─────────────────────────────────────────────────
         let windowMenuItem = NSMenuItem()

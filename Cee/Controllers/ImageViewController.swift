@@ -151,10 +151,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Settings Application
 
+    /// DuoPage 開啟時用 duoPageRTLNavigation；單頁模式用 singlePageRTLNavigation
+    private var effectiveRTLNavigation: Bool {
+        settings.dualPageEnabled ? settings.duoPageRTLNavigation : settings.singlePageRTLNavigation
+    }
+
     private func applySettings() {
         updateScalingQuality()
         applyScrollSensitivity()
-        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
+        scrollView.isRTLNavigation = effectiveRTLNavigation
         scrollView.arrowLeftRightNavigation = settings.arrowLeftRightNavigation
         scrollView.arrowUpDownNavigation = settings.arrowUpDownNavigation
         if settings.floatOnTop { view.window?.level = .floating }
@@ -471,6 +476,24 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         var dualPageEnabled: Bool
         var firstPageIsCover: Bool
         var readingDirection: ViewerSettings.ReadingDirection
+        var duoPageRTLNavigation: Bool
+
+        init(dualPageEnabled: Bool, firstPageIsCover: Bool,
+             readingDirection: ViewerSettings.ReadingDirection, duoPageRTLNavigation: Bool) {
+            self.dualPageEnabled = dualPageEnabled
+            self.firstPageIsCover = firstPageIsCover
+            self.readingDirection = readingDirection
+            self.duoPageRTLNavigation = duoPageRTLNavigation
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            dualPageEnabled = try c.decode(Bool.self, forKey: .dualPageEnabled)
+            firstPageIsCover = try c.decode(Bool.self, forKey: .firstPageIsCover)
+            readingDirection = try c.decode(ViewerSettings.ReadingDirection.self, forKey: .readingDirection)
+            // 舊版資料沒有此欄位，backward-compat 預設 true
+            duoPageRTLNavigation = (try? c.decode(Bool.self, forKey: .duoPageRTLNavigation)) ?? true
+        }
     }
 
     private func saveFolderDualPageSettings() {
@@ -479,7 +502,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let folderSettings = FolderDualPageSettings(
             dualPageEnabled: settings.dualPageEnabled,
             firstPageIsCover: settings.firstPageIsCover,
-            readingDirection: settings.readingDirection
+            readingDirection: settings.readingDirection,
+            duoPageRTLNavigation: settings.duoPageRTLNavigation
         )
         if let data = try? JSONEncoder().encode(folderSettings) {
             UserDefaults.standard.set(data, forKey: key)
@@ -495,7 +519,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.dualPageEnabled = folderSettings.dualPageEnabled
         settings.firstPageIsCover = folderSettings.firstPageIsCover
         settings.readingDirection = folderSettings.readingDirection
-        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
+        settings.duoPageRTLNavigation = folderSettings.duoPageRTLNavigation
+        scrollView.isRTLNavigation = effectiveRTLNavigation
     }
 
     private func applyFitting(for imageSize: NSSize) {
@@ -804,7 +829,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             guard folder.goPrevious(amount: amount) else { return }
         }
-        loadCurrentImage(initialScroll: .bottom, thumbnailOnly: settings.thumbnailFallback)
+        let prevScroll: InitialScrollPosition = settings.scrollToBottomOnPrevious ? .bottom : .top
+        loadCurrentImage(initialScroll: prevScroll, thumbnailOnly: settings.thumbnailFallback)
         if settings.thumbnailFallback { scheduleFullResLoad() }
         updateWindowTitle()
     }
@@ -957,6 +983,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.dualPageEnabled.toggle()
         settings.save()
         saveFolderDualPageSettings()
+        scrollView.isRTLNavigation = effectiveRTLNavigation
         if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         } else {
@@ -1097,10 +1124,28 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             ? .rightToLeft : .leftToRight
         settings.save()
         saveFolderDualPageSettings()
-        scrollView.isRTLNavigation = (settings.readingDirection.isRTL)
+        scrollView.isRTLNavigation = effectiveRTLNavigation
         if settings.dualPageEnabled {
             loadCurrentImage(initialScroll: .preserve)
         }
+    }
+
+    @objc func toggleDuoPageRTLNavigation(_ sender: Any? = nil) {
+        settings.duoPageRTLNavigation.toggle()
+        settings.save()
+        saveFolderDualPageSettings()
+        scrollView.isRTLNavigation = effectiveRTLNavigation
+    }
+
+    @objc func toggleSinglePageRTLNavigation(_ sender: Any? = nil) {
+        settings.singlePageRTLNavigation.toggle()
+        settings.save()
+        scrollView.isRTLNavigation = effectiveRTLNavigation
+    }
+
+    @objc func toggleScrollToBottomOnPrevious(_ sender: Any? = nil) {
+        settings.scrollToBottomOnPrevious.toggle()
+        settings.save()
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {
@@ -1333,6 +1378,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = isRTL ? .on : .off
             menuItem.title = isRTL ? "Reading: Right to Left" : "Reading: Left to Right"
             return settings.dualPageEnabled
+        case #selector(toggleDuoPageRTLNavigation(_:)):
+            menuItem.state = settings.duoPageRTLNavigation ? .on : .off
+            return settings.dualPageEnabled
+        case #selector(toggleSinglePageRTLNavigation(_:)):
+            menuItem.state = settings.singlePageRTLNavigation ? .on : .off
+            return !settings.dualPageEnabled
+        case #selector(toggleScrollToBottomOnPrevious(_:)):
+            menuItem.state = settings.scrollToBottomOnPrevious ? .on : .off
+            return true
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"

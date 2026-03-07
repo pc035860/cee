@@ -71,6 +71,14 @@ struct ViewerSettings: Codable {
         var isRTL: Bool { self == .rightToLeft }
     }
     var readingDirection: ReadingDirection = .rightToLeft
+    /// true = DuoPage 模式下左箭頭為下一頁（日文漫畫右翻左）；false = 右箭頭永遠為下一頁
+    var duoPageRTLNavigation: Bool = true
+    /// true = 單頁模式下左箭頭為下一頁；false = 右箭頭為下一頁（預設）
+    var singlePageRTLNavigation: Bool = false
+
+    // MARK: - Navigation Behavior
+    /// true = 回到上一頁時從圖片底端開始（預設）；false = 從頂端開始
+    var scrollToBottomOnPrevious: Bool = true
 
     // MARK: - Codable (backward-compatible decoding)
 
@@ -98,6 +106,9 @@ struct ViewerSettings: Codable {
         dualPageEnabled = (try? c.decode(Bool.self, forKey: .dualPageEnabled)) ?? d.dualPageEnabled
         firstPageIsCover = (try? c.decode(Bool.self, forKey: .firstPageIsCover)) ?? d.firstPageIsCover
         readingDirection = (try? c.decode(ReadingDirection.self, forKey: .readingDirection)) ?? d.readingDirection
+        duoPageRTLNavigation = (try? c.decode(Bool.self, forKey: .duoPageRTLNavigation)) ?? d.duoPageRTLNavigation
+        singlePageRTLNavigation = (try? c.decode(Bool.self, forKey: .singlePageRTLNavigation)) ?? d.singlePageRTLNavigation
+        scrollToBottomOnPrevious = (try? c.decode(Bool.self, forKey: .scrollToBottomOnPrevious)) ?? d.scrollToBottomOnPrevious
         quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
     }
 
