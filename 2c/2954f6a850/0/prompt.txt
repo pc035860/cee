@@ -1,0 +1,71 @@
+plan on fixing these
+
+   - 縮放行為 (cursor card 應該要保持在 viewport 內) #todo
+   - 在邊界移動 cursor card 造成的抖動 #todo
+     - 因為 cursor card 的 border 擠壓到邊界的 scollbar
+
+---
+
+- 縮放行為 (cursor card 應該要保持在 viewport 內) #todo
+   - 在邊界移動 cursor card 造成的抖動 #todo
+     - 因為 cursor card 的 border 擠壓到邊界的 scollbar
+
+整理一下，跟我討論下一步動作
+
+/explore
+
+---
+
+issue 2 和 scrollbar 顯示與否沒有關系，而且現在 scrollbar 是固定顯示的
+問題是他這個 card 在邊界移動的時候，每次移動都會觸發我們的 auto scroll into view 之類的功能，導致它會稍微 scroll 一下，但又因為 border 的關係被彈回來，所以就會在邊界抖動，大概是這樣子。
+
+所以 issue2 採用 A 方案可能比較好
+
+---
+
+issue1: 前者
+
+---
+
+邊界抖動問題還是存在，感覺是 scroll into view 會稍微比純粹邊緣還要再進來一點？
+結果就變成 scroll into view -> 收回 -> 換下一張圖 -> scroll into view -> 收回  這樣抖動
+
+縮放後的 viewport 有時候會沒有成功，不知道是不是 timing 問題
+
+整理一下，跟我討論下一步動作
+
+---
+
+拿掉動畫會怎麼樣
+
+---
+
+issue2 採用方案 B
+issue1 直接修
+
+---
+
+基本上都沒問題，剩下的問題是其實跟 Pinch Zoom 的那個中斷問題有點像。
+
+issue1
+就是我用 Trackpad 做 Pinch Zoom 的話，這種縮放結束的時候，有機會它沒有成功呼叫那個自動捲動到當前的圖片為止。
+
+/explore -n 2 -a
+
+---
+
+還是不行，依然有機會失敗
+我看現在把當前圖片捲動到 Viewport 內這件事情會連續觸發，幫我把它改成 debounce 觸發，設定 300ms 好了。
+
+---
+
+就先這樣吧
+然後看有沒有辦法在捲動，也就是把當前圖片捲動到 Viewport 內的時候，是捲動到畫面的中央位置。
+
+因為它現在常常就是捲動到邊界位置而已。
+
+整理一下，跟我討論下一步動作
+
+---
+
+2
