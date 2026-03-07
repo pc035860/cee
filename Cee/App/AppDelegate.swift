@@ -114,27 +114,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scalingMenuItem.submenu = scalingMenu
         viewMenu.addItem(scalingMenuItem)
 
-        // Trackpad Sensitivity submenu
-        let trackpadMenuItem = NSMenuItem(title: "Trackpad Sensitivity", action: nil, keyEquivalent: "")
-        let trackpadMenu = NSMenu(title: "Trackpad Sensitivity")
-        trackpadMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setTrackpadLow(_:)),    key: ""))
-        trackpadMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setTrackpadMedium(_:)), key: ""))
-        trackpadMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setTrackpadHigh(_:)),   key: ""))
-        trackpadMenuItem.submenu = trackpadMenu
-        viewMenu.addItem(trackpadMenuItem)
-
-        // Wheel Sensitivity submenu
-        let wheelMenuItem = NSMenuItem(title: "Wheel Sensitivity", action: nil, keyEquivalent: "")
-        let wheelMenu = NSMenu(title: "Wheel Sensitivity")
-        wheelMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setWheelLow(_:)),    key: ""))
-        wheelMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setWheelMedium(_:)), key: ""))
-        wheelMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setWheelHigh(_:)),   key: ""))
-        wheelMenuItem.submenu = wheelMenu
-        viewMenu.addItem(wheelMenuItem)
-
         viewMenu.addItem(.separator())
-        viewMenu.addItem(makeItem("Navigate with Left/Right Arrows", action: #selector(ImageViewController.toggleArrowLeftRightNav(_:)), key: ""))
-        viewMenu.addItem(makeItem("Navigate with Up/Down Arrows",    action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
         viewMenu.addItem(makeItem("Use Low-Res Preview While Browsing", action: #selector(ImageViewController.toggleThumbnailFallback(_:)), key: ""))
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Resize Window Automatically", action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
@@ -142,22 +122,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         viewMenu.addItem(makeItem("Float on Top",                action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem("Show Status Bar",             action: #selector(ImageViewController.toggleStatusBar(_:)),           key: "/"))
-        viewMenu.addItem(makeItem("Quick Grid",                    action: #selector(ImageViewController.toggleQuickGrid(_:)),            key: ""))
-        viewMenu.addItem(makeItem("Scroll to Cursor After Zoom",  action: #selector(ImageViewController.toggleQuickGridScrollAfterZoom(_:)), key: ""))
-        viewMenu.addItem(.separator())
-        viewMenu.addItem(makeItem("Dual Page",                   action: #selector(ImageViewController.toggleDualPage(_:)),            key: "k"))
+
+        // ── Navigation Menu ─────────────────────────────────────────────
+        let navigationMenuItem = NSMenuItem()
+        mainMenu.addItem(navigationMenuItem)
+        let navigationMenu = NSMenu(title: "Navigation")
+        navigationMenuItem.submenu = navigationMenu
+
+        // Reading Mode group
+        navigationMenu.addItem(makeItem("Dual Page",                   action: #selector(ImageViewController.toggleDualPage(_:)),            key: "k"))
         let offsetItem = makeItem("First Page as Cover",         action: #selector(ImageViewController.togglePageOffset(_:)),           key: "o")
         offsetItem.keyEquivalentModifierMask = [.command, .shift]
-        viewMenu.addItem(offsetItem)
+        navigationMenu.addItem(offsetItem)
         let rtlItem = makeItem("Reading: Left to Right",       action: #selector(ImageViewController.toggleReadingDirection(_:)),     key: "k")
         rtlItem.keyEquivalentModifierMask = [.command, .shift]
-        viewMenu.addItem(rtlItem)
-        viewMenu.addItem(makeItem("Right-to-Left Navigation",  action: #selector(ImageViewController.toggleDuoPageRTLNavigation(_:)), key: ""))
-        viewMenu.addItem(makeItem("Right-to-Left Navigation (Single Page)", action: #selector(ImageViewController.toggleSinglePageRTLNavigation(_:)), key: ""))
+        navigationMenu.addItem(rtlItem)
+        navigationMenu.addItem(makeItem("Right-to-Left Navigation",  action: #selector(ImageViewController.toggleDuoPageRTLNavigation(_:)), key: ""))
+        navigationMenu.addItem(makeItem("Right-to-Left Navigation (Single Page)", action: #selector(ImageViewController.toggleSinglePageRTLNavigation(_:)), key: ""))
+
+        navigationMenu.addItem(.separator())
+
+        // Navigation Settings group
+        navigationMenu.addItem(makeItem("Navigate with Left/Right Arrows", action: #selector(ImageViewController.toggleArrowLeftRightNav(_:)), key: ""))
+        navigationMenu.addItem(makeItem("Navigate with Up/Down Arrows",    action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
+        navigationMenu.addItem(makeItem("Scroll to Bottom on Previous", action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
+
+        // Trackpad Page-Turn Sensitivity submenu
+        let trackpadMenuItem = NSMenuItem(title: "Trackpad Page-Turn Sensitivity", action: nil, keyEquivalent: "")
+        let trackpadMenu = NSMenu(title: "Trackpad Page-Turn Sensitivity")
+        trackpadMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setTrackpadLow(_:)),    key: ""))
+        trackpadMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setTrackpadMedium(_:)), key: ""))
+        trackpadMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setTrackpadHigh(_:)),   key: ""))
+        trackpadMenuItem.submenu = trackpadMenu
+        navigationMenu.addItem(trackpadMenuItem)
+
+        // Wheel Page-Turn Sensitivity submenu
+        let wheelMenuItem = NSMenuItem(title: "Wheel Page-Turn Sensitivity", action: nil, keyEquivalent: "")
+        let wheelMenu = NSMenu(title: "Wheel Page-Turn Sensitivity")
+        wheelMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setWheelLow(_:)),    key: ""))
+        wheelMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setWheelMedium(_:)), key: ""))
+        wheelMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setWheelHigh(_:)),   key: ""))
+        wheelMenuItem.submenu = wheelMenu
+        navigationMenu.addItem(wheelMenuItem)
+
+        navigationMenu.addItem(.separator())
+
+        // Quick Grid group
+        navigationMenu.addItem(makeItem("Quick Grid",                    action: #selector(ImageViewController.toggleQuickGrid(_:)),            key: ""))
+        navigationMenu.addItem(makeItem("Scroll to Cursor After Zoom",  action: #selector(ImageViewController.toggleQuickGridScrollAfterZoom(_:)), key: ""))
 
         // ── Go Menu ─────────────────────────────────────────────────────
-        // Bare arrow/Home/End keys are handled by ImageScrollView.keyDown.
-        // No keyEquivalents here to avoid double-triggering.
         let goMenuItem = NSMenuItem()
         mainMenu.addItem(goMenuItem)
         let goMenu = NSMenu(title: "Go")
@@ -166,8 +180,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         goMenu.addItem(makeItem("Previous Image", action: #selector(ImageViewController.goToPreviousImage), key: "["))
         goMenu.addItem(makeItem("First Image",    action: #selector(ImageViewController.goToFirstImage),    key: ""))
         goMenu.addItem(makeItem("Last Image",     action: #selector(ImageViewController.goToLastImage),     key: ""))
-        goMenu.addItem(.separator())
-        goMenu.addItem(makeItem("Scroll to Bottom on Previous", action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
 
         // ── Window Menu ─────────────────────────────────────────────────
         let windowMenuItem = NSMenuItem()
