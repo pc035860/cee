@@ -1,0 +1,25 @@
+討論一下，目前我們有 DuoPage 模式（多頁模式）。
+
+照日本漫畫的規則，在 DuoPage 狀況下從右往左翻是正常的，例如按左邊箭頭會換到下一組圖，這樣子是正確的。但以我們平常看單頁漫畫的習慣，是按右邊箭頭前往下一頁，這剛好跟 DuoPage 狀態是相反的。
+
+可以幫我加一個選項，讓 DuoPage 狀態下：
+1. 開啟選項：由右往左是下一頁（往左按是下一頁）。
+2. 關閉選項：無論如何都是往右按代表下一頁。
+
+預設這個選項是打開的。
+
+- 使用 @agent-Explore (haiku, run in foreground) 來做廣泛的程式碼探索與資料蒐集\
+- IMPORTANT: run subagents in parallel\
+- First, use the TaskList tool to plan tasks in the user's best interest. Organize parallelization effectively for optimal results.
+
+---
+
+將單頁模式及雙頁模式的這個選項獨立開
+雙頁模式預設是 right-to-left on
+單頁模式預設是 right-to-left off (也就是按向右的箭頭會到下一頁)
+
+---
+
+幫我新增一個設定：我們現在回到上一頁的時候，預設都會從圖片的底端開始，這是預設行為。
+
+請幫我新增一個選項，預設為勾選此行為，並讓使用者可以選擇不要這個行為（也就是可以取消勾選）。
