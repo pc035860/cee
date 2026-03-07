@@ -55,6 +55,7 @@ struct ViewerSettings: Codable {
 
     // MARK: - Quick Grid
     var quickGridCellSize: CGFloat = 160  // matches Constants.quickGridMinCellSize
+    var quickGridScrollAfterZoom: Bool = false  // scroll cursor card to center after zoom ends
 
     // MARK: - UI
     var showStatusBar: Bool = true

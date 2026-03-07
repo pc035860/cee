@@ -1037,6 +1037,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
     }
 
+    @objc func toggleQuickGridScrollAfterZoom(_ sender: Any? = nil) {
+        settings.quickGridScrollAfterZoom.toggle()
+        settings.save()
+        quickGridView?.scrollAfterZoomEnabled = settings.quickGridScrollAfterZoom
+    }
+
     // MARK: - Quick Grid
 
     @objc func toggleQuickGrid(_ sender: Any? = nil) {
@@ -1056,6 +1062,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         // Restore saved cell size
         grid.applyItemSize(settings.quickGridCellSize)
+        grid.scrollAfterZoomEnabled = settings.quickGridScrollAfterZoom
 
         // Persist cell size changes
         grid.onCellSizeDidChange = { [weak self] size in
@@ -1303,6 +1310,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.arrowUpDownNavigation ? .on : .off; return true
         case #selector(toggleThumbnailFallback(_:)):
             menuItem.state = settings.thumbnailFallback ? .on : .off; return true
+        case #selector(toggleQuickGridScrollAfterZoom(_:)):
+            menuItem.state = settings.quickGridScrollAfterZoom ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
         case #selector(toggleFloatOnTop(_:)):

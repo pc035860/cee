@@ -277,37 +277,47 @@ private final class GridCollectionView: NSCollectionView {
         // Do NOT call super — prevents event propagating to ImageScrollView
     }
 
-    // Suppress NSCollectionView's internal animated scroll during keyboard nav.
-    // didSelectItemsAt handles scrolling with our own smooth animation.
+    // Block NSCollectionView's internal scroll-to-selection during keyboard nav.
+    // scrollToItems(at:scrollPosition:) is the modern index-path-mode scroll path.
+    // didSelectItemsAt fires synchronously inside super.move*(), so our smooth
+    // animation starts from the correct pre-scroll position without interference.
+    private var suppressAutoScroll = false
+
+    override func scrollToItems(at indexPaths: Set<IndexPath>,
+                                scrollPosition: NSCollectionView.ScrollPosition) {
+        guard !suppressAutoScroll else { return }
+        super.scrollToItems(at: indexPaths, scrollPosition: scrollPosition)
+    }
+
     override func moveUp(_ sender: Any?) {
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0
+        suppressAutoScroll = true
         super.moveUp(sender)
-        NSAnimationContext.endGrouping()
+        suppressAutoScroll = false
     }
     override func moveDown(_ sender: Any?) {
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0
+        suppressAutoScroll = true
         super.moveDown(sender)
-        NSAnimationContext.endGrouping()
+        suppressAutoScroll = false
     }
     override func moveLeft(_ sender: Any?) {
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0
+        suppressAutoScroll = true
         super.moveLeft(sender)
-        NSAnimationContext.endGrouping()
+        suppressAutoScroll = false
     }
     override func moveRight(_ sender: Any?) {
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0
+        suppressAutoScroll = true
         super.moveRight(sender)
-        NSAnimationContext.endGrouping()
+        suppressAutoScroll = false
     }
 }
 
 final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
 
     weak var delegate: QuickGridViewDelegate?
+
+    /// When true, scrolls cursor card to center of viewport after zoom ends.
+    /// Controlled by "Scroll to Cursor After Zoom" menu item (default off).
+    var scrollAfterZoomEnabled: Bool = false
 
     // MARK: - UI
 
@@ -1124,6 +1134,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Debounced scroll of cursor card into viewport (300ms), centering the item.
     /// Coalesces rapid zoom-end triggers (multiple applyItemSize paths, momentum tail events).
     private func scheduleScrollCursorIntoView() {
+        guard scrollAfterZoomEnabled else { return }
         scrollCursorWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self,
@@ -1197,7 +1208,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             guard let self else { return }
             self.collectionView.layoutSubtreeIfNeeded()
             self.updateScrollerVisibility()
-            self.scrollItemIntoView(at: indexPath, animated: false)
+            self.scrollItemIntoView(at: indexPath, animated: false, centered: true)
             self.collectionView.selectionIndexPaths = [indexPath]
         }
     }
@@ -1432,6 +1443,7 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         if animated {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.1
+                context.timingFunction = CAMediaTimingFunction(name: .linear)
                 clipView.animator().setBoundsOrigin(targetOrigin)
             }
         } else {
