@@ -34,6 +34,7 @@ class ImageWindowController: NSWindowController {
             height: Constants.minWindowContentHeight
         )
         window.isRestorable = false
+        window.tabbingMode = .disallowed
         window.contentViewController = viewController
         window.center()
         window.setAccessibilityIdentifier("imageWindow")
@@ -74,6 +75,7 @@ class ImageWindowController: NSWindowController {
             height: Constants.minWindowContentHeight
         )
         window.isRestorable = false
+        window.tabbingMode = .disallowed
         window.contentViewController = viewController
         window.center()
         window.setAccessibilityIdentifier("imageWindow")  // Phase 6: UI test anchor
