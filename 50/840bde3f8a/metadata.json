@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "50840bde3f8a",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cee/App/AppDelegate.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/50/840bde3f8a/0/metadata.json",
+      "transcript": "/50/840bde3f8a/0/full.jsonl",
+      "content_hash": "/50/840bde3f8a/0/content_hash.txt",
+      "prompt": "/50/840bde3f8a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 97,
+    "cache_creation_tokens": 177669,
+    "cache_read_tokens": 3682862,
+    "output_tokens": 21948,
+    "api_call_count": 52
+  }
+}
