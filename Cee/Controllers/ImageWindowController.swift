@@ -2,26 +2,57 @@ import AppKit
 
 class ImageWindowController: NSWindowController {
 
-    /// 靜態持有，防止 ARC 釋放；同時實現單視窗重用策略
-    private static var shared: ImageWindowController?
+    /// 所有開啟的視窗控制器；multi-instance 支援
+    private static var windows: [ImageWindowController] = []
 
     // MARK: - Phase 4: Window Size Memory
     private var resizeSaveTask: DispatchWorkItem?
     private var isTransitioningFullScreen = false
 
+    /// 取得當前活動的視窗控制器（用於復用模式）
+    /// 優先使用有鍵盤焦點的視窗，次要才用最後建立的視窗
+    private static var current: ImageWindowController? {
+        let active = (NSApp.keyWindow?.windowController ?? NSApp.mainWindow?.windowController) as? ImageWindowController
+        return active ?? windows.last
+    }
+
     // MARK: - Empty State Launch
 
     /// Open empty state window (for drag-drop onboarding)
     static func openEmpty() {
-        // Reuse existing window
-        if let existing = shared {
+        let settings = ViewerSettings.load()
+
+        // 復用模式：如果已有視窗，直接帶到前景
+        if settings.reuseWindow, let existing = current {
             existing.window?.makeKeyAndOrderFront(nil)
             return
         }
 
-        // Create new window with empty state
+        // 建立新視窗
+        createWindow(with: nil)
+    }
+
+    /// Open URL (called from Finder or file open dialog)
+    static func open(with url: URL) {
+        let folder = ImageFolder(containing: url)
+        let settings = ViewerSettings.load()
+
+        // 復用模式：重用現有視窗
+        if settings.reuseWindow, let existing = current, let vc = existing.contentViewController as? ImageViewController {
+            vc.loadFolder(folder)
+            existing.updateTitle(folder: folder)
+            existing.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // 建立新視窗
+        createWindow(with: folder)
+    }
+
+    /// 建立新視窗（內部方法）
+    private static func createWindow(with folder: ImageFolder?) {
         let windowSize = savedOrDefaultWindowSize()
-        let viewController = ImageViewController(folder: nil)  // nil = empty state
+        let viewController = ImageViewController(folder: folder)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
@@ -40,51 +71,10 @@ class ImageWindowController: NSWindowController {
         window.setAccessibilityIdentifier("imageWindow")
 
         let controller = ImageWindowController(window: window)
-        shared = controller
+        windows.append(controller)  // 加入 collection
         controller.showWindow(nil)
         controller.ensureUsableWindowSize()
-        controller.setupResizeObserver()
-
-        // Empty state title
-        controller.window?.title = "Cee"
-        controller.window?.subtitle = ""
-    }
-
-    static func open(with url: URL) {
-        let folder = ImageFolder(containing: url)
-
-        if let existing = shared, let vc = existing.contentViewController as? ImageViewController {
-            // 重用現有視窗，載入新資料夾
-            vc.loadFolder(folder)
-            existing.updateTitle(folder: folder)
-            existing.window?.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        // 首次建立視窗，優先使用儲存的視窗大小，否則用螢幕 80%
-        let windowSize = savedOrDefaultWindowSize()
-        let viewController = ImageViewController(folder: folder)
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.minSize = NSSize(
-            width: Constants.minWindowContentWidth,
-            height: Constants.minWindowContentHeight
-        )
-        window.isRestorable = false
-        window.tabbingMode = .disallowed
-        window.contentViewController = viewController
-        window.center()
-        window.setAccessibilityIdentifier("imageWindow")  // Phase 6: UI test anchor
-
-        let controller = ImageWindowController(window: window)
-        shared = controller  // 靜態持有，防止 ARC 釋放
-        controller.showWindow(nil)
-        controller.ensureUsableWindowSize()
-        controller.setupResizeObserver()
+        controller.setupWindowObservers()
         controller.updateTitle(folder: folder)
     }
 
@@ -113,7 +103,7 @@ class ImageWindowController: NSWindowController {
 
     // MARK: - Phase 4: Resize Observer
 
-    private func setupResizeObserver() {
+    private func setupWindowObservers() {
         guard let window = window else { return }
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(windowDidResizeNotification(_:)),
@@ -124,6 +114,13 @@ class ImageWindowController: NSWindowController {
                        name: NSWindow.didEnterFullScreenNotification, object: window)
         nc.addObserver(self, selector: #selector(windowDidExitFullScreen(_:)),
                        name: NSWindow.didExitFullScreenNotification, object: window)
+        // Multi-instance: 視窗關閉時從 collection 移除
+        nc.addObserver(self, selector: #selector(windowWillCloseNotification(_:)),
+                       name: NSWindow.willCloseNotification, object: window)
+    }
+
+    @objc private func windowWillCloseNotification(_ notification: Notification) {
+        Self.windows.removeAll { $0 === self }
     }
 
     @objc private func windowWillEnterFullScreen(_ notification: Notification) {

@@ -50,6 +50,7 @@ struct ViewerSettings: Codable {
     // MARK: - Window
     var resizeWindowAutomatically: Bool = false
     var floatOnTop: Bool = false
+    var reuseWindow: Bool = true  // true = 復用現有視窗，false = 每次開新視窗
     var lastWindowWidth: CGFloat? = nil   // nil = 未曾儲存，首次啟動使用螢幕 80%
     var lastWindowHeight: CGFloat? = nil  // nil = 未曾儲存，首次啟動使用螢幕 80%
 
@@ -110,6 +111,7 @@ struct ViewerSettings: Codable {
         singlePageRTLNavigation = (try? c.decode(Bool.self, forKey: .singlePageRTLNavigation)) ?? d.singlePageRTLNavigation
         scrollToBottomOnPrevious = (try? c.decode(Bool.self, forKey: .scrollToBottomOnPrevious)) ?? d.scrollToBottomOnPrevious
         quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
+        reuseWindow = (try? c.decode(Bool.self, forKey: .reuseWindow)) ?? d.reuseWindow
     }
 
     // MARK: - Persistence

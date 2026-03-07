@@ -1,7 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
@@ -23,8 +23,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        ImageWindowController.open(with: url)
+        // 對同一資料夾的多個檔案去重：每個資料夾只開一次，保留該資料夾的第一個 URL
+        var seen = Set<String>()
+        let deduplicated = urls.filter { url in
+            let folder = url.deletingLastPathComponent().path
+            return seen.insert(folder).inserted
+        }
+        for url in deduplicated {
+            ImageWindowController.open(with: url)
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 
     // MARK: - Empty State Launch
@@ -188,6 +199,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowMenuItem.submenu = windowMenu
         windowMenu.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
         windowMenu.addItem(NSMenuItem(title: "Zoom",     action: #selector(NSWindow.performZoom(_:)),        keyEquivalent: ""))
+        windowMenu.addItem(.separator())
+        let reuseItem = NSMenuItem(title: "Reuse Window", action: #selector(toggleReuseWindow(_:)), keyEquivalent: "")
+        reuseItem.target = self
+        windowMenu.addItem(reuseItem)
 
         NSApplication.shared.mainMenu = mainMenu
     }
@@ -198,5 +213,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = nil  // routes through first responder chain
         return item
+    }
+
+    // MARK: - Reuse Window Toggle
+
+    @objc func toggleReuseWindow(_ sender: Any?) {
+        var settings = ViewerSettings.load()
+        settings.reuseWindow.toggle()
+        settings.save()
+    }
+
+    // MARK: - NSMenuItemValidation
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(toggleReuseWindow(_:)) else {
+            return true
+        }
+        let settings = ViewerSettings.load()
+        menuItem.state = settings.reuseWindow ? .on : .off
+        return true
     }
 }

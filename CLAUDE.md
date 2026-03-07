@@ -18,7 +18,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 - **No XIB/Storyboard** — all UI is programmatic.
 - **Entry point** — `main.swift` (not `@main`/`@NSApplicationMain`).
-- **Single window reuse** — `ImageWindowController.shared`.
+- **Multi-instance window support** — `ImageWindowController.windows` (array) replaces the old `shared` singleton. `reuseWindow` setting (default `true`) controls whether new files open in the same window or a new one.
 - **project.yml** — source of truth for Xcode project. `.xcodeproj` is gitignored.
 - **Test targets** — `CeeTests` (unit) and `CeeUITests` (E2E). `TestHelpers.swift` provides shared `minimalPNG()`, `createJPEG(width:height:)`, `createPNG(width:height:)`.
 - **URL comparison gotcha** — `URL ==` can fail between manually constructed URLs and URLs from `contentsOfDirectory`. Use `.path` comparison.
@@ -121,6 +121,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Multi-instance window support:** `ImageWindowController` now manages a `windows: [ImageWindowController]` array instead of a `shared` singleton. `reuseWindow: Bool` setting in `ViewerSettings` toggles behavior. `current` property prefers `NSApp.keyWindow` → `NSApp.mainWindow` → `windows.last`. Multi-file open deduplicates by folder path to prevent race conditions. Window cleanup via `willCloseNotification`.
 - **Grid performance Phase 3.1-3.2:** Tier0 adaptive resolution + SubsampleFactor, priority dequeue throttle, cachedVisibleCenter, early cancellation guard, magic numbers extracted to Constants.
 - **Grid performance Phase 2:** Prefetch pipeline (scroll direction + keep-set cancel), MemoryPressureMonitor, generation ID stale-write guard, layer-backed cell optimization, NavigationThrottle reuse.
 - **Grid view fixes:** Highlight border clipping fix (inset frame + zPosition), visual redesign (blue tint for active, orange border for cursor), cell drag-drop passthrough, keyboard auto-scroll.
