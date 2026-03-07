@@ -125,8 +125,9 @@ final class GridScrollView: NSScrollView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         allowsMagnification = false  // defensive: prevent pinch event consumption
-        scrollerStyle = .legacy  // fixed visible when content overflows
+        scrollerStyle = .overlay  // overlay: doesn't take space, avoids border-scrollbar geometry conflict
         autohidesScrollers = false
+        contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 12)  // reserve 12pt so cells aren't covered by overlay scroller
         scrollerKnobStyle = .light
         drawsBackground = false
         super.hasHorizontalScroller = false
@@ -410,6 +411,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Deferred tier change reload work item (prevents pinch interruption)
     private var tierChangeWorkItem: DispatchWorkItem?
+    /// Debounced scroll-cursor-into-view work item (300ms, coalesces multiple zoom-end triggers)
+    private var scrollCursorWorkItem: DispatchWorkItem?
     /// Pending tier change to reload after pinch ends
     private var pendingTierChange: Bool = false
     /// Test-only: count of gesture-phase flushes skipped to avoid pinch interruption.
@@ -502,20 +505,32 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Returns target origin.y to scroll item into view, or nil if already visible.
     /// Used by keyboard navigation. Static for unit testing.
+    /// - Parameter edgeMargin: minimum pixels outside viewport before triggering scroll.
+    ///   Prevents micro-jitter when item is within a few pixels of the viewport edge
+    ///   (floating-point settle, or border alignment with scrollbar geometry).
+    /// - Parameter centered: if true, scroll so the item is vertically centered in the viewport
+    ///   (used by zoom-end path). If false, scroll just enough to bring item to the edge.
     static func scrollTargetYForItem(
         itemFrame: CGRect,
         visibleRect: CGRect,
-        documentHeight: CGFloat
+        documentHeight: CGFloat,
+        edgeMargin: CGFloat = 0,
+        centered: Bool = false
     ) -> CGFloat? {
-        var targetY = visibleRect.origin.y
-        if itemFrame.maxY > visibleRect.maxY {
-            targetY = itemFrame.maxY - visibleRect.height
-        } else if itemFrame.minY < visibleRect.minY {
-            targetY = itemFrame.minY
-        } else {
-            return nil  // already visible
+        let isBelow = itemFrame.maxY > visibleRect.maxY + edgeMargin
+        let isAbove = itemFrame.minY < visibleRect.minY - edgeMargin
+        guard isBelow || isAbove else {
+            return nil  // already visible (within edgeMargin tolerance)
         }
         let maxScrollY = max(0, documentHeight - visibleRect.height)
+        let targetY: CGFloat
+        if centered {
+            targetY = itemFrame.midY - visibleRect.height / 2
+        } else if isBelow {
+            targetY = itemFrame.maxY - visibleRect.height
+        } else {
+            targetY = itemFrame.minY
+        }
         return max(0, min(targetY, maxScrollY))
     }
 
@@ -973,9 +988,14 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         )
 
         if clamped == currentCellSize {
-            if (phase.contains(.ended) || phase.contains(.cancelled)) && pendingTierChange {
-                QuickGridPinchDebug.log("apply unchanged-size gesture end -> schedule deferred tier reload")
-                scheduleDeferredTierChangeReload()
+            if phase.contains(.ended) || phase.contains(.cancelled) {
+                if pendingTierChange {
+                    QuickGridPinchDebug.log("apply unchanged-size gesture end -> schedule deferred tier reload")
+                    scheduleDeferredTierChangeReload()
+                }
+                // Even if size didn't change, zoom end must scroll cursor card back into viewport.
+                // Covers: pinch-to-boundary release, and momentum .ended with near-zero magnification.
+                scheduleScrollCursorIntoView()
             }
             return
         }
@@ -1074,6 +1094,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
             QuickGridPinchDebug.measure("pinch updateScrollerVisibility") {
                 updateScrollerVisibility()
             }
+            // After layout settles, scroll cursor card back into view if it drifted out during zoom
+            scheduleScrollCursorIntoView()
         }
 
         let totalMs = (CFAbsoluteTimeGetCurrent() - applyStart) * 1000
@@ -1097,6 +1119,20 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
                 pendingTierChange ? "yes" : "no"
             )
         )
+    }
+
+    /// Debounced scroll of cursor card into viewport (300ms), centering the item.
+    /// Coalesces rapid zoom-end triggers (multiple applyItemSize paths, momentum tail events).
+    private func scheduleScrollCursorIntoView() {
+        scrollCursorWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self,
+                  let indexPath = self.collectionView.selectionIndexPaths.first else { return }
+            self.collectionView.layoutSubtreeIfNeeded()
+            self.scrollItemIntoView(at: indexPath, animated: false, centered: true)
+        }
+        scrollCursorWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     /// Schedule tier reload after the gesture lifecycle fully settles.
@@ -1375,7 +1411,8 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     /// Scroll selected item into view with smooth animation (keyboard navigation).
     /// Manual scroll computation + NSAnimationContext avoids conflict with NSCollectionView's internal scroll.
-    private func scrollItemIntoView(at indexPath: IndexPath, animated: Bool = true) {
+    /// - Parameter centered: if true, center the item vertically (used by zoom-end path).
+    private func scrollItemIntoView(at indexPath: IndexPath, animated: Bool = true, centered: Bool = false) {
         guard let attrs = collectionView.layoutAttributesForItem(at: indexPath) else { return }
         let clipView = gridScrollView.contentView
         let visibleRect = clipView.bounds
@@ -1384,7 +1421,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         guard let targetY = Self.scrollTargetYForItem(
             itemFrame: itemFrame,
             visibleRect: visibleRect,
-            documentHeight: collectionView.frame.height
+            documentHeight: collectionView.frame.height,
+            edgeMargin: Constants.quickGridSpacing,  // 4pt — prevents micro-jitter at viewport edges
+            centered: centered
         ) else { return }
 
         var targetOrigin = visibleRect.origin
