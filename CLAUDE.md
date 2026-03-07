@@ -52,6 +52,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **NSCollectionView re-enables scrollers** during layout/reloadData. Override getter+setter in subclass to lock off; simple property assignment is insufficient.
 - **NSCollectionView `didSelectItemsAt` fires on arrow keys** — filter with `NSApp.currentEvent?.type == .leftMouseUp` for click-only. Arrow key selection does NOT auto-scroll; call `scrollToItems(at:scrollPosition:)` manually in the else branch.
 - **NSCollectionView `scrollToItems` unreliable** — use `layoutAttributesForItem(at:)?.frame` + `scrollToVisible(_:)` instead for reliable programmatic scrolling.
+- **NSCollectionView internal auto-scroll during selection** — `NSCollectionView` calls `scrollToItems` internally after selection changes (arrow keys). Suppress by overriding `scrollToItems(at:scrollPosition:)` in a subclass with a `suppressAutoScroll` flag; set the flag around your own scroll calls so only your animation runs.
+- **NSCollectionView scrollbar + `availableLayoutWidth`** — When using a legacy always-visible scrollbar (`VisibleScroller` subclass), use `contentView.bounds.width` for `availableLayoutWidth`, not `bounds.width`, to account for the scroller's width.
 - **CALayer border clipping in NSCollectionView cells** — `borderWidth` draws half inside, half outside bounds. With `masksToBounds = true` + adjacent cell overlap, borders get clipped. Fix: inset highlightLayer frame by `borderWidth/2` so border is fully inside bounds; set `zPosition` high to render above subview layers.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 
@@ -121,6 +123,11 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Navigation menu:** New "Navigation" menu between View and Go. Reading mode (Dual Page, RTL) and nav settings (Arrow keys, Scroll to Bottom, page-turn sensitivity) moved there from View/Go menus.
+- **RTL nav + scroll settings:** `duoPageRTLNavigation` (default on) / `singlePageRTLNavigation` (default off) as independent settings; `effectiveRTLNavigation` picks based on current mode. `scrollToBottomOnPrevious` (default on) controls scroll position when navigating backward.
+- **Grid progressive tier reload:** Tier change no longer clears `gridThumbnails`; stale images stay visible until new tier finishes. `gridThumbnailSizes` tracks cached tier per index. Old images replaced in-place as new tier loads.
+- **Grid scrollbar:** Replaced overlay/autohide with legacy `VisibleScroller` subclass (always-visible, custom knob). `availableLayoutWidth` must use `contentView.bounds.width`.
+- **Grid Phase 3.4 + Phase 4.1:** Arithmetic visible range calculation; min cell size 160pt; Finder-style slider.
 - **Multi-instance window support:** `ImageWindowController` now manages a `windows: [ImageWindowController]` array instead of a `shared` singleton. `reuseWindow: Bool` setting in `ViewerSettings` toggles behavior. `current` property prefers `NSApp.keyWindow` → `NSApp.mainWindow` → `windows.last`. Multi-file open deduplicates by folder path to prevent race conditions. Window cleanup via `willCloseNotification`.
 - **Grid performance Phase 3.1-3.2:** Tier0 adaptive resolution + SubsampleFactor, priority dequeue throttle, cachedVisibleCenter, early cancellation guard, magic numbers extracted to Constants.
 - **Grid performance Phase 2:** Prefetch pipeline (scroll direction + keep-set cancel), MemoryPressureMonitor, generation ID stale-write guard, layer-backed cell optimization, NavigationThrottle reuse.
