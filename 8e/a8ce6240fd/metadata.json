@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "8ea8ce6240fd",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "Cee/App/AppDelegate.swift",
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Models/ViewerSettings.swift",
+    "Cee/Views/QuickGridView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/8e/a8ce6240fd/0/metadata.json",
+      "transcript": "/8e/a8ce6240fd/0/full.jsonl",
+      "content_hash": "/8e/a8ce6240fd/0/content_hash.txt",
+      "prompt": "/8e/a8ce6240fd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 340,
+    "cache_creation_tokens": 184155,
+    "cache_read_tokens": 5887628,
+    "output_tokens": 27227,
+    "api_call_count": 44
+  }
+}

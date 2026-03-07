@@ -1,0 +1,61 @@
+我想確認一下，現在 scroll 的捲動動畫，它的那個 timing function 是什麼？是 linear 嗎？還是 sine 之類的？
+
+---
+
+gridview scoll 改用 linear
+
+---
+
+我有一個疑問，關於 GridView 的鍵盤導航。我看它的效果是，當我選到下一張圖時，它會在下一個 frame 直接把下一列整個顯示在畫面裡。
+
+但因為要跑 animation，它等於是先「倒車」把下一張圖塞回前面，然後再跑動畫。這就造成我連續壓著箭頭鍵時，畫面會跳動、閃爍。
+
+每次要 scroll 的時候，它都會先把下一列完整顯示，然後再倒車跑動畫。請問這個問題是出在哪裡？
+
+- 使用 @agent-Explore (haiku, run in foreground) 來做廣泛的程式碼探索與資料蒐集\
+- IMPORTANT: run subagents in parallel\
+- First, use the TaskList tool to plan tasks in the user's best interest. Organize parallelization effectively for optimal results.
+
+---
+
+我有一個疑問，關於 GridView 的鍵盤導航。我看它的效果是，當我選到下一張圖時，它會在下一個 frame 直接把下一列整個顯示在畫面裡。
+
+但因為要跑 animation，它等於是先「倒車」把下一張圖塞回前面，然後再跑動畫。這就造成我連續壓著箭頭鍵時，畫面會跳動、閃爍。
+
+每次要 scroll 的時候，它都會先把下一列完整顯示，然後再倒車跑動畫。請問這個問題是出在哪裡？
+
+---
+
+分析一下優裂
+
+---
+
+可是這樣就犧牲了 scroll 動畫，我們想要解決這個問題的核心就是想要保有順暢的 scroll 動畫
+這是不能妥協的
+
+---
+
+探索
+
+---
+
+ok
+
+---
+
+從圖片檢視狀態進入 Grid View 狀態，也要像我們前面做的這樣，就是跟我們做 Zoom 的時候一樣，要把圖片 Scroll 的位置要置中。
+
+---
+
+暫時把 Zoom 之後會自動將當前 Cursor 圖片置中的功能藏在一個 feature flag 後面，先暫時把它取消，或者是把它加成一個選項，你覺得怎麼樣？
+我感覺可能有人只是想要瀏覽一下，然後在那邊 zoom in、zoom out，但他其實不想要每次 zoom in、zoom out 之後，被 reset 到原本圖片在的位置，或是 cursor 在的位置。
+
+---
+
+OK
+
+---
+
+- 使用 @agent-Explore (haiku, run in foreground) 來做廣泛的程式碼探索與資料蒐集\
+- IMPORTANT: run subagents in parallel\
+- First, use the TaskList tool to plan tasks in the user's best interest. Organize parallelization effectively for optimal results.
