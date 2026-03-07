@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "2ba391d62999",
+  "session_id": "2fe40a5a-1ae9-45a4-96b9-9bcb4e7dd99e",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-07T17:32:20.455878Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cee/Utilities/Constants.swift"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "213461ddcc0c",
+  "checkpoint_transcript_start": 712,
+  "transcript_lines_at_start": 712,
+  "token_usage": {
+    "input_tokens": 11,
+    "cache_creation_tokens": 7251,
+    "cache_read_tokens": 760265,
+    "output_tokens": 1535,
+    "api_call_count": 8
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T17:32:20.129813Z",
+    "agent_lines": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2,
+    "agent_percentage": 100
+  }
+}
