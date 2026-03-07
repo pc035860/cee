@@ -1,0 +1,32 @@
+/simplify uncommited changes
+
+---
+
+/review gemini on staged changes
+
+---
+
+<task-notification>
+<task-id>bje76dkio</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/tasks/bje76dkio.output</output-file>
+<status>completed</status>
+<summary>Background command "Run Gemini review on staged changes" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-501/-Users-pc035860-code-cee/tasks/bje76dkio.output
+
+---
+
+不是跑 review loop 嗎
+
+---
+
+/patch-claudemd
+
+---
+
+一併看一下 git log，既上次更新 claude.md 後，有沒有什麼值得寫的
+
+---
+
+一併看一下 git log，既上次更新 claude.md 後，有沒有什麼值得寫的

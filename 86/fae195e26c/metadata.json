@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "86fae195e26c",
+  "strategy": "manual-commit",
+  "branch": "feat/multi-instance",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "CLAUDE.md",
+    "Cee/App/AppDelegate.swift",
+    "Cee/Controllers/ImageWindowController.swift",
+    "Cee/Models/ViewerSettings.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/86/fae195e26c/0/metadata.json",
+      "transcript": "/86/fae195e26c/0/full.jsonl",
+      "content_hash": "/86/fae195e26c/0/content_hash.txt",
+      "prompt": "/86/fae195e26c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 81,
+    "cache_creation_tokens": 167869,
+    "cache_read_tokens": 2552271,
+    "output_tokens": 20168,
+    "api_call_count": 40
+  }
+}
