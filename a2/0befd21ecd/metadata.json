@@ -3,9 +3,11 @@
   "checkpoint_id": "a20befd21ecd",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 6,
   "files_touched": [
-    "Cee/Models/ViewerSettings.swift"
+    "CLAUDE.md",
+    "Cee/Models/ViewerSettings.swift",
+    "Cee/Views/ImageScrollView.swift"
   ],
   "sessions": [
     {
@@ -19,13 +21,19 @@
       "transcript": "/a2/0befd21ecd/1/full.jsonl",
       "content_hash": "/a2/0befd21ecd/1/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/a2/0befd21ecd/2/metadata.json",
+      "transcript": "/a2/0befd21ecd/2/full.jsonl",
+      "content_hash": "/a2/0befd21ecd/2/content_hash.txt",
+      "prompt": "/a2/0befd21ecd/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 111,
-    "cache_creation_tokens": 293766,
-    "cache_read_tokens": 7464566,
-    "output_tokens": 68006,
-    "api_call_count": 80
+    "input_tokens": 156,
+    "cache_creation_tokens": 371248,
+    "cache_read_tokens": 8936832,
+    "output_tokens": 81582,
+    "api_call_count": 111
   }
 }
