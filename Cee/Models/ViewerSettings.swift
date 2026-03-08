@@ -83,6 +83,10 @@ struct ViewerSettings: Codable {
     /// true = 點擊/輕拍換下一頁；Shift+點擊換上一頁
     var clickToTurnPage: Bool = false
 
+    // MARK: - Continuous Scroll Mode
+    /// true = 啟用連續捲動模式（webtoon-style vertical scrolling）
+    var continuousScrollEnabled: Bool = false
+
     // MARK: - Codable (backward-compatible decoding)
 
     init() {}
@@ -115,6 +119,7 @@ struct ViewerSettings: Codable {
         clickToTurnPage = (try? c.decode(Bool.self, forKey: .clickToTurnPage)) ?? d.clickToTurnPage
         quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
         reuseWindow = (try? c.decode(Bool.self, forKey: .reuseWindow)) ?? d.reuseWindow
+        continuousScrollEnabled = (try? c.decode(Bool.self, forKey: .continuousScrollEnabled)) ?? d.continuousScrollEnabled
     }
 
     // MARK: - Persistence

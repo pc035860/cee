@@ -209,6 +209,31 @@ actor ImageLoader {
         return CGSize(width: w, height: h)
     }
 
+    /// 讀取圖片尺寸（不解碼完整圖片）用於 continuous scroll 模式
+    /// - Parameter url: 圖片 URL
+    /// - Returns: 圖片尺寸，已處理 EXIF orientation 5-8 的交換
+    func getImageSize(for url: URL) async -> NSSize? {
+        // PDF: 返回 nil（由其他邏輯處理）
+        guard !Self.isPDFURL(url) else { return nil }
+
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else {
+            return nil
+        }
+
+        let w = (props[kCGImagePropertyPixelWidth as String] as? CGFloat) ?? 0
+        let h = (props[kCGImagePropertyPixelHeight as String] as? CGFloat) ?? 0
+        guard w > 0, h > 0 else { return nil }
+
+        // 處理 EXIF orientation 5-8（90/270 度旋轉)
+        // 這些 orientation 的 pixel dimensions 需要交換
+        let orientation = (props[kCGImagePropertyOrientation as String] as? Int) ?? 1
+        if orientation >= 5 && orientation <= 8 {
+            return NSSize(width: h, height: w)
+        }
+        return NSSize(width: w, height: h)
+    }
+
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖，同時讀取 full-res 尺寸
     /// 共用同一個 CGImageSource，避免二次開檔
     private static func decodeThumbnailWithDimensions(at url: URL, maxSize: CGFloat) -> (image: NSImage, fullSize: CGSize)? {

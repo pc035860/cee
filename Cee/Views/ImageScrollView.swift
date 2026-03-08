@@ -95,7 +95,8 @@ class ImageScrollView: NSScrollView {
     private let clickDistanceThreshold: CGFloat = 5  // pixels
     private let clickTimeThreshold: TimeInterval = 0.3  // seconds
 
-    // Phase 3: Option+scroll fast navigation
+    // Continuous scroll mode
+    var continuousScrollEnabled: Bool = false    // Phase 3: Option+scroll fast navigation
     private var optionScrollAccumulator = OptionScrollAccumulator()
     private var lastOptionScrollTime: CFAbsoluteTime = 0
 
