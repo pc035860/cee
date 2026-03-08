@@ -74,7 +74,9 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 ## Scroll & Page-Turn
 
 - **Trackpad vs mouse wheel** — Detect via `event.phase != [] || event.momentumPhase != []`. Thresholds: trackpad ~130pt, wheel ~20pt.
-- **Trackpad page-turn: edge-start + accumulate + once-per-gesture.** Momentum lock ~1s after turn.
+- **Trackpad page-turn: edge-start + accumulate + once-per-gesture.** Momentum lock 0.6s after turn. `suppressScrollSequenceAfterPageTurn` flag blocks the entire old scroll sequence until a fresh `phase=.began && momentumPhase=[]` gesture.
+- **NSScrollView fallback deceleration** — If momentum events are blocked without calling `super.scrollWheel`, NSScrollView detects disrupted momentum tracking and launches its own fallback deceleration animation after `momentumPhase=.ended`, directly manipulating clipView and bypassing `scrollWheel` override entirely. Fix: still call `super.scrollWheel` for momentum events; suppress visual movement by overriding `reflectScrolledClipView` to clamp position to top/bottom. Use `isEnforcingScrollPosition` guard to prevent recursion. **Critical**: do NOT add an `isInScrollWheelHandler` guard to `reflectScrolledClipView` — CoreAnimation-driven fallback updates happen outside `scrollWheel`, so the guard would let them bypass the clamp and cause half-page drift. Instead, rely on clearing `suppressScrollSequenceAfterPageTurn` on `momentumPhase=.ended` to re-enable arrow keys/programmatic scroll after momentum finishes.
+- **`isAtTop`/`isAtBottom` must use `yScrollBounds(contentInsets)`** — comparing directly against `docFrame.height` ignores `contentInsets` and causes premature page-turn trigger when status bar padding is non-zero. Always derive top/bottom thresholds via `yScrollBounds` for consistency with `reflectScrolledClipView` clamp logic.
 - **Keyboard nav** — Arrow left/right and up/down are separate toggles. 3 extra presses at edge for arrows; 1 for PageUp/PageDown/Space.
 
 ## GPU Rendering
@@ -123,16 +125,13 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Trackpad page-turn momentum fix:** NSScrollView fallback deceleration animation bypasses `scrollWheel` override. Solved by passing momentum to super + `reflectScrolledClipView` clamp. `suppressScrollSequenceAfterPageTurn` blocks old scroll sequence; `commitPageTurn(goingDown:)` unifies page-turn state. See "Scroll & Page-Turn" gotchas above.
+- **Click to turn page:** Single-click on left/right edge turns page (configurable in Navigation menu).
 - **Navigation menu:** New "Navigation" menu between View and Go. Reading mode (Dual Page, RTL) and nav settings (Arrow keys, Scroll to Bottom, page-turn sensitivity) moved there from View/Go menus.
 - **RTL nav + scroll settings:** `duoPageRTLNavigation` (default on) / `singlePageRTLNavigation` (default off) as independent settings; `effectiveRTLNavigation` picks based on current mode. `scrollToBottomOnPrevious` (default on) controls scroll position when navigating backward.
-- **Grid progressive tier reload:** Tier change no longer clears `gridThumbnails`; stale images stay visible until new tier finishes. `gridThumbnailSizes` tracks cached tier per index. Old images replaced in-place as new tier loads.
+- **Grid progressive tier reload:** Tier change no longer clears `gridThumbnails`; stale images stay visible until new tier finishes. `gridThumbnailSizes` tracks cached tier per index.
 - **Grid scrollbar:** Replaced overlay/autohide with legacy `VisibleScroller` subclass (always-visible, custom knob). `availableLayoutWidth` must use `contentView.bounds.width`.
-- **Grid Phase 3.4 + Phase 4.1:** Arithmetic visible range calculation; min cell size 160pt; Finder-style slider.
 - **Multi-instance window support:** `ImageWindowController` now manages a `windows: [ImageWindowController]` array instead of a `shared` singleton. `reuseWindow: Bool` setting in `ViewerSettings` toggles behavior. `current` property prefers `NSApp.keyWindow` → `NSApp.mainWindow` → `windows.last`. Multi-file open deduplicates by folder path to prevent race conditions. Window cleanup via `willCloseNotification`.
-- **Grid performance Phase 3.1-3.2:** Tier0 adaptive resolution + SubsampleFactor, priority dequeue throttle, cachedVisibleCenter, early cancellation guard, magic numbers extracted to Constants.
-- **Grid performance Phase 2:** Prefetch pipeline (scroll direction + keep-set cancel), MemoryPressureMonitor, generation ID stale-write guard, layer-backed cell optimization, NavigationThrottle reuse.
-- **Grid view fixes:** Highlight border clipping fix (inset frame + zPosition), visual redesign (blue tint for active, orange border for cursor), cell drag-drop passthrough, keyboard auto-scroll.
-- **Grid layout Phase 3-4:** Dynamic cell aspect ratio (EXIF-aware), smooth resize, space-around layout, thumbnail tiers with cache isolation.
+- **Grid performance (Phases 1-3.2):** ThumbnailThrottle (max 4 concurrent), scroll-direction prefetch, MemoryPressureMonitor, generationID stale-write guard, layer-backed cells, Tier0 adaptive resolution + SubsampleFactor, priority dequeue, cachedVisibleCenter.
 - **Option+scroll fast nav:** OptionScrollAccumulator, PositionHUDView, mouse sensitivity fix.
-- **Quick Grid:** Thumbnail grid overlay, async loading, keyboard handling, drag-drop support.
-- **Fast browse:** Thumbnail loader, navigation throttle, directional prefetch, Option+arrow jump 10.
+- **Quick Grid:** NSCollectionView overlay (G key), dynamic cell aspect ratio (EXIF-aware), space-around layout, thumbnail tiers, always-visible scrollbar, Finder-style slider.

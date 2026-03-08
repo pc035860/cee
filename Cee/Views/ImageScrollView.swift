@@ -63,11 +63,16 @@ class ImageScrollView: NSScrollView {
     private var gestureBeganAtTop = false
     private var gestureBeganAtBottom = false
     private var pageTurnedThisGesture = false
+    private var suppressScrollSequenceAfterPageTurn = false
+    // 換頁方向：true = 換到下一頁（強制停在 top），false = 換到上一頁（強制停在 bottom）
+    private var suppressScrollAtTop = true
+    // 防止 reflectScrolledClipView 強制位置時遞迴
+    private var isEnforcingScrollPosition = false
     private var overscrollAccumulator: CGFloat = 0
 
     // 切圖後鎖死動量：抑制 scroll 事件直到冷卻結束
     private var pageTurnLockUntil: TimeInterval = 0
-    private let pageTurnLockDuration: TimeInterval = 1.0
+    private let pageTurnLockDuration: TimeInterval = 0.6
 
     // 方向鍵邊緣翻頁防誤觸：到邊緣後需連續按 N 次同方向才翻頁
     private var edgePressCount: Int = 0
@@ -195,11 +200,11 @@ class ImageScrollView: NSScrollView {
         guard let docView = documentView else { return }
         let clipBounds = contentView.bounds
         let docFrame = docView.frame
-        // macOS 非翻轉座標系：原點左下角，Y 軸向上
-        // 視覺頂部 = 高 Y 值（maxY 靠近 docFrame.height）
-        // 視覺底部 = 低 Y 值（minY 靠近 0）
-        isAtTop = clipBounds.maxY >= docFrame.height - edgeThreshold
-        isAtBottom = clipBounds.minY <= edgeThreshold
+        // 使用 yScrollBounds 計算邊界，確保與 reflectScrolledClipView 的 clamp 邏輯一致
+        // （contentInsets 有 padding 時，直接比較 docFrame.height 會提早誤觸）
+        let yBounds = yScrollBounds(docHeight: docFrame.height, clipHeight: clipBounds.height, insets: contentInsets)
+        isAtTop = clipBounds.minY >= yBounds.max - edgeThreshold
+        isAtBottom = clipBounds.minY <= yBounds.min + edgeThreshold
         isAtLeft = clipBounds.minX <= edgeThreshold
         isAtRight = clipBounds.maxX >= docFrame.width - edgeThreshold
     }
@@ -220,22 +225,53 @@ class ImageScrollView: NSScrollView {
         }
 
         // 判斷是 trackpad（有 phase 生命週期）還是滑鼠滾輪（無 phase）
-        let isTrackpad = event.phase != [] || event.momentumPhase != []
+        let isMomentumEvent = event.momentumPhase != []
+        let isTrackpad = event.phase != [] || isMomentumEvent
+        let isFreshTrackpadGesture = isTrackpad && event.phase == .began && !isMomentumEvent
 
-        // 切圖後鎖死：新手勢可以解鎖，否則吃掉事件不讓新圖被滑動
-        if event.phase == .began {
-            pageTurnLockUntil = 0  // 新手勢立即解鎖
-        }
-        if CACurrentMediaTime() < pageTurnLockUntil {
-            return  // 鎖死期間，不呼叫 super，完全抑制動量
-        }
-
-        // Trackpad 手勢開始：記錄當下是否在邊緣
-        if event.phase == .began {
+        func beginTrackpadGesture() {
+            // 恢復 elastic scroll（換頁時暫時停用以清除 NSScrollView 內部 deceleration 狀態）
+            verticalScrollElasticity = .allowed
             gestureBeganAtTop = isAtTop
             gestureBeganAtBottom = isAtBottom
             pageTurnedThisGesture = false
             overscrollAccumulator = 0
+        }
+
+        // AppKit 會把 momentum scroll 持續送回 momentum 開始時命中的同一個 NSScrollView；
+        // 即使游標已移出視窗，舊 momentum 的 phase 仍然是 []，只有 momentumPhase 在變化。
+        // 因此頁切後不能只靠 pageTurnedThisGesture 來擋，必須抑制整個舊 scroll sequence，
+        // 直到看到「真正的新 direct gesture」：phase == .began 且 momentumPhase == []。
+        if isFreshTrackpadGesture {
+            let wasSuppressed = suppressScrollSequenceAfterPageTurn
+            let hadPageTurnLastGesture = pageTurnedThisGesture
+            if wasSuppressed {
+                suppressScrollSequenceAfterPageTurn = false
+            }
+            beginTrackpadGesture()
+            // 若 suppress 仍活躍（momentum 尚未自然結束就來了新手勢），wasSuppressed=true → 立即解鎖：
+            //   新的 .began 確認舊 momentum 已被實體手指打斷，安全放行。
+            // 若 suppress 已被 .ended 提前清除（momentum 自然結束後才開始新手勢），
+            //   此時 hadPageTurnLastGesture=true → 不解鎖，讓鎖自然到期：
+            //   避免換頁後動量結束、使用者隨即開始新手勢，直接滑過新圖。
+            if wasSuppressed || !hadPageTurnLastGesture {
+                pageTurnLockUntil = 0
+            }
+        } else if suppressScrollSequenceAfterPageTurn {
+            // 仍傳給 super，讓 NSScrollView 正確追蹤 momentum 生命週期；
+            // 若不傳，NSScrollView 會在 momentumPhase=.ended 後自行啟動
+            // fallback deceleration animation（直接操作 clipView，繞過 scrollWheel）。
+            // 實際位置由 reflectScrolledClipView override 強制 clamp，不產生視覺位移。
+            super.scrollWheel(with: event)
+            // 動量序列自然結束時清除抑制，讓後續方向鍵/程式化捲動正常工作
+            if event.momentumPhase == .ended || event.momentumPhase == .cancelled || !isTrackpad {
+                suppressScrollSequenceAfterPageTurn = false
+            }
+            return
+        }
+
+        if CACurrentMediaTime() < pageTurnLockUntil {
+            return  // 鎖死期間，不呼叫 super，完全抑制動量
         }
 
         let wasAtBottom = isAtBottom
@@ -259,16 +295,12 @@ class ImageScrollView: NSScrollView {
             if gestureBeganAtBottom && wasAtBottom && intentDown {
                 overscrollAccumulator += abs(delta)
                 if overscrollAccumulator >= trackpadOverscrollThreshold {
-                    pageTurnedThisGesture = true
-                    pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
-                    scrollDelegate?.scrollViewDidReachBottom(self)
+                    commitPageTurn(goingDown: true)
                 }
             } else if gestureBeganAtTop && wasAtTop && intentUp {
                 overscrollAccumulator += abs(delta)
                 if overscrollAccumulator >= trackpadOverscrollThreshold {
-                    pageTurnedThisGesture = true
-                    pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
-                    scrollDelegate?.scrollViewDidReachTop(self)
+                    commitPageTurn(goingDown: false)
                 }
             } else {
                 overscrollAccumulator = 0
@@ -1028,6 +1060,46 @@ class ImageScrollView: NSScrollView {
     }
 
     // MARK: - Scroll Helpers
+
+    /// 換頁觸發點：設定所有頁切狀態，丟棄殘留 scroll 事件，通知 delegate。
+    /// - Parameter goingDown: true = 換到下一頁（新圖從 top），false = 換到上一頁（新圖從 bottom）
+    private func commitPageTurn(goingDown: Bool) {
+        pageTurnedThisGesture = true
+        overscrollAccumulator = 0
+        suppressScrollAtTop = goingDown
+        suppressScrollSequenceAfterPageTurn = true
+        pageTurnLockUntil = CACurrentMediaTime() + pageTurnLockDuration
+        NSApp.discardEvents(matching: .scrollWheel, before: nil)
+        if goingDown {
+            scrollDelegate?.scrollViewDidReachBottom(self)
+        } else {
+            scrollDelegate?.scrollViewDidReachTop(self)
+        }
+    }
+
+    // 換頁後的位置強制：momentum 事件仍傳給 super（防止 NSScrollView fallback animation），
+    // 但在 reflectScrolledClipView 強制 clamp 位置到 top/bottom，阻止實際視覺位移。
+    override func reflectScrolledClipView(_ cView: NSClipView) {
+        super.reflectScrolledClipView(cView)
+
+        guard suppressScrollSequenceAfterPageTurn,
+              !isEnforcingScrollPosition,
+              let docView = documentView else { return }
+
+        let yBounds = yScrollBounds(
+            docHeight: docView.frame.height,
+            clipHeight: cView.bounds.height,
+            insets: contentInsets
+        )
+        let targetY = suppressScrollAtTop ? yBounds.max : yBounds.min
+        let currentY = cView.bounds.origin.y
+
+        if abs(currentY - targetY) > Constants.scrollPositionClampTolerance {
+            isEnforcingScrollPosition = true
+            cView.setBoundsOrigin(NSPoint(x: cView.bounds.origin.x, y: targetY))
+            isEnforcingScrollPosition = false
+        }
+    }
 
     /// 切換圖片後回到頂部（macOS 座標系：maxY = 頂部）
     /// 使用 contentInsets 計算正確的最大 Y 位置，避免黑邊
