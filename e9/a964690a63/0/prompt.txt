@@ -1,1 +1,5 @@
 /auto-impl @specs/brainstorm/brainstorm-continuous-scroll.md, phase1-2
+
+---
+
+為什麼有時間限制？  你為什麼要停下來？
