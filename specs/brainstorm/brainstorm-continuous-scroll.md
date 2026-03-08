@@ -1,5 +1,15 @@
 # Brainstorm: 條漫風格連續捲動模式 (Continuous Scroll / Webtoon Mode)
 
+## 實作狀態
+
+| Phase | 狀態 | 說明 |
+|-------|------|------|
+| Phase 1 | ✅ 完成 | 基礎可用版：`ContinuousScrollContentView`、圖片尺寸預載、fit-to-width 佈局、index 追蹤、menu toggle |
+| Phase 2 | ✅ 完成 | 動態視窗 Resize：`CADisplayLink` 動畫、中心點保持、全螢幕處理 |
+| Phase 3 | 📋 待辦 | 優化完善：捲動方向感知預取、記憶體監控、大圖 subsample |
+
+---
+
 ## 概述
 
 新增類似韓國條漫的連續垂直捲動瀏覽模式。圖片垂直堆疊，使用者可無限往下滑，新圖片自動載入。
