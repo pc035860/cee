@@ -230,8 +230,6 @@ class ImageScrollView: NSScrollView {
         let isFreshTrackpadGesture = isTrackpad && event.phase == .began && !isMomentumEvent
 
         func beginTrackpadGesture() {
-            // 恢復 elastic scroll（換頁時暫時停用以清除 NSScrollView 內部 deceleration 狀態）
-            verticalScrollElasticity = .allowed
             gestureBeganAtTop = isAtTop
             gestureBeganAtBottom = isAtBottom
             pageTurnedThisGesture = false
@@ -289,6 +287,11 @@ class ImageScrollView: NSScrollView {
         let intentUp   = isNatural ? (delta > 0) : (delta < 0)
 
         if isTrackpad {
+            // Trackpad momentum 事件不參與換頁累積：
+            // momentum 的大量 delta 會讓所有靈敏度等級體感相同，
+            // 且不能掉進 else 的滑鼠滾輪分支（無 gestureBeganAtEdge 保護）。
+            if isMomentumEvent { return }
+
             // Trackpad：必須從邊緣開始的手勢，累積門檻，每手勢最多切一張
             if pageTurnedThisGesture { return }
 

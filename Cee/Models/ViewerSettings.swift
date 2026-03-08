@@ -30,9 +30,9 @@ struct ViewerSettings: Codable {
 
         var trackpadThreshold: CGFloat {
             switch self {
-            case .low:    return 200
-            case .medium: return 130
-            case .high:   return 60
+            case .low:    return 250
+            case .medium: return 160
+            case .high:   return 80
             }
         }
 
