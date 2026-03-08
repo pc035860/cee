@@ -16,10 +16,11 @@ Open an image and Cee automatically scans the folder for all supported images, l
 
 ### Image Browsing
 - Open images via Finder right-click "Open With", auto-loads all images in the same folder
+- Choose to open images in the same window or a new window (Window menu > Reuse Window)
 - Supported formats: JPEG, PNG, TIFF, HEIC/HEIF, GIF, WebP, BMP, PDF
 - Keyboard shortcuts for navigation (Cmd+]/[ to switch images)
 - Left/Right arrow keys pan zoomed images; at the edge, press 3 more times to turn the page (with coral gradient progress indicator)
-- Up/Down arrow keys scroll vertically (no page turn by default; configurable in View menu)
+- Up/Down arrow keys scroll vertically (no page turn by default; configurable in Navigation menu)
 - PageUp/PageDown/Space for page-by-page scrolling, auto-turns at top/bottom
 - Option+Arrow keys jump 10 images at once (single-page mode)
 - Drag-and-drop images or folders to open (supports browse view, grid view, and empty state)
@@ -43,7 +44,7 @@ Open an image and Cee automatically scans the folder for all supported images, l
 
 ### Dual Page View
 - Side-by-side two-page display with height normalization
-- RTL (right-to-left) reading direction support
+- RTL (right-to-left) reading direction support; separate RTL navigation toggle for dual-page and single-page modes (Navigation menu)
 - Spread-aware navigation
 
 ### Fast Browse
@@ -60,6 +61,7 @@ Open an image and Cee automatically scans the folder for all supported images, l
 - Mouse drag to pan (cursor changes to hand icon)
 - Three-finger trackpad drag to pan
 - Trackpad edge-start swipe for page turn
+- Click to turn page: left-click turns to next image, Shift+click turns to previous (optional, enable in Navigation menu)
 - Cmd+Scroll for zoom at viewport center
 
 ---
@@ -151,7 +153,7 @@ Cee automatically scans the folder for all supported image formats.
 | Close window | Cmd+W |
 | Quit | Cmd+Q |
 
-> **Arrow key behavior:** Left/Right arrows pan the image when zoomed; at the edge, press 3 more times to turn the page (a coral gradient indicator shows progress). Up/Down arrows scroll only and do not trigger page turns by default. When the image fits within the window, Left/Right arrows switch images directly.
+> **Arrow key behavior:** Left/Right arrows pan the image when zoomed; at the edge, press 3 more times to turn the page (a coral gradient indicator shows progress). Up/Down arrows scroll only and do not trigger page turns by default (configurable in Navigation menu). When the image fits within the window, Left/Right arrows switch images directly.
 
 > **PageDown / Space behavior:** Scrolls the image by one page; press once more at the bottom to go to the next image. Same for PageUp.
 
