@@ -12,6 +12,9 @@ class ContinuousScrollContentView: NSView {
     /// 預載的圖片尺寸
     private var imageSizes: [NSSize] = []
 
+    /// 縮放後的高度（cache 避免重複計算）
+    private var scaledHeights: [CGFloat] = []
+
     /// 每張圖片的 Y 座標起始點（從底部開始累積）
     private var yOffsets: [CGFloat] = []
 
@@ -83,18 +86,20 @@ class ContinuousScrollContentView: NSView {
     /// 重新計算佈局（使用標準座標系統：y=0 在底部）
     private func recalculateLayout() {
         guard !imageSizes.isEmpty else {
+            scaledHeights = []
+            yOffsets = []
             frame = NSRect(x: 0, y: 0, width: containerWidth, height: 0)
             return
         }
 
-        // 計算 fit-to-width 後的高度
-        let heights = imageSizes.map { scaledHeightForSize($0) }
-        let totalHeight = heights.reduce(0, +) + CGFloat(max(0, heights.count - 1)) * imageSpacing
+        // Cache 縮放後的高度，避免重複計算
+        scaledHeights = imageSizes.map { scaledHeightForSize($0) }
+        let totalHeight = scaledHeights.reduce(0, +) + CGFloat(max(0, scaledHeights.count - 1)) * imageSpacing
 
         // 從頂端開始往下排列 (unflipped: 大 y 在上，小 y 在下)
         var offsets: [CGFloat] = []
         var currentY = totalHeight
-        for h in heights {
+        for h in scaledHeights {
             let bottomY = currentY - h
             offsets.append(bottomY)
             currentY = bottomY - imageSpacing
@@ -130,10 +135,9 @@ class ContinuousScrollContentView: NSView {
 
     /// 通知圖片變更
     private func notifyImageChanged(index: Int) {
-        guard imageSizes.indices.contains(index) else { return }
+        guard scaledHeights.indices.contains(index) else { return }
 
-        let imageSize = imageSizes[index]
-        let scaledHeight = scaledHeightForSize(imageSize)
+        let scaledHeight = scaledHeights[index]
         let scaledSize = NSSize(width: containerWidth, height: scaledHeight)
 
         onCurrentImageChanged?(index, scaledSize)
@@ -144,12 +148,12 @@ class ContinuousScrollContentView: NSView {
     /// 計算指定索引圖片的 frame（fit-to-width）
     /// 使用標準座標系統：y=0 在底部
     func frameForImage(at index: Int) -> NSRect {
-        guard imageSizes.indices.contains(index),
+        guard scaledHeights.indices.contains(index),
               yOffsets.indices.contains(index) else {
             return .zero
         }
 
-        let scaledHeight = scaledHeightForSize(imageSizes[index])
+        let scaledHeight = scaledHeights[index]
         let yOffset = yOffsets[index]
 
         // 標準座標系統：直接使用累積的 yOffset
@@ -163,20 +167,29 @@ class ContinuousScrollContentView: NSView {
 
     /// 計算當前中心點對應的圖片索引
     /// scrollY 是標準座標系統中的 Y 座標（y=0 在底部）
+    /// 使用 binary search 達到 O(log n) 效率
     func calculateCurrentIndex(for scrollY: CGFloat) -> Int {
-        guard !imageSizes.isEmpty else { return 0 }
+        guard !scaledHeights.isEmpty, !yOffsets.isEmpty else { return 0 }
 
-        for i in 0..<imageSizes.count {
-            let scaledHeight = scaledHeightForSize(imageSizes[i])
-            let yOffset = yOffsets[i]
+        var low = 0
+        var high = scaledHeights.count - 1
 
-            if scrollY >= yOffset && scrollY < yOffset + scaledHeight {
-                return i
+        while low <= high {
+            let mid = (low + high) / 2
+            let yOffset = yOffsets[mid]
+            let height = scaledHeights[mid]
+
+            if scrollY < yOffset {
+                low = mid + 1
+            } else if scrollY >= yOffset + height {
+                high = mid - 1
+            } else {
+                return mid
             }
         }
 
-        // 超出範圍時返回最後一張
-        return imageSizes.count - 1
+        // 超出範圍時返回邊界值
+        return max(0, min(scaledHeights.count - 1, high))
     }
 
     // MARK: - Drawing
@@ -192,7 +205,7 @@ class ContinuousScrollContentView: NSView {
 
         // TODO: Phase 2+ - 繪製可見範圍內的圖片
         // 目前先繪製佔位色塊
-        for i in 0..<imageSizes.count {
+        for i in 0..<scaledHeights.count {
             let imageFrame = frameForImage(at: i)
             guard dirtyRect.intersects(imageFrame) else { continue }
 
