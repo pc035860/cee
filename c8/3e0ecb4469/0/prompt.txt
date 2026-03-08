@@ -1,0 +1,50 @@
+hi
+
+---
+
+/simplify staged changes
+
+---
+
+/review-loop gemini
+
+---
+
+/review-loop gemini, review uncommited changes
+
+---
+
+你覺得應該修嗎
+
+---
+
+修正吧
+
+---
+
+現在 trackpad 換頁的動量鎖幾乎沒有了？
+我很容易一換頁就滑到下一頁的底部
+
+---
+
+換頁之後還是會滑個半頁才停
+
+---
+
+好像 OK
+
+---
+
+我想確認一下，現在 Trackpad 換頁的靈敏度機制是什麼？
+
+因為我感覺我們改完之後，現在 Trackpad 換頁的靈敏度非常高，而且不管我怎麼設定好像都差不多。
+
+---
+
+我現在用 low 設定
+圖片比視窗大
+
+---
+
+好像沒什麼差欸
+你幫我把靈敏度的 theshold 整體都上調看看
