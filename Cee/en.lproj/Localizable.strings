@@ -46,6 +46,7 @@
 "menu.navigation.arrowUD" = "Navigate with Up/Down Arrows";
 "menu.navigation.scrollToBottom" = "Scroll to Bottom on Previous";
 "menu.navigation.clickToTurn" = "Click to Turn Page";
+"menu.navigation.continuousScroll" = "Continuous Scroll";
 "menu.navigation.trackpadSensitivity" = "Trackpad Page-Turn Sensitivity";
 "menu.navigation.wheelSensitivity" = "Wheel Page-Turn Sensitivity";
 "menu.navigation.sensitivityLow" = "Low";

@@ -6,6 +6,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private let loader = ImageLoader()
     private var scrollView: ImageScrollView!
     private var dualPageView: DualPageContentView!
+    private var continuousScrollContentView: ContinuousScrollContentView?
     /// Convenience: always the leading page (replaces old stored contentView)
     private var contentView: ImageContentView { dualPageView.leadingPage }
     private var statusBarView: StatusBarView!
@@ -1163,6 +1164,25 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.clickToTurnPage.toggle()
         settings.save()
         scrollView.clickToTurnPage = settings.clickToTurnPage
+    }
+
+    @objc func toggleContinuousScroll(_ sender: Any? = nil) {
+        settings.continuousScrollEnabled.toggle()
+        settings.save()
+        scrollView.continuousScrollEnabled = settings.continuousScrollEnabled
+
+        // 切換模式：更新 documentView
+        if settings.continuousScrollEnabled {
+            // TODO: Phase 2 - 實作 ContinuousScrollContentView
+            // continuousScrollContentView = ContinuousScrollContentView()
+            // scrollView.documentView = continuousScrollContentView
+            // configureContinuousScrollView()
+        } else {
+            // 切換回單頁/雙頁模式
+            scrollView.documentView = dualPageView
+            continuousScrollContentView = nil
+            loadCurrentImage(initialScroll: .top)
+        }
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {

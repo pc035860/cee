@@ -46,6 +46,7 @@
 "menu.navigation.arrowUD" = "以上下方向鍵翻頁";
 "menu.navigation.scrollToBottom" = "切換至上一張時捲至底部";
 "menu.navigation.clickToTurn" = "點擊翻頁";
+"menu.navigation.continuousScroll" = "連續捲動";
 "menu.navigation.trackpadSensitivity" = "觸控板翻頁靈敏度";
 "menu.navigation.wheelSensitivity" = "滾輪翻頁靈敏度";
 "menu.navigation.sensitivityLow" = "低";

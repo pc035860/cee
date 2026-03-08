@@ -14,14 +14,14 @@ final class ContinuousScrollContentViewTests: XCTestCase {
 
     // MARK: - Fit-to-width Layout
 
-    func testFrameForImage_fitToWidth() {
+    func testFrameForImage_fitToWidth() throws {
         // Given: container width = 500, image size = 1000x2000
         // When: calculate frameForImage(at: 0)
         // Then: frame.width == 500, frame.height == 1000 (scale = 0.5)
         throw XCTSkip("ContinuousScrollContentView not yet implemented")
     }
 
-    func testFrameForImage_tallImage_maintainsAspectRatio() {
+    func testFrameForImage_tallImage_maintainsAspectRatio() throws {
         // Given: container width = 400, image size = 400x1600 (4:1 ratio)
         // When: calculate frameForImage(at: 1)
         // Then: frame.width == 400, frame.height == 1600
@@ -30,21 +30,21 @@ final class ContinuousScrollContentViewTests: XCTestCase {
 
     // MARK: - Index Tracking
 
-    func testCalculateCurrentIndex_middleOfSecondImage() {
+    func testCalculateCurrentIndex_middleOfSecondImage() throws {
         // Given: 3 images with heights [100, 200, 150]
         // When: scrollY = 150 (middle of image 2)
         // Then: currentIndex == 1 (0-indexed)
         throw XCTSkip("ContinuousScrollContentView not yet implemented")
     }
 
-    func testCalculateCurrentIndex_atTop_returnsFirstImage() {
+    func testCalculateCurrentIndex_atTop_returnsFirstImage() throws {
         // Given: 3 images with heights [100, 200, 150]
         // When: scrollY = 0 (at top)
         // Then: currentIndex == 0
         throw XCTSkip("ContinuousScrollContentView not yet implemented")
     }
 
-    func testCalculateCurrentIndex_atBottom_returnsLastImage() {
+    func testCalculateCurrentIndex_atBottom_returnsLastImage() throws {
         // Given: 3 images with heights [100, 200, 150]
         // When: scrollY = 400 (past last image start)
         // Then: currentIndex == 2
@@ -53,14 +53,14 @@ final class ContinuousScrollContentViewTests: XCTestCase {
 
     // MARK: - View Recycling
 
-    func testUpdateVisibleSlots_recyclesOffscreenSlots() {
+    func testUpdateVisibleSlots_recyclesOffscreenSlots() throws {
         // Given: configured view with visible range [2, 3, 4]
         // When: scroll to make range [3, 4, 5]
         // Then: slot 2 is recycled, slot 5 is created
         throw XCTSkip("ContinuousScrollContentView not yet implemented")
     }
 
-    func testUpdateVisibleSlots_reusesSlotsFromPool() {
+    func testUpdateVisibleSlots_reusesSlotsFromPool() throws {
         // Given: recycled slot in pool
         // When: new slot needed
         // Then: slot is dequeued from pool instead of created

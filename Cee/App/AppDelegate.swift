@@ -158,6 +158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         navigationMenu.addItem(makeItem(String(localized: "menu.navigation.arrowUD"),         action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
         navigationMenu.addItem(makeItem(String(localized: "menu.navigation.scrollToBottom"),  action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
         navigationMenu.addItem(makeItem(String(localized: "menu.navigation.clickToTurn"),     action: #selector(ImageViewController.toggleClickToTurnPage(_:)),           key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.continuousScroll"), action: #selector(ImageViewController.toggleContinuousScroll(_:)), key: ""))
 
         // Trackpad Page-Turn Sensitivity submenu
         let trackpadMenuItem = NSMenuItem(title: String(localized: "menu.navigation.trackpadSensitivity"), action: nil, keyEquivalent: "")
