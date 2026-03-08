@@ -79,4 +79,21 @@ final class ViewerSettingsTests: XCTestCase {
 
         XCTAssertEqual(decoded.quickGridCellSize, 150)
     }
+
+    // MARK: - Continuous Scroll Mode
+
+    func testDefaultContinuousScrollEnabled_isFalse() {
+        let settings = ViewerSettings()
+        XCTAssertFalse(settings.continuousScrollEnabled)
+    }
+
+    func testCodableRoundTrip_continuousScrollEnabled() throws {
+        var settings = ViewerSettings()
+        settings.continuousScrollEnabled = true
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(ViewerSettings.self, from: data)
+
+        XCTAssertTrue(decoded.continuousScrollEnabled)
+    }
 }

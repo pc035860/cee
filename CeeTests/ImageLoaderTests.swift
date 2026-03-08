@@ -160,4 +160,5 @@ final class ImageLoaderTests: XCTestCase {
         XCTAssertNotNil(second, "Different priority should still hit same cache key")
         #endif
     }
+
 }
