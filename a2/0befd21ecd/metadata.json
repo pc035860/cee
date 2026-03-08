@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "a20befd21ecd",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cee/Models/ViewerSettings.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a2/0befd21ecd/0/metadata.json",
+      "transcript": "/a2/0befd21ecd/0/full.jsonl",
+      "content_hash": "/a2/0befd21ecd/0/content_hash.txt",
+      "prompt": "/a2/0befd21ecd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 111,
+    "cache_creation_tokens": 293766,
+    "cache_read_tokens": 7464566,
+    "output_tokens": 68006,
+    "api_call_count": 80
+  }
+}
