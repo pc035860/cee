@@ -318,7 +318,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         guard !folder.images.isEmpty else {
             contentView.image = nil
             contentView.loadingState = .error
-            showErrorPlaceholder(true, message: "No supported images in this folder")
+            showErrorPlaceholder(true, message: String(localized: "error.noSupportedImages"))
             updateStatusBar()  // Clear stale status from previous folder
             (view.window?.windowController as? ImageWindowController)?
                 .updateTitle(folder: folder)
@@ -924,7 +924,17 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func fitOnScreen(_ sender: Any? = nil) {
         settings.isManualZoom = false
         if let imageSize = currentDocumentSize {
-            applyFitting(for: imageSize)
+            let viewport = effectiveScrollViewport
+            if viewport.width > 0, viewport.height > 0 {
+                let fitted = FittingCalculator.calculate(
+                    imageSize: imageSize,
+                    viewportSize: viewport,
+                    options: settings.fittingOptions
+                )
+                setMagnificationCentered(fitted.width / imageSize.width)
+                updateScalingQuality()
+                applyCenteringInsetsIfNeeded(reason: "fitOnScreen")
+            }
         }
         settings.save()
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
@@ -1369,7 +1379,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
         case #selector(toggleStatusBar(_:)):
-            menuItem.title = settings.showStatusBar ? "Hide Status Bar" : "Show Status Bar"
+            menuItem.title = settings.showStatusBar
+                ? String(localized: "menu.view.hideStatusBar")
+                : String(localized: "menu.view.showStatusBar")
             return true
         case #selector(toggleQuickGrid(_:)):
             menuItem.state = quickGridView != nil ? .on : .off
@@ -1383,7 +1395,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(toggleReadingDirection(_:)):
             let isRTL = settings.readingDirection.isRTL
             menuItem.state = isRTL ? .on : .off
-            menuItem.title = isRTL ? "Reading: Right to Left" : "Reading: Left to Right"
+            menuItem.title = isRTL
+                ? String(localized: "menu.navigation.readingRTL")
+                : String(localized: "menu.navigation.readingLTR")
             return settings.dualPageEnabled
         case #selector(toggleDuoPageRTLNavigation(_:)):
             menuItem.state = settings.duoPageRTLNavigation ? .on : .off
@@ -1399,13 +1413,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return true
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
-            menuItem.title = isFullscreen ? "Exit Full Screen" : "Enter Full Screen"
+            menuItem.title = isFullscreen
+                ? String(localized: "menu.view.exitFullScreen")
+                : String(localized: "menu.view.enterFullScreen")
             return true
         case #selector(goToNextImage):
-            menuItem.title = settings.dualPageEnabled ? "Next Spread" : "Next Image"
+            menuItem.title = settings.dualPageEnabled
+                ? String(localized: "menu.go.nextSpread")
+                : String(localized: "menu.go.nextImage")
             return folder != nil
         case #selector(goToPreviousImage):
-            menuItem.title = settings.dualPageEnabled ? "Previous Spread" : "Previous Image"
+            menuItem.title = settings.dualPageEnabled
+                ? String(localized: "menu.go.previousSpread")
+                : String(localized: "menu.go.previousImage")
             return folder != nil
         case #selector(copyImage(_:)), #selector(revealInFinder(_:)):
             return folder?.currentImage != nil
@@ -1795,23 +1815,24 @@ extension ImageViewController: ImageScrollViewDelegate {
         let menu = NSMenu(title: "Context")
 
         // Group 1: Zoom
-        menu.addItem(makeContextItem("Fit on Screen", action: #selector(fitOnScreen(_:))))
-        menu.addItem(makeContextItem("Actual Size", action: #selector(actualSize(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.view.fitOnScreen"), action: #selector(fitOnScreen(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.view.actualSize"), action: #selector(actualSize(_:))))
 
         menu.addItem(NSMenuItem.separator())
 
         // Group 2: Display Mode
-        menu.addItem(makeContextItem("Always Fit on Open", action: #selector(toggleAlwaysFit(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.view.alwaysFit"), action: #selector(toggleAlwaysFit(_:))))
         menu.addItem(makeFittingOptionsSubmenu())
         menu.addItem(makeDualPageSubmenu())
-        menu.addItem(makeContextItem("Float on Top", action: #selector(toggleFloatOnTop(_:))))
-        menu.addItem(makeContextItem("Quick Grid", action: #selector(toggleQuickGrid(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.navigation.rtlSingle"),     action: #selector(toggleSinglePageRTLNavigation(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.view.floatOnTop"), action: #selector(toggleFloatOnTop(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.navigation.quickGrid"), action: #selector(toggleQuickGrid(_:))))
 
         menu.addItem(NSMenuItem.separator())
 
         // Group 3: File Actions
-        menu.addItem(makeContextItem("Copy Image", action: #selector(copyImage(_:))))
-        menu.addItem(makeContextItem("Reveal in Finder", action: #selector(revealInFinder(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.file.copyImage"), action: #selector(copyImage(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.file.revealInFinder"), action: #selector(revealInFinder(_:))))
 
         return menu
     }
@@ -1823,26 +1844,27 @@ extension ImageViewController: ImageScrollViewDelegate {
     }
 
     private func makeFittingOptionsSubmenu() -> NSMenuItem {
-        let submenu = NSMenu(title: "Fitting Options")
-        submenu.addItem(makeContextItem("Shrink to Fit Horizontally", action: #selector(toggleShrinkH(_:))))
-        submenu.addItem(makeContextItem("Shrink to Fit Vertically", action: #selector(toggleShrinkV(_:))))
-        submenu.addItem(makeContextItem("Stretch to Fit Horizontally", action: #selector(toggleStretchH(_:))))
-        submenu.addItem(makeContextItem("Stretch to Fit Vertically", action: #selector(toggleStretchV(_:))))
+        let submenu = NSMenu(title: String(localized: "menu.view.fittingOptions"))
+        submenu.addItem(makeContextItem(String(localized: "menu.view.shrinkH"),  action: #selector(toggleShrinkH(_:))))
+        submenu.addItem(makeContextItem(String(localized: "menu.view.shrinkV"),  action: #selector(toggleShrinkV(_:))))
+        submenu.addItem(makeContextItem(String(localized: "menu.view.stretchH"), action: #selector(toggleStretchH(_:))))
+        submenu.addItem(makeContextItem(String(localized: "menu.view.stretchV"), action: #selector(toggleStretchV(_:))))
 
-        let item = NSMenuItem(title: "Fitting Options", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: String(localized: "menu.view.fittingOptions"), action: nil, keyEquivalent: "")
         item.submenu = submenu
         return item
     }
 
     private func makeDualPageSubmenu() -> NSMenuItem {
-        let submenu = NSMenu(title: "Dual Page")
-        submenu.addItem(makeContextItem("Dual Page", action: #selector(toggleDualPage(_:))))
+        let submenu = NSMenu(title: String(localized: "menu.navigation.dualPage"))
+        submenu.addItem(makeContextItem(String(localized: "menu.navigation.dualPage"),      action: #selector(toggleDualPage(_:))))
         submenu.addItem(NSMenuItem.separator())
-        submenu.addItem(makeContextItem("First Page as Cover", action: #selector(togglePageOffset(_:))))
+        submenu.addItem(makeContextItem(String(localized: "menu.navigation.firstPageCover"), action: #selector(togglePageOffset(_:))))
         // Initial label matches AppDelegate; validateMenuItem dynamically updates it
-        submenu.addItem(makeContextItem("Reading: Left to Right", action: #selector(toggleReadingDirection(_:))))
+        submenu.addItem(makeContextItem(String(localized: "menu.navigation.readingLTR"),    action: #selector(toggleReadingDirection(_:))))
+        submenu.addItem(makeContextItem(String(localized: "menu.navigation.rtlDual"),       action: #selector(toggleDuoPageRTLNavigation(_:))))
 
-        let item = NSMenuItem(title: "Dual Page", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: String(localized: "menu.navigation.dualPage"), action: nil, keyEquivalent: "")
         item.submenu = submenu
         return item
     }

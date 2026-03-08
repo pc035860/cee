@@ -8,6 +8,7 @@ settings:
     SWIFT_VERSION: "6"
     ARCHS: arm64
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_LANGUAGE: en
 targets:
   Cee:
     type: application

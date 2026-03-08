@@ -285,6 +285,6 @@ class ImageWindowController: NSWindowController {
         } else {
             window?.title = item.url.lastPathComponent
         }
-        window?.subtitle = item.pdfPageIndex.map { "Page \($0 + 1)" } ?? ""
+        window?.subtitle = item.pdfPageIndex.map { String(localized: "window.pdfPage \($0 + 1)") } ?? ""
     }
 }

@@ -1,0 +1,85 @@
+/* App Menu */
+"menu.app.about" = "About Cee";
+"menu.app.quit" = "Quit Cee";
+
+/* File Menu */
+"menu.file.title" = "File";
+"menu.file.open" = "Open\u2026";
+"menu.file.copyImage" = "Copy Image";
+"menu.file.revealInFinder" = "Reveal in Finder";
+"menu.file.closeWindow" = "Close Window";
+
+/* View Menu */
+"menu.view.title" = "View";
+"menu.view.fitOnScreen" = "Fit to Window";
+"menu.view.actualSize" = "Actual Size";
+"menu.view.zoomIn" = "Zoom In";
+"menu.view.zoomOut" = "Zoom Out";
+"menu.view.alwaysFit" = "Always Fit Opened Images";
+"menu.view.fittingOptions" = "Fitting Options";
+"menu.view.shrinkH" = "Shrink to Fit Horizontally";
+"menu.view.shrinkV" = "Shrink to Fit Vertically";
+"menu.view.stretchH" = "Stretch to Fit Horizontally";
+"menu.view.stretchV" = "Stretch to Fit Vertically";
+"menu.view.scalingQuality" = "Scaling Quality";
+"menu.view.scalingLow" = "Low";
+"menu.view.scalingMedium" = "Medium";
+"menu.view.scalingHigh" = "High";
+"menu.view.showPixels" = "Show Pixels When Zooming In";
+"menu.view.lowResPreview" = "Use Low-Res Preview While Browsing";
+"menu.view.resizeAuto" = "Resize Window Automatically";
+"menu.view.enterFullScreen" = "Enter Full Screen";
+"menu.view.exitFullScreen" = "Exit Full Screen";
+"menu.view.floatOnTop" = "Float on Top";
+"menu.view.showStatusBar" = "Show Status Bar";
+"menu.view.hideStatusBar" = "Hide Status Bar";
+
+/* Navigation Menu */
+"menu.navigation.title" = "Navigation";
+"menu.navigation.dualPage" = "Dual Page";
+"menu.navigation.firstPageCover" = "First Page as Cover";
+"menu.navigation.readingLTR" = "Reading: Left to Right";
+"menu.navigation.readingRTL" = "Reading: Right to Left";
+"menu.navigation.rtlDual" = "Right-to-Left Navigation (Dual Page)";
+"menu.navigation.rtlSingle" = "Right-to-Left Navigation (Single Page)";
+"menu.navigation.arrowLR" = "Navigate with Left/Right Arrows";
+"menu.navigation.arrowUD" = "Navigate with Up/Down Arrows";
+"menu.navigation.scrollToBottom" = "Scroll to Bottom on Previous";
+"menu.navigation.clickToTurn" = "Click to Turn Page";
+"menu.navigation.trackpadSensitivity" = "Trackpad Page-Turn Sensitivity";
+"menu.navigation.wheelSensitivity" = "Wheel Page-Turn Sensitivity";
+"menu.navigation.sensitivityLow" = "Low";
+"menu.navigation.sensitivityMedium" = "Medium";
+"menu.navigation.sensitivityHigh" = "High";
+"menu.navigation.quickGrid" = "Quick Grid";
+"menu.navigation.scrollAfterZoom" = "Scroll to Cursor After Zoom";
+
+/* Go Menu */
+"menu.go.title" = "Go";
+"menu.go.nextImage" = "Next Image";
+"menu.go.nextSpread" = "Next Spread";
+"menu.go.previousImage" = "Previous Image";
+"menu.go.previousSpread" = "Previous Spread";
+"menu.go.firstImage" = "First Image";
+"menu.go.lastImage" = "Last Image";
+
+/* Window Menu */
+"menu.window.title" = "Window";
+"menu.window.minimize" = "Minimize";
+"menu.window.zoom" = "Zoom";
+"menu.window.reuseWindow" = "Reuse Window";
+
+
+/* Empty State */
+"empty.primary" = "Drop images here to view";
+"empty.secondary" = "Or use File \u203a Open (\u2318O)";
+
+/* Error */
+"error.cannotDisplay" = "Cannot display image";
+"error.noSupportedImages" = "No supported images in this folder";
+
+/* Window */
+"window.pdfPage %lld" = "Page %lld";
+
+/* Status Bar */
+"status.fit" = "Fit";

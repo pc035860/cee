@@ -101,7 +101,7 @@ final class StatusBarView: NSVisualEffectView {
 
     private func zoomText(for zoom: CGFloat, isFitting: Bool) -> String {
         if isFitting {
-            return "Fit"
+            return String(localized: "status.fit")
         } else if zoom >= 0.99 && zoom <= 1.01 {
             return "100%"
         } else {

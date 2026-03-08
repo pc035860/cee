@@ -18,8 +18,8 @@ final class EmptyStateView: NSView {
 
     private let stackView = NSStackView()
     private let iconView = NSImageView()
-    private let primaryLabel = NSTextField(labelWithString: "Drop images here to view")
-    private let secondaryLabel = NSTextField(labelWithString: "Or use File \u{2039} Open (\u{2318}O)")
+    private let primaryLabel = NSTextField(labelWithString: String(localized: "empty.primary"))
+    private let secondaryLabel = NSTextField(labelWithString: String(localized: "empty.secondary"))
     private let dashedBorderLayer = CAShapeLayer()
 
     // MARK: - State

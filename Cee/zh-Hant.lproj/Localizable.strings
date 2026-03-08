@@ -1,0 +1,85 @@
+/* App Menu */
+"menu.app.about" = "關於 Cee";
+"menu.app.quit" = "結束 Cee";
+
+/* File Menu */
+"menu.file.title" = "檔案";
+"menu.file.open" = "開啟…";
+"menu.file.copyImage" = "拷貝圖片";
+"menu.file.revealInFinder" = "在 Finder 中顯示";
+"menu.file.closeWindow" = "關閉視窗";
+
+/* View Menu */
+"menu.view.title" = "顯示";
+"menu.view.fitOnScreen" = "縮放至視窗大小";
+"menu.view.actualSize" = "實際大小";
+"menu.view.zoomIn" = "放大";
+"menu.view.zoomOut" = "縮小";
+"menu.view.alwaysFit" = "開啟時自動縮放至視窗";
+"menu.view.fittingOptions" = "縮放選項";
+"menu.view.shrinkH" = "水平縮小至視窗";
+"menu.view.shrinkV" = "垂直縮小至視窗";
+"menu.view.stretchH" = "水平延伸至視窗";
+"menu.view.stretchV" = "垂直延伸至視窗";
+"menu.view.scalingQuality" = "縮放品質";
+"menu.view.scalingLow" = "低";
+"menu.view.scalingMedium" = "中";
+"menu.view.scalingHigh" = "高";
+"menu.view.showPixels" = "放大時顯示像素";
+"menu.view.lowResPreview" = "瀏覽時使用低解析度預覽";
+"menu.view.resizeAuto" = "縮放時自動調整視窗大小";
+"menu.view.enterFullScreen" = "進入全螢幕";
+"menu.view.exitFullScreen" = "離開全螢幕";
+"menu.view.floatOnTop" = "浮動於最上層";
+"menu.view.showStatusBar" = "顯示狀態列";
+"menu.view.hideStatusBar" = "隱藏狀態列";
+
+/* Navigation Menu */
+"menu.navigation.title" = "導覽";
+"menu.navigation.dualPage" = "雙頁模式";
+"menu.navigation.firstPageCover" = "第一頁作為封面";
+"menu.navigation.readingLTR" = "閱讀方向：由左至右";
+"menu.navigation.readingRTL" = "閱讀方向：由右至左";
+"menu.navigation.rtlDual" = "由右至左導覽（雙頁）";
+"menu.navigation.rtlSingle" = "由右至左導覽（單頁）";
+"menu.navigation.arrowLR" = "以左右方向鍵翻頁";
+"menu.navigation.arrowUD" = "以上下方向鍵翻頁";
+"menu.navigation.scrollToBottom" = "切換至上一張時捲至底部";
+"menu.navigation.clickToTurn" = "點擊翻頁";
+"menu.navigation.trackpadSensitivity" = "觸控板翻頁靈敏度";
+"menu.navigation.wheelSensitivity" = "滾輪翻頁靈敏度";
+"menu.navigation.sensitivityLow" = "低";
+"menu.navigation.sensitivityMedium" = "中";
+"menu.navigation.sensitivityHigh" = "高";
+"menu.navigation.quickGrid" = "快速格狀檢視";
+"menu.navigation.scrollAfterZoom" = "縮放後捲動至游標位置";
+
+/* Go Menu */
+"menu.go.title" = "前往";
+"menu.go.nextImage" = "下一張";
+"menu.go.nextSpread" = "下一頁";
+"menu.go.previousImage" = "上一張";
+"menu.go.previousSpread" = "上一頁";
+"menu.go.firstImage" = "第一張";
+"menu.go.lastImage" = "最後一張";
+
+/* Window Menu */
+"menu.window.title" = "視窗";
+"menu.window.minimize" = "縮到最小";
+"menu.window.zoom" = "縮放";
+"menu.window.reuseWindow" = "重複使用視窗";
+
+
+/* Empty State */
+"empty.primary" = "將圖片拖曳至此以開啟";
+"empty.secondary" = "或從「檔案 › 開啟」(⌘O)";
+
+/* Error */
+"error.cannotDisplay" = "無法顯示圖片";
+"error.noSupportedImages" = "此資料夾中沒有支援的圖片";
+
+/* Window */
+"window.pdfPage %lld" = "第 %lld 頁";
+
+/* Status Bar */
+"status.fit" = "適配";

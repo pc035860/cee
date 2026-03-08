@@ -68,57 +68,57 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         mainMenu.addItem(appMenuItem)
         let appMenu = NSMenu(title: "Cee")
         appMenuItem.submenu = appMenu
-        appMenu.addItem(NSMenuItem(title: "About Cee", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem(title: String(localized: "menu.app.about"), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(title: "Quit Cee", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenu.addItem(NSMenuItem(title: String(localized: "menu.app.quit"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         // ── File Menu ───────────────────────────────────────────────────
         let fileMenuItem = NSMenuItem()
         mainMenu.addItem(fileMenuItem)
-        let fileMenu = NSMenu(title: "File")
+        let fileMenu = NSMenu(title: String(localized: "menu.file.title"))
         fileMenuItem.submenu = fileMenu
-        let openItem = NSMenuItem(title: "Open…", action: #selector(openFile(_:)), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: String(localized: "menu.file.open"), action: #selector(openFile(_:)), keyEquivalent: "o")
         openItem.target = self
         fileMenu.addItem(openItem)
         fileMenu.addItem(.separator())
-        fileMenu.addItem(makeItem("Copy Image", action: #selector(ImageViewController.copyImage(_:)), key: ""))
-        fileMenu.addItem(makeItem("Reveal in Finder", action: #selector(ImageViewController.revealInFinder(_:)), key: ""))
+        fileMenu.addItem(makeItem(String(localized: "menu.file.copyImage"), action: #selector(ImageViewController.copyImage(_:)), key: ""))
+        fileMenu.addItem(makeItem(String(localized: "menu.file.revealInFinder"), action: #selector(ImageViewController.revealInFinder(_:)), key: ""))
         fileMenu.addItem(.separator())
-        fileMenu.addItem(NSMenuItem(title: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        fileMenu.addItem(NSMenuItem(title: String(localized: "menu.file.closeWindow"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
 
         // ── View Menu ───────────────────────────────────────────────────
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
-        let viewMenu = NSMenu(title: "View")
+        let viewMenu = NSMenu(title: String(localized: "menu.view.title"))
         viewMenuItem.submenu = viewMenu
 
-        viewMenu.addItem(makeItem("Fit on Screen",  action: #selector(ImageViewController.fitOnScreen(_:)),  key: "0"))
-        viewMenu.addItem(makeItem("Actual Size",    action: #selector(ImageViewController.actualSize(_:)),   key: "1"))
-        viewMenu.addItem(makeItem("Zoom In",        action: #selector(ImageViewController.zoomIn(_:)),       key: "="))
-        viewMenu.addItem(makeItem("Zoom Out",       action: #selector(ImageViewController.zoomOut(_:)),      key: "-"))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.fitOnScreen"),  action: #selector(ImageViewController.fitOnScreen(_:)),  key: "0"))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.actualSize"),   action: #selector(ImageViewController.actualSize(_:)),   key: "1"))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.zoomIn"),       action: #selector(ImageViewController.zoomIn(_:)),       key: "="))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.zoomOut"),      action: #selector(ImageViewController.zoomOut(_:)),      key: "-"))
         viewMenu.addItem(.separator())
 
-        let alwaysFitItem = makeItem("Always Fit Opened Images", action: #selector(ImageViewController.toggleAlwaysFit(_:)), key: "*")
+        let alwaysFitItem = makeItem(String(localized: "menu.view.alwaysFit"), action: #selector(ImageViewController.toggleAlwaysFit(_:)), key: "*")
         viewMenu.addItem(alwaysFitItem)
 
         // Fitting Options submenu
-        let fittingMenuItem = NSMenuItem(title: "Fitting Options", action: nil, keyEquivalent: "")
-        let fittingMenu = NSMenu(title: "Fitting Options")
-        fittingMenu.addItem(makeItem("Shrink to Fit Horizontally",  action: #selector(ImageViewController.toggleShrinkH(_:)),  key: ""))
-        fittingMenu.addItem(makeItem("Shrink to Fit Vertically",    action: #selector(ImageViewController.toggleShrinkV(_:)),  key: ""))
-        fittingMenu.addItem(makeItem("Stretch to Fit Horizontally", action: #selector(ImageViewController.toggleStretchH(_:)), key: ""))
-        fittingMenu.addItem(makeItem("Stretch to Fit Vertically",   action: #selector(ImageViewController.toggleStretchV(_:)), key: ""))
+        let fittingMenuItem = NSMenuItem(title: String(localized: "menu.view.fittingOptions"), action: nil, keyEquivalent: "")
+        let fittingMenu = NSMenu(title: String(localized: "menu.view.fittingOptions"))
+        fittingMenu.addItem(makeItem(String(localized: "menu.view.shrinkH"),  action: #selector(ImageViewController.toggleShrinkH(_:)),  key: ""))
+        fittingMenu.addItem(makeItem(String(localized: "menu.view.shrinkV"),  action: #selector(ImageViewController.toggleShrinkV(_:)),  key: ""))
+        fittingMenu.addItem(makeItem(String(localized: "menu.view.stretchH"), action: #selector(ImageViewController.toggleStretchH(_:)), key: ""))
+        fittingMenu.addItem(makeItem(String(localized: "menu.view.stretchV"), action: #selector(ImageViewController.toggleStretchV(_:)), key: ""))
         fittingMenuItem.submenu = fittingMenu
         viewMenu.addItem(fittingMenuItem)
 
         // Scaling Quality submenu
-        let scalingMenuItem = NSMenuItem(title: "Scaling Quality", action: nil, keyEquivalent: "")
-        let scalingMenu = NSMenu(title: "Scaling Quality")
-        scalingMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setScalingLow(_:)),    key: ""))
-        scalingMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setScalingMedium(_:)), key: ""))
-        scalingMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setScalingHigh(_:)),   key: ""))
+        let scalingMenuItem = NSMenuItem(title: String(localized: "menu.view.scalingQuality"), action: nil, keyEquivalent: "")
+        let scalingMenu = NSMenu(title: String(localized: "menu.view.scalingQuality"))
+        scalingMenu.addItem(makeItem(String(localized: "menu.view.scalingLow"),    action: #selector(ImageViewController.setScalingLow(_:)),    key: ""))
+        scalingMenu.addItem(makeItem(String(localized: "menu.view.scalingMedium"), action: #selector(ImageViewController.setScalingMedium(_:)), key: ""))
+        scalingMenu.addItem(makeItem(String(localized: "menu.view.scalingHigh"),   action: #selector(ImageViewController.setScalingHigh(_:)),   key: ""))
         scalingMenu.addItem(.separator())
-        let showPixelsItem = makeItem("Show Pixels When Zooming In",
+        let showPixelsItem = makeItem(String(localized: "menu.view.showPixels"),
                                       action: #selector(ImageViewController.toggleShowPixels(_:)), key: "p")
         showPixelsItem.keyEquivalentModifierMask = [.command, .shift]
         scalingMenu.addItem(showPixelsItem)
@@ -126,82 +126,82 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         viewMenu.addItem(scalingMenuItem)
 
         viewMenu.addItem(.separator())
-        viewMenu.addItem(makeItem("Use Low-Res Preview While Browsing", action: #selector(ImageViewController.toggleThumbnailFallback(_:)), key: ""))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.lowResPreview"), action: #selector(ImageViewController.toggleThumbnailFallback(_:)), key: ""))
         viewMenu.addItem(.separator())
-        viewMenu.addItem(makeItem("Resize Window Automatically", action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
-        viewMenu.addItem(makeItem("Enter Full Screen",           action: #selector(ImageViewController.toggleFullScreen(_:)),          key: "f"))
-        viewMenu.addItem(makeItem("Float on Top",                action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.resizeAuto"),    action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.enterFullScreen"), action: #selector(ImageViewController.toggleFullScreen(_:)),        key: "f"))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.floatOnTop"),    action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))
         viewMenu.addItem(.separator())
-        viewMenu.addItem(makeItem("Show Status Bar",             action: #selector(ImageViewController.toggleStatusBar(_:)),           key: "/"))
+        viewMenu.addItem(makeItem(String(localized: "menu.view.showStatusBar"), action: #selector(ImageViewController.toggleStatusBar(_:)),           key: "/"))
 
         // ── Navigation Menu ─────────────────────────────────────────────
         let navigationMenuItem = NSMenuItem()
         mainMenu.addItem(navigationMenuItem)
-        let navigationMenu = NSMenu(title: "Navigation")
+        let navigationMenu = NSMenu(title: String(localized: "menu.navigation.title"))
         navigationMenuItem.submenu = navigationMenu
 
         // Reading Mode group
-        navigationMenu.addItem(makeItem("Dual Page",                   action: #selector(ImageViewController.toggleDualPage(_:)),            key: "k"))
-        let offsetItem = makeItem("First Page as Cover",         action: #selector(ImageViewController.togglePageOffset(_:)),           key: "o")
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.dualPage"),        action: #selector(ImageViewController.toggleDualPage(_:)),            key: "k"))
+        let offsetItem = makeItem(String(localized: "menu.navigation.firstPageCover"),        action: #selector(ImageViewController.togglePageOffset(_:)),           key: "o")
         offsetItem.keyEquivalentModifierMask = [.command, .shift]
         navigationMenu.addItem(offsetItem)
-        let rtlItem = makeItem("Reading: Left to Right",       action: #selector(ImageViewController.toggleReadingDirection(_:)),     key: "k")
+        let rtlItem = makeItem(String(localized: "menu.navigation.readingLTR"),               action: #selector(ImageViewController.toggleReadingDirection(_:)),     key: "k")
         rtlItem.keyEquivalentModifierMask = [.command, .shift]
         navigationMenu.addItem(rtlItem)
-        navigationMenu.addItem(makeItem("Right-to-Left Navigation",  action: #selector(ImageViewController.toggleDuoPageRTLNavigation(_:)), key: ""))
-        navigationMenu.addItem(makeItem("Right-to-Left Navigation (Single Page)", action: #selector(ImageViewController.toggleSinglePageRTLNavigation(_:)), key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.rtlDual"),         action: #selector(ImageViewController.toggleDuoPageRTLNavigation(_:)), key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.rtlSingle"),       action: #selector(ImageViewController.toggleSinglePageRTLNavigation(_:)), key: ""))
 
         navigationMenu.addItem(.separator())
 
         // Navigation Settings group
-        navigationMenu.addItem(makeItem("Navigate with Left/Right Arrows", action: #selector(ImageViewController.toggleArrowLeftRightNav(_:)), key: ""))
-        navigationMenu.addItem(makeItem("Navigate with Up/Down Arrows",    action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
-        navigationMenu.addItem(makeItem("Scroll to Bottom on Previous", action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
-        navigationMenu.addItem(makeItem("Click to Turn Page",           action: #selector(ImageViewController.toggleClickToTurnPage(_:)),           key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.arrowLR"),         action: #selector(ImageViewController.toggleArrowLeftRightNav(_:)), key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.arrowUD"),         action: #selector(ImageViewController.toggleArrowUpDownNav(_:)),    key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.scrollToBottom"),  action: #selector(ImageViewController.toggleScrollToBottomOnPrevious(_:)), key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.clickToTurn"),     action: #selector(ImageViewController.toggleClickToTurnPage(_:)),           key: ""))
 
         // Trackpad Page-Turn Sensitivity submenu
-        let trackpadMenuItem = NSMenuItem(title: "Trackpad Page-Turn Sensitivity", action: nil, keyEquivalent: "")
-        let trackpadMenu = NSMenu(title: "Trackpad Page-Turn Sensitivity")
-        trackpadMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setTrackpadLow(_:)),    key: ""))
-        trackpadMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setTrackpadMedium(_:)), key: ""))
-        trackpadMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setTrackpadHigh(_:)),   key: ""))
+        let trackpadMenuItem = NSMenuItem(title: String(localized: "menu.navigation.trackpadSensitivity"), action: nil, keyEquivalent: "")
+        let trackpadMenu = NSMenu(title: String(localized: "menu.navigation.trackpadSensitivity"))
+        trackpadMenu.addItem(makeItem(String(localized: "menu.navigation.sensitivityLow"),    action: #selector(ImageViewController.setTrackpadLow(_:)),    key: ""))
+        trackpadMenu.addItem(makeItem(String(localized: "menu.navigation.sensitivityMedium"), action: #selector(ImageViewController.setTrackpadMedium(_:)), key: ""))
+        trackpadMenu.addItem(makeItem(String(localized: "menu.navigation.sensitivityHigh"),   action: #selector(ImageViewController.setTrackpadHigh(_:)),   key: ""))
         trackpadMenuItem.submenu = trackpadMenu
         navigationMenu.addItem(trackpadMenuItem)
 
         // Wheel Page-Turn Sensitivity submenu
-        let wheelMenuItem = NSMenuItem(title: "Wheel Page-Turn Sensitivity", action: nil, keyEquivalent: "")
-        let wheelMenu = NSMenu(title: "Wheel Page-Turn Sensitivity")
-        wheelMenu.addItem(makeItem("Low",    action: #selector(ImageViewController.setWheelLow(_:)),    key: ""))
-        wheelMenu.addItem(makeItem("Medium", action: #selector(ImageViewController.setWheelMedium(_:)), key: ""))
-        wheelMenu.addItem(makeItem("High",   action: #selector(ImageViewController.setWheelHigh(_:)),   key: ""))
+        let wheelMenuItem = NSMenuItem(title: String(localized: "menu.navigation.wheelSensitivity"), action: nil, keyEquivalent: "")
+        let wheelMenu = NSMenu(title: String(localized: "menu.navigation.wheelSensitivity"))
+        wheelMenu.addItem(makeItem(String(localized: "menu.navigation.sensitivityLow"),    action: #selector(ImageViewController.setWheelLow(_:)),    key: ""))
+        wheelMenu.addItem(makeItem(String(localized: "menu.navigation.sensitivityMedium"), action: #selector(ImageViewController.setWheelMedium(_:)), key: ""))
+        wheelMenu.addItem(makeItem(String(localized: "menu.navigation.sensitivityHigh"),   action: #selector(ImageViewController.setWheelHigh(_:)),   key: ""))
         wheelMenuItem.submenu = wheelMenu
         navigationMenu.addItem(wheelMenuItem)
 
         navigationMenu.addItem(.separator())
 
         // Quick Grid group
-        navigationMenu.addItem(makeItem("Quick Grid",                    action: #selector(ImageViewController.toggleQuickGrid(_:)),            key: ""))
-        navigationMenu.addItem(makeItem("Scroll to Cursor After Zoom",  action: #selector(ImageViewController.toggleQuickGridScrollAfterZoom(_:)), key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.quickGrid"),       action: #selector(ImageViewController.toggleQuickGrid(_:)),            key: ""))
+        navigationMenu.addItem(makeItem(String(localized: "menu.navigation.scrollAfterZoom"), action: #selector(ImageViewController.toggleQuickGridScrollAfterZoom(_:)), key: ""))
 
         // ── Go Menu ─────────────────────────────────────────────────────
         let goMenuItem = NSMenuItem()
         mainMenu.addItem(goMenuItem)
-        let goMenu = NSMenu(title: "Go")
+        let goMenu = NSMenu(title: String(localized: "menu.go.title"))
         goMenuItem.submenu = goMenu
-        goMenu.addItem(makeItem("Next Image",     action: #selector(ImageViewController.goToNextImage),     key: "]"))
-        goMenu.addItem(makeItem("Previous Image", action: #selector(ImageViewController.goToPreviousImage), key: "["))
-        goMenu.addItem(makeItem("First Image",    action: #selector(ImageViewController.goToFirstImage),    key: ""))
-        goMenu.addItem(makeItem("Last Image",     action: #selector(ImageViewController.goToLastImage),     key: ""))
+        goMenu.addItem(makeItem(String(localized: "menu.go.nextImage"),     action: #selector(ImageViewController.goToNextImage),     key: "]"))
+        goMenu.addItem(makeItem(String(localized: "menu.go.previousImage"), action: #selector(ImageViewController.goToPreviousImage), key: "["))
+        goMenu.addItem(makeItem(String(localized: "menu.go.firstImage"),    action: #selector(ImageViewController.goToFirstImage),    key: ""))
+        goMenu.addItem(makeItem(String(localized: "menu.go.lastImage"),     action: #selector(ImageViewController.goToLastImage),     key: ""))
 
         // ── Window Menu ─────────────────────────────────────────────────
         let windowMenuItem = NSMenuItem()
         mainMenu.addItem(windowMenuItem)
-        let windowMenu = NSMenu(title: "Window")
+        let windowMenu = NSMenu(title: String(localized: "menu.window.title"))
         windowMenuItem.submenu = windowMenu
-        windowMenu.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
-        windowMenu.addItem(NSMenuItem(title: "Zoom",     action: #selector(NSWindow.performZoom(_:)),        keyEquivalent: ""))
+        windowMenu.addItem(NSMenuItem(title: String(localized: "menu.window.minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
+        windowMenu.addItem(NSMenuItem(title: String(localized: "menu.window.zoom"),     action: #selector(NSWindow.performZoom(_:)),        keyEquivalent: ""))
         windowMenu.addItem(.separator())
-        let reuseItem = NSMenuItem(title: "Reuse Window", action: #selector(toggleReuseWindow(_:)), keyEquivalent: "")
+        let reuseItem = NSMenuItem(title: String(localized: "menu.window.reuseWindow"), action: #selector(toggleReuseWindow(_:)), keyEquivalent: "")
         reuseItem.target = self
         windowMenu.addItem(reuseItem)
 

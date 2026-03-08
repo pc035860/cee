@@ -11,7 +11,7 @@ class ErrorPlaceholderView: NSView {
     }
 
     override init(frame frameRect: NSRect) {
-        label = NSTextField(labelWithString: "Cannot display image")
+        label = NSTextField(labelWithString: String(localized: "error.cannotDisplay"))
         label.font = .systemFont(ofSize: 16, weight: .medium)
         label.textColor = NSColor(white: 0.5, alpha: 1.0)
         label.translatesAutoresizingMaskIntoConstraints = false
