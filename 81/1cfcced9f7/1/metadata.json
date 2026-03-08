@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "811cfcced9f7",
+  "session_id": "a8d96970-0e9c-4be2-a62f-8d6e1cbe1495",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-08T07:57:42.381194Z",
+  "branch": "feat/ui-locale",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "Cee/App/AppDelegate.swift",
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Views/EmptyStateView.swift",
+    "Cee/Views/ErrorPlaceholderView.swift",
+    "Cee/Views/StatusBarView.swift",
+    "Cee/en.lproj/Localizable.strings",
+    "Cee/zh-Hant.lproj/Localizable.strings",
+    "project.yml"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "e2dacaa32c29",
+  "token_usage": {
+    "input_tokens": 98,
+    "cache_creation_tokens": 264136,
+    "cache_read_tokens": 4788597,
+    "output_tokens": 40307,
+    "api_call_count": 61
+  },
+  "session_metrics": {
+    "turn_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-08T07:57:41.51625Z",
+    "agent_lines": 217,
+    "human_added": 0,
+    "human_modified": 22,
+    "human_removed": 23,
+    "total_committed": 239,
+    "agent_percentage": 90.7949790794979
+  }
+}
