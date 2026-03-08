@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "811cfcced9f7",
+  "strategy": "manual-commit",
+  "branch": "feat/ui-locale",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Cee/App/AppDelegate.swift",
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Controllers/ImageWindowController.swift",
+    "Cee/Views/EmptyStateView.swift",
+    "Cee/Views/ErrorPlaceholderView.swift",
+    "Cee/Views/StatusBarView.swift",
+    "Cee/en.lproj/Localizable.strings",
+    "Cee/zh-Hant.lproj/Localizable.strings",
+    "project.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/81/1cfcced9f7/0/metadata.json",
+      "transcript": "/81/1cfcced9f7/0/full.jsonl",
+      "content_hash": "/81/1cfcced9f7/0/content_hash.txt",
+      "prompt": "/81/1cfcced9f7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 237801,
+    "cache_read_tokens": 758816,
+    "output_tokens": 9865,
+    "api_call_count": 17
+  }
+}
