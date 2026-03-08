@@ -241,18 +241,18 @@ class ImageScrollView: NSScrollView {
         // 因此頁切後不能只靠 pageTurnedThisGesture 來擋，必須抑制整個舊 scroll sequence，
         // 直到看到「真正的新 direct gesture」：phase == .began 且 momentumPhase == []。
         if isFreshTrackpadGesture {
-            let wasSuppressed = suppressScrollSequenceAfterPageTurn
-            let hadPageTurnLastGesture = pageTurnedThisGesture
-            if wasSuppressed {
+            let momentumWasStillFlowing = suppressScrollSequenceAfterPageTurn
+            let previousGesturePageTurned = pageTurnedThisGesture
+            if momentumWasStillFlowing {
                 suppressScrollSequenceAfterPageTurn = false
             }
             beginTrackpadGesture()
-            // 若 suppress 仍活躍（momentum 尚未自然結束就來了新手勢），wasSuppressed=true → 立即解鎖：
-            //   新的 .began 確認舊 momentum 已被實體手指打斷，安全放行。
-            // 若 suppress 已被 .ended 提前清除（momentum 自然結束後才開始新手勢），
-            //   此時 hadPageTurnLastGesture=true → 不解鎖，讓鎖自然到期：
-            //   避免換頁後動量結束、使用者隨即開始新手勢，直接滑過新圖。
-            if wasSuppressed || !hadPageTurnLastGesture {
+            // 解鎖規則：
+            //   若舊 momentum 尚未結束就來了新手勢（手指打斷）→ 立即解鎖，新手勢是有意識的操作。
+            //   若 momentum 已自然結束才開始新手勢，且上次有換頁 → 保持鎖定到期，
+            //   避免換頁後使用者立即滑動，意外跳過剛換到的圖。
+            let shouldKeepLock = !momentumWasStillFlowing && previousGesturePageTurned
+            if !shouldKeepLock {
                 pageTurnLockUntil = 0
             }
         } else if suppressScrollSequenceAfterPageTurn {
