@@ -87,20 +87,20 @@ class ContinuousScrollContentView: NSView {
             return
         }
 
-        // 計算 fit-to-width 後的高度，從底部向上累積
-        var yOffsets: [CGFloat] = []
-        var currentY: CGFloat = 0
+        // 計算 fit-to-width 後的高度
+        let heights = imageSizes.map { scaledHeightForSize($0) }
+        let totalHeight = heights.reduce(0, +) + CGFloat(max(0, heights.count - 1)) * imageSpacing
 
-        for size in imageSizes {
-            yOffsets.append(currentY)
-            let scaledHeight = scaledHeightForSize(size)
-            currentY += scaledHeight + imageSpacing
+        // 從頂端開始往下排列 (unflipped: 大 y 在上，小 y 在下)
+        var offsets: [CGFloat] = []
+        var currentY = totalHeight
+        for h in heights {
+            let bottomY = currentY - h
+            offsets.append(bottomY)
+            currentY = bottomY - imageSpacing
         }
 
-        self.yOffsets = yOffsets
-
-        // 設定總高度
-        let totalHeight = currentY
+        self.yOffsets = offsets
         frame = NSRect(x: 0, y: 0, width: containerWidth, height: totalHeight)
 
         needsDisplay = true

@@ -192,13 +192,33 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func updateStatusBar() {
-        guard let folder, let image = contentView.image else {
+        guard let folder = folder else {
             statusBarView.clear()
             return
         }
+        
         let total = folder.images.count
         let zoom = scrollView.magnification
         let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
+        
+        if settings.continuousScrollEnabled {
+            // In continuous scroll mode, contentView.image is nil, but we still want to show progress
+            let currentImageSize = imageSizeCache[folder.currentIndex] ?? .zero
+            statusBarView.update(
+                index: folder.currentIndex + 1,
+                total: total,
+                zoom: zoom,
+                imageSize: currentImageSize,
+                isFitting: isFitting,
+                indexOverride: nil
+            )
+            return
+        }
+
+        guard let image = contentView.image else {
+            statusBarView.clear()
+            return
+        }
 
         if settings.dualPageEnabled, let spread = folder.currentSpread {
             // Dual mode: "5-6 / 100" for double, "5 / 100" for single spread
