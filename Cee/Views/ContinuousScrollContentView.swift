@@ -1,6 +1,7 @@
 import AppKit
 
 /// 連續捲動內容視圖（Webtoon-style vertical scrolling）
+/// 使用標準 macOS 座標系統（y=0 在底部）以配合 ImageScrollView
 class ContinuousScrollContentView: NSView {
 
     // MARK: - Properties
@@ -8,10 +9,10 @@ class ContinuousScrollContentView: NSView {
     private var folder: ImageFolder?
     private weak var imageLoader: ImageLoader?
 
-    /// 預載的圖片尺寸（fit-to-width 縮放後）
+    /// 預載的圖片尺寸
     private var imageSizes: [NSSize] = []
 
-    /// 每張圖片的 Y 座標起始點
+    /// 每張圖片的 Y 座標起始點（從底部開始累積）
     private var yOffsets: [CGFloat] = []
 
     /// 容器寬度（用於 fit-to-width 計算）
@@ -24,6 +25,9 @@ class ContinuousScrollContentView: NSView {
 
     /// 圖片間距
     private let imageSpacing: CGFloat = 0
+
+    /// 預設圖片高度（無法取得尺寸時使用）
+    private let defaultAspectRatio: CGFloat = 4.0 / 3.0
 
     // MARK: - Index Tracking
 
@@ -42,22 +46,32 @@ class ContinuousScrollContentView: NSView {
         self.lastNotifiedIndex = -1
 
         Task { [weak self] in
-            await self?.preloadImageSizes()
+            await self?.preloadImageSizesParallel()
         }
     }
 
-    /// 預載所有圖片尺寸
-    private func preloadImageSizes() async {
+    /// 平行預載所有圖片尺寸
+    private func preloadImageSizesParallel() async {
         guard let folder = folder, let loader = imageLoader else { return }
 
-        var sizes: [NSSize] = []
-        for item in folder.images {
-            if let size = await loader.getImageSize(for: item.url) {
-                sizes.append(size)
-            } else {
-                // 無法取得尺寸時使用預設值
-                sizes.append(NSSize(width: 800, height: 600))
+        // 使用 TaskGroup 平行載入
+        let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
+            for (index, item) in folder.images.enumerated() {
+                group.addTask {
+                    if let size = await loader.getImageSize(for: item.url) {
+                        return (index, size)
+                    } else {
+                        // 無法取得尺寸時使用預設比例
+                        return (index, NSSize(width: 800, height: 800 / self.defaultAspectRatio))
+                    }
+                }
             }
+
+            var results: [(Int, NSSize)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results.sorted { $0.0 < $1.0 }.map { $0.1 }
         }
 
         await MainActor.run { [weak self] in
@@ -66,30 +80,38 @@ class ContinuousScrollContentView: NSView {
         }
     }
 
-    /// 重新計算佈局
+    /// 重新計算佈局（使用標準座標系統：y=0 在底部）
     private func recalculateLayout() {
         guard !imageSizes.isEmpty else {
             frame = NSRect(x: 0, y: 0, width: containerWidth, height: 0)
             return
         }
 
-        // 計算 fit-to-width 後的高度
+        // 計算 fit-to-width 後的高度，從底部向上累積
         var yOffsets: [CGFloat] = []
         var currentY: CGFloat = 0
 
         for size in imageSizes {
             yOffsets.append(currentY)
-            let scaledHeight = (size.height / size.width) * containerWidth
+            let scaledHeight = scaledHeightForSize(size)
             currentY += scaledHeight + imageSpacing
         }
 
         self.yOffsets = yOffsets
 
-        // 設定總高度（反轉座標系統：y=0 在視覺頂部）
+        // 設定總高度
         let totalHeight = currentY
         frame = NSRect(x: 0, y: 0, width: containerWidth, height: totalHeight)
 
         needsDisplay = true
+    }
+
+    /// 計算 fit-to-width 縮放後的高度（防止除以零）
+    private func scaledHeightForSize(_ size: NSSize) -> CGFloat {
+        guard size.width > 0 else {
+            return containerWidth / defaultAspectRatio
+        }
+        return (size.height / size.width) * containerWidth
     }
 
     // MARK: - View Recycling
@@ -111,8 +133,7 @@ class ContinuousScrollContentView: NSView {
         guard imageSizes.indices.contains(index) else { return }
 
         let imageSize = imageSizes[index]
-        // 計算 fit-to-width 縮放後的尺寸
-        let scaledHeight = (imageSize.height / imageSize.width) * containerWidth
+        let scaledHeight = scaledHeightForSize(imageSize)
         let scaledSize = NSSize(width: containerWidth, height: scaledHeight)
 
         onCurrentImageChanged?(index, scaledSize)
@@ -121,39 +142,35 @@ class ContinuousScrollContentView: NSView {
     // MARK: - Layout Helpers
 
     /// 計算指定索引圖片的 frame（fit-to-width）
+    /// 使用標準座標系統：y=0 在底部
     func frameForImage(at index: Int) -> NSRect {
         guard imageSizes.indices.contains(index),
               yOffsets.indices.contains(index) else {
             return .zero
         }
 
-        let size = imageSizes[index]
-        let scaledHeight = (size.height / size.width) * containerWidth
+        let scaledHeight = scaledHeightForSize(imageSizes[index])
         let yOffset = yOffsets[index]
 
-        // NSScrollView 反轉座標：視覺頂部 = 高 Y
-        // 但 ContinuousScrollContentView 使用標準座標，所以直接用 yOffset
+        // 標準座標系統：直接使用累積的 yOffset
         return NSRect(
             x: 0,
-            y: frame.height - yOffset - scaledHeight,
+            y: yOffset,
             width: containerWidth,
             height: scaledHeight
         )
     }
 
     /// 計算當前中心點對應的圖片索引
+    /// scrollY 是標準座標系統中的 Y 座標（y=0 在底部）
     func calculateCurrentIndex(for scrollY: CGFloat) -> Int {
         guard !imageSizes.isEmpty else { return 0 }
 
-        // scrollY 是從視圖頂部開始的座標
-        // 轉換為累積高度
-        let adjustedY = frame.height - scrollY
-
         for i in 0..<imageSizes.count {
-            let scaledHeight = (imageSizes[i].height / imageSizes[i].width) * containerWidth
+            let scaledHeight = scaledHeightForSize(imageSizes[i])
             let yOffset = yOffsets[i]
 
-            if adjustedY >= yOffset && adjustedY < yOffset + scaledHeight {
+            if scrollY >= yOffset && scrollY < yOffset + scaledHeight {
                 return i
             }
         }
@@ -164,7 +181,7 @@ class ContinuousScrollContentView: NSView {
 
     // MARK: - Drawing
 
-    override var isFlipped: Bool { true }
+    // 不覆寫 isFlipped，使用標準座標系統（y=0 在底部）
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)

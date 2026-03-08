@@ -1197,6 +1197,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func handleContinuousScrollImageChanged(index: Int, scaledSize: NSSize) {
+        // 同步 folder.currentIndex
+        folder?.currentIndex = index
+
+        // 更新 UI（標題列和狀態列）
+        updateWindowTitle()
+        updateStatusBar()
+
         guard let windowController = view.window?.windowController as? ImageWindowController else { return }
 
         // 全螢幕模式：跳過 resize

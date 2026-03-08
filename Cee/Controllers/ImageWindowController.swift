@@ -120,6 +120,9 @@ class ImageWindowController: NSWindowController {
     }
 
     @objc private func windowWillCloseNotification(_ notification: Notification) {
+        // 清理 CADisplayLink 防止記憶體洩漏
+        resizeDisplayLink?.invalidate()
+        resizeDisplayLink = nil
         Self.windows.removeAll { $0 === self }
     }
 
@@ -345,6 +348,8 @@ class ImageWindowController: NSWindowController {
         // 動畫完成
         if progress >= 1.0 {
             link.isPaused = true
+            link.invalidate()
+            resizeDisplayLink = nil
         }
     }
 
