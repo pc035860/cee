@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "1e6a3d1c3ef3",
+  "strategy": "manual-commit",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CeeTests/ContinuousScrollContentViewTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1e/6a3d1c3ef3/0/metadata.json",
+      "transcript": "/1e/6a3d1c3ef3/0/full.jsonl",
+      "content_hash": "/1e/6a3d1c3ef3/0/content_hash.txt",
+      "prompt": "/1e/6a3d1c3ef3/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 439114,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 16145536,
+    "output_tokens": 46795,
+    "api_call_count": 159
+  }
+}
