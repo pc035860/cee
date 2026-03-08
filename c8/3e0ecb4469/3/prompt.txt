@@ -1,0 +1,157 @@
+OK
+
+---
+
+我確認應該是 OK了
+不過我想調整一下那個解鎖時間，現在是多久？
+
+---
+
+0.6s
+
+---
+
+好像還是會發生
+我現在確定是
+1. 用 trackpad 換到下一頁
+2. 滑鼠從 cee app 的圖片上移動到 app 視窗外
+3. 重覆觸發一次 trackpad 的下滑
+
+---
+
+結果還是一樣
+
+---
+
+你問看看 @"iroha (agent)" 好了
+
+---
+
+/silennai:debug  還是沒好
+
+---
+
+還是沒好
+我上網查了一下資料，看有沒有幫助
+```
+這個問題的根本原因是 **macOS trackpad 的慣性滾動（Momentum/Inertial Scrolling）機制**。當使用者快速滑動後，系統會持續送出一系列「假造的」scroll events 來模擬物理慣性，即使手指已離開 trackpad，這些事件仍會繼續觸發 — 換頁後這些殘留事件就造成了意外的再次翻頁。
+
+## 問題根本原因
+
+macOS 的慣性滾動不是真正的手勢事件，而是系統在手指離開後 **偽裝成正常 scroll wheel events** 繼續送出 。你的 App 在換頁後，上一個滑動動作的慣性事件仍在飛行中，就被誤判成使用者的新滑動意圖。 [stackoverflow](https://stackoverflow.com/questions/1849023/how-does-the-momentum-inertial-scroll-work-with-the-magic-mouse-on-nsscrollview)
+
+## 解法方向
+
+### 1. 用 `NSEvent.phase` 區分真實滾動與慣性
+這是最根本的解法。macOS 的 scroll event 有 `phase` 屬性可以明確區分：
+
+```swift
+override func scrollWheel(with event: NSEvent) {
+    switch event.phase {
+    case .began:
+        // 使用者真正開始用手指滾動
+        isUserScrolling = true
+    case .ended, .cancelled:
+        // 手指離開 trackpad
+        isUserScrolling = false
+    default:
+        break
+    }
+
+    switch event.momentumPhase {
+    case .began:
+        // 慣性開始（手指已離開）
+        isMomentumScrolling = true
+    case .ended, .cancelled:
+        isMomentumScrolling = false
+    default:
+        break
+    }
+
+    // 只在真實滾動時才觸發換頁邏輯，忽略慣性
+    if isMomentumScrolling { return }
+    
+    // 你原本的換頁邏輯...
+    super.scrollWheel(with: event)
+}
+```
+
+重點是：換頁後直接 **忽略所有 `momentumPhase != .none` 的事件** 。 [stackoverflow](https://stackoverflow.com/questions/1849023/how-does-the-momentum-inertial-scroll-work-with-the-magic-mouse-on-nsscrollview)
+
+### 2. 換頁後設定時間鎖（Cooldown）
+
+即使過濾了 `momentumPhase`，仍可能有 edge case，建議換頁後加一個短暫的 cooldown：
+
+```swift
+var lastPageChangeTime: Date = .distantPast
+let pageChangeCooldown: TimeInterval = 0.5  // 500ms
+
+func tryGoToNextPage() {
+    guard Date().timeIntervalSince(lastPageChangeTime) > pageChangeCooldown else { return }
+    lastPageChangeTime = Date()
+    // 執行換頁
+    goToNextPage()
+}
+```
+
+### 3. 換頁時主動丟棄殘留 momentum events
+
+在換頁的瞬間，可以透過 `NSEvent` 的 discard 機制清空 queue：
+
+```swift
+func goToNextPage() {
+    // 執行換頁邏輯...
+    
+    // 換頁後清除所有殘留的 scroll events
+    NSApp.discardEvents(matching: .scrollWheel, before: nil)
+}
+```
+
+`NSApplication.discardEvents(matching:before:)` 可以直接清掉 event queue 裡所有尚未處理的 scroll wheel events 。 [stackoverflow](https://stackoverflow.com/questions/1849023/how-does-the-momentum-inertial-scroll-work-with-the-magic-mouse-on-nsscrollview)
+
+## 建議組合使用
+
+| 機制 | 作用 |
+|------|------|
+| `event.momentumPhase` 過濾 | 從源頭區分慣性 vs. 真實滾動 |
+| `discardEvents` | 換頁當下清除 queue |
+| Cooldown lock | 防止極端情況下的連續換頁 |
+
+最關鍵的一步是 **`event.momentumPhase`**，這是 Apple 官方提供來處理這種情境的工具。你現有的 lock 機制方向正確，但如果沒有搭配 `momentumPhase` 判斷，光靠 lock 無法在每個 timing 都準確攔截。
+```
+
+---
+
+還是沒有解決
+
+---
+
+還是沒有解決
+目前我觀察到，只要透過 trackpad 換頁後有稍微做任何滑動，接下來就算游標移出視窗範圍，也不會觸發剛剛那個 Momentum。
+
+---
+
+還是一樣，我甚至都懷疑是不是我編譯有問題...  我怎麼確定我跑的是你改的版本
+
+---
+
+/silennai:debug
+
+---
+
+有看到 log，看來跑的版本是對的
+
+/silennai:debug
+
+---
+
+logs/0332.txt
+
+---
+
+我看成功了，修好了!
+logs/0341.txt
+
+---
+
+/patch-claudemd
