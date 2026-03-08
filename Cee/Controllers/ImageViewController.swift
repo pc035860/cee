@@ -1173,16 +1173,47 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         // 切換模式：更新 documentView
         if settings.continuousScrollEnabled {
-            // TODO: Phase 2 - 實作 ContinuousScrollContentView
-            // continuousScrollContentView = ContinuousScrollContentView()
-            // scrollView.documentView = continuousScrollContentView
-            // configureContinuousScrollView()
+            configureContinuousScrollView()
         } else {
             // 切換回單頁/雙頁模式
             scrollView.documentView = dualPageView
             continuousScrollContentView = nil
             loadCurrentImage(initialScroll: .top)
         }
+    }
+
+    private func configureContinuousScrollView() {
+        guard let folder = folder else { return }
+
+        let contentView = ContinuousScrollContentView()
+        contentView.containerWidth = scrollView.bounds.width
+        contentView.onCurrentImageChanged = { [weak self] index, scaledSize in
+            self?.handleContinuousScrollImageChanged(index: index, scaledSize: scaledSize)
+        }
+
+        continuousScrollContentView = contentView
+        scrollView.documentView = contentView
+        contentView.configure(with: folder, imageLoader: loader)
+    }
+
+    private func handleContinuousScrollImageChanged(index: Int, scaledSize: NSSize) {
+        guard let windowController = view.window?.windowController as? ImageWindowController else { return }
+
+        // 全螢幕模式：跳過 resize
+        guard view.window?.styleMask.contains(.fullScreen) != true else { return }
+
+        // 計算目標視窗大小
+        let viewportWidth = scrollView.bounds.width
+        let targetHeight = scaledSize.height + effectiveStatusBarHeight
+
+        // 極高圖片 cap 在螢幕高度 90%
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
+        let clampedHeight = min(targetHeight, screenHeight * 0.9)
+
+        let targetSize = NSSize(width: viewportWidth, height: clampedHeight)
+
+        // 觸發動態 resize
+        windowController.animateResize(to: targetSize, preserveCenter: true)
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {

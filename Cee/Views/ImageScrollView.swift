@@ -1086,6 +1086,11 @@ class ImageScrollView: NSScrollView {
     override func reflectScrolledClipView(_ cView: NSClipView) {
         super.reflectScrolledClipView(cView)
 
+        // 連續捲動模式：通知內容視圖更新可見範圍
+        if let continuousView = documentView as? ContinuousScrollContentView {
+            continuousView.updateVisibleSlots(for: cView.bounds)
+        }
+
         guard suppressScrollSequenceAfterPageTurn,
               !isEnforcingScrollPosition,
               let docView = documentView else { return }
