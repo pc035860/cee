@@ -1,0 +1,20 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "79e7f11b54ae",
+  "session_id": "e61c4f1d-8995-4e8c-a61e-d9ce166a5e6e",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-08T09:54:06.436788Z",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "glm-5",
+  "turn_id": "9914fce85a13",
+  "token_usage": {
+    "input_tokens": 243410,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10714176,
+    "output_tokens": 28075,
+    "api_call_count": 103
+  }
+}
