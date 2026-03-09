@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "2b5111f48413",
+  "session_id": "d2e52289-e146-407c-8e67-6fe3b119e82a",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T16:07:31.848897Z",
+  "branch": "feat/continuous-scroll-zoom",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/plan/plan-2026-03-09_23-00-28_continuous-scroll-zoom.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "acfb417417f3",
+  "token_usage": {
+    "input_tokens": 2640,
+    "cache_creation_tokens": 139552,
+    "cache_read_tokens": 8002351,
+    "output_tokens": 31033,
+    "api_call_count": 93
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T16:07:30.755852Z",
+    "agent_lines": 184,
+    "human_added": 9,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 195,
+    "agent_percentage": 94.35897435897435
+  }
+}
