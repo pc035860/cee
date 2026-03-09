@@ -1000,6 +1000,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         if settings.continuousScrollEnabled {
             setMagnificationCentered(1.0)
+            settings.magnification = 1.0
             updateScalingQuality()
             applyCenteringInsetsIfNeeded(reason: "fitOnScreen.continuous")
             statusBarView.updateZoom(scrollView.magnification, isFitting: true)
@@ -1256,15 +1257,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func toggleContinuousScroll(_ sender: Any? = nil) {
         settings.continuousScrollEnabled.toggle()
-        settings.save()
         scrollView.continuousScrollEnabled = settings.continuousScrollEnabled
+        resizeAfterZoomTask?.cancel()  // 隔離舊模式的排隊 resize
+
+        // 重設 magnification 狀態，確保模式切換後 settings 一致
+        scrollView.magnification = 1.0
+        settings.isManualZoom = false
+        settings.magnification = 1.0
+        settings.save()
 
         // 切換模式：更新 documentView
         if settings.continuousScrollEnabled {
-            scrollView.magnification = 1.0  // reset to fit-to-width
             configureContinuousScrollView()
         } else {
-            scrollView.magnification = 1.0  // reset before switching back
             // 切換回單頁/雙頁模式
             scrollView.documentView = dualPageView
             continuousScrollContentView = nil
@@ -1274,6 +1279,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func configureContinuousScrollView() {
         guard let folder = folder else { return }
+
+        // 確保 scrollView 同步連續捲動狀態（非 toggle 路徑也能正確設定）
+        scrollView.continuousScrollEnabled = true
 
         let contentView = ContinuousScrollContentView()
         contentView.containerWidth = scrollView.bounds.width
@@ -1287,6 +1295,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         continuousScrollContentView = contentView
         scrollView.documentView = contentView
         contentView.configure(with: folder, imageLoader: loader)
+
+        // 套用當前的 scaling filters 到新的 content view
+        updateScalingQuality()
     }
 
     /// 捲動到當前圖片位置（連續捲動模式）

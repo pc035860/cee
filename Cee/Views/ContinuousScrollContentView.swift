@@ -47,6 +47,7 @@ class ContinuousScrollContentView: NSView {
 
     /// 設定所有 active slots 的縮放 filter，並儲存供新 slot 套用
     func setScalingFilters(magnification: CALayerContentsFilter, minification: CALayerContentsFilter) {
+        guard currentMagFilter != magnification || currentMinFilter != minification else { return }
         currentMagFilter = magnification
         currentMinFilter = minification
         for slot in activeSlots {
