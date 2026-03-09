@@ -1,0 +1,22 @@
+/auto-impl @specs/brainstorm/brainstorm-continuous-scroll.md, phase1-2
+
+---
+
+為什麼有時間限制？  你為什麼要停下來？
+
+---
+
+我實測進入連續捲動模式看不到圖片，然後下方解析度會是 0x0
+/silennai:debug
+
+---
+
+尺寸圖片是正常了
+但是我在連續捲動模式下
+1. menubar 選項的狀態不是「勾選」或「沒勾選」這種可以切換的
+2. 圖片沒有顯示，只有看到很像還在預載狀態的 skeleton 圖片 placeholder
+3. 圖片寬度抓得很奇怪，也沒有做 window fit
+
+---
+
+log 在 logs/1736.txt
