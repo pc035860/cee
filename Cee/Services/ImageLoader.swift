@@ -416,7 +416,21 @@ actor ImageLoader {
         imagePrefetchTasks.removeAll()
     }
 
+    // MARK: - Display Cache (Continuous Scroll Subsample)
+
+    private var displayCache: [URL: NSImage] = [:]
+
+    /// Load image subsampled for display at given pixel width (continuous scroll mode)
+    func loadImageForDisplay(at url: URL, maxWidth: CGFloat) async -> NSImage? {
+        // Stub: delegates to full decode for now (tests should fail on dimensions)
+        if let cached = displayCache[url] { return cached }
+        let image = await loadImage(at: url)
+        if let image { displayCache[url] = image }
+        return image
+    }
+
     // MARK: - Test-Only Accessors
 
     func _testImageCacheCount() -> Int { cache.count }
+    func _testDisplayCacheCount() -> Int { displayCache.count }
 }
