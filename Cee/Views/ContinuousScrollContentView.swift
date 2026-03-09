@@ -37,6 +37,9 @@ class ContinuousScrollContentView: NSView {
     /// 當前圖片變更回調：(index, scaledImageSize)
     var onCurrentImageChanged: ((Int, NSSize) -> Void)?
 
+    /// 預載完成回調
+    var onPreloadComplete: (() -> Void)?
+
     /// 上次通知的 index（避免重複回調）
     private var lastNotifiedIndex: Int = -1
 
@@ -86,6 +89,8 @@ class ContinuousScrollContentView: NSView {
             self?.imageSizes = sizes
             NSLog("[ContinuousScroll] preloaded \(sizes.count) image sizes")
             self?.recalculateLayout()
+            // 通知預載完成
+            self?.onPreloadComplete?()
         }
     }
 

@@ -1210,10 +1210,37 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         contentView.onCurrentImageChanged = { [weak self] index, scaledSize in
             self?.handleContinuousScrollImageChanged(index: index, scaledSize: scaledSize)
         }
+        contentView.onPreloadComplete = { [weak self] in
+            self?.scrollToCurrentImageInContinuousMode()
+        }
 
         continuousScrollContentView = contentView
         scrollView.documentView = contentView
         contentView.configure(with: folder, imageLoader: loader)
+    }
+
+    /// 捲動到當前圖片位置（連續捲動模式）
+    private func scrollToCurrentImageInContinuousMode() {
+        guard let contentView = continuousScrollContentView,
+              let folder = folder else { return }
+
+        let currentIndex = folder.currentIndex
+        let imageFrame = contentView.frameForImage(at: currentIndex)
+
+        guard imageFrame != .zero else {
+            NSLog("[ContinuousScroll] scrollToCurrentImage: imageFrame is zero, skipping")
+            return
+        }
+
+        // 計算捲動目標：將圖片置中
+        let clipHeight = scrollView.contentView.bounds.height
+        let targetY = imageFrame.midY - clipHeight / 2
+
+        // 捲動到目標位置
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        NSLog("[ContinuousScroll] scrollToCurrentImage: index=\(currentIndex), imageFrame=\(imageFrame), targetY=\(targetY)")
     }
 
     private func handleContinuousScrollImageChanged(index: Int, scaledSize: NSSize) {

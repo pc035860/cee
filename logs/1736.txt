@@ -1,0 +1,91 @@
+9 Reentrant message: kDragIPCCompleted, current message: kDragIPCLeaveApplication
+Unable to obtain a task name port right for pid 480: (os/kern) failure (0x5)
+[ContinuousScroll] recalculateLayout: empty imageSizes
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-2.210268948655257, -78.4645476772752, 1281.955990220049, 1856.6259168705767), centerY=849.8484107580132, newIndex=0, lastNotified=-1
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-2.210268948655257, -78.4645476772752, 1281.955990220049, 1856.6259168705767), centerY=849.8484107580132, newIndex=0, lastNotified=0
+[ContinuousScroll] configure: folder.images.count=321, containerWidth=580.0
+[ContinuousScroll] preloaded 321 image sizes
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-2.210268948655257, -78.4645476772752, 1281.955990220049, 1856.6259168705767), centerY=849.8484107580132, newIndex=319, lastNotified=-1
+[ContinuousScroll] handleImageChanged: index=319, scaledSize=(580.0, 819.25)
+[ContinuousScroll] handleImageChanged: targetSize=(580.0, 841.25), viewportWidth=580.0
+[ContinuousScroll] recalculateLayout: totalHeight=260765.28125, containerWidth=580.0, frame=(0.0, 0.0, 580.0, 260765.28125)
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, -74.04400977996406, 1281.9559902200488, 1856.6259168705767), centerY=854.2689486553243, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, -29.83863080684357, 1281.9559902200488, 1856.6259168701106), centerY=898.4743276282118, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, -7.735941320300352, 1281.9559902200488, 1856.6259168705767), centerY=920.577017114988, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 12.156479217600445, 1281.9559902200488, 1856.6259168705767), centerY=940.4694376528888, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 29.83863080684554, 1281.9559902200488, 1856.625916870577), centerY=958.151589242134, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 47.52078239609064, 1281.9559902200488, 1856.6259168705767), centerY=975.833740831379, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 65.20293398533573, 1281.9559902200488, 1856.625916870577), centerY=993.5158924206241, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 85.09535452323652, 1281.9559902200488, 1856.625916870577), centerY=1013.408312958525, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 104.98777506113733, 1281.9559902200488, 1856.6259168705767), centerY=1033.3007334964257, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 122.66992665038242, 1281.9559902200488, 1856.6259168705767), centerY=1050.9828850856707, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 140.3520782396275, 1281.9559902200488, 1856.625916870577), centerY=1068.6650366749159, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 155.82396088017802, 1281.9559902200488, 1856.6259168701106), centerY=1084.1369193152334, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 171.29584352075977, 1281.9559902200488, 1856.6259168701106), centerY=1099.6088019558151, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 184.55745721268687, 1281.9559902200488, 1856.6259168701106), centerY=1112.8704156477422, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 197.81907090461397, 1281.9559902200488, 1856.6259168701104), centerY=1126.132029339669, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 208.8704156479389, 1281.9559902200488, 1856.625916870577), centerY=1137.1833740832274, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 219.92176039121713, 1281.9559902200488, 1856.625916870577), centerY=1148.2347188265055, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 233.18337408315108, 1281.9559902200488, 1856.625916870577), centerY=1161.4963325184394, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 246.44498777508477, 1281.9559902200488, 1856.6259168705765), centerY=1174.7579462103731, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 259.70660146695354, 1281.9559902200488, 1856.6259168701104), centerY=1188.0195599020087, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 275.1784841076041, 1281.9559902200488, 1856.625916870577), centerY=1203.4914425428926, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 299.4914425427411, 1281.9559902200488, 1856.6259168701104), centerY=1227.8044009777964, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 334.85574572129747, 1281.9559902200488, 1856.6259168705765), centerY=1263.1687041565856, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 383.4816625917216, 1281.9559902200488, 1856.625916870577), centerY=1311.7946210270102, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 436.5281173593475, 1281.9559902200488, 1856.6259168701104), centerY=1364.8410757944027, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 482.9437652813349, 1281.9559902200488, 1856.6259168710435), centerY=1411.2567237168566, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 482.9437652810922, 1281.9559902200488, 1856.6259168701106), centerY=1411.2567237161475, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 523.8337408314638, 1281.9559902200488, 1856.6259168710435), centerY=1452.1466992669857, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 562.513447432957, 1281.9559902200488, 1856.6259168710435), centerY=1490.8264058684788, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 597.8777506111647, 1281.9559902200488, 1856.6259168701104), centerY=1526.19070904622, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 632.1369193156272, 1281.9559902200488, 1856.6259168710437), centerY=1560.449877751149, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 664.1858190708166, 1281.9559902200488, 1856.6259168701104), centerY=1592.4987775058717, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 694.0244498776526, 1281.9559902200488, 1856.6259168701106), centerY=1622.3374083127078, newIndex=319, lastNotified=319
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 721.6528117358343, 1281.9559902200488, 1856.6259168701104), centerY=1649.9657701708895, newIndex=318, lastNotified=319
+[ContinuousScroll] handleImageChanged: index=318, scaledSize=(580.0, 819.25)
+[ContinuousScroll] handleImageChanged: targetSize=(580.0, 841.25), viewportWidth=580.0
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 747.070904645361, 1281.9559902200488, 1856.6259168701106), centerY=1675.3838630804162, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 771.3838630805608, 1281.9559902200488, 1856.6259168701104), centerY=1699.696821515616, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 794.5916870414331, 1281.9559902200488, 1856.6259168701108), centerY=1722.9046454764884, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 815.5892420536511, 1281.9559902200488, 1856.6259168701104), centerY=1743.9022004887063, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 835.4816625919615, 1281.9559902200488, 1856.625916871043), centerY=1763.7946210274831, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 853.1638141807869, 1281.9559902200488, 1856.6259168701106), centerY=1781.476772615842, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 869.7408312961326, 1281.9559902200488, 1856.6259168710435), centerY=1798.0537897316544, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 885.2127139362852, 1281.9559902200488, 1856.6259168701108), centerY=1813.5256723713405, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 899.5794621025395, 1281.9559902200488, 1856.6259168701106), centerY=1827.8924205375947, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 912.841075794467, 1281.9559902200488, 1856.6259168701104), centerY=1841.154034229522, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 924.9975550120664, 1281.9559902200488, 1856.6259168701106), centerY=1853.3105134471216, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 936.0488997553389, 1281.9559902200488, 1856.6259168701104), centerY=1864.361858190394, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 945.9951100242844, 1281.9559902200488, 1856.6259168701108), centerY=1874.3080684593397, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 954.8361858193817, 1281.9559902200488, 1856.6259168710435), centerY=1883.1491442549036, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 963.6772616135245, 1281.9559902200488, 1856.6259168701104), centerY=1891.9902200485797, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 970.3080684594883, 1281.9559902200488, 1856.6259168701104), centerY=1898.6210268945433, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 976.9388753054513, 1281.9559902200488, 1856.6259168701108), centerY=1905.2518337405068, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 983.5696821519088, 1281.9559902200488, 1856.6259168710435), centerY=1911.8826405874306, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 989.0953545230537, 1281.9559902200488, 1856.6259168701108), centerY=1917.408312958109, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 993.5158924208617, 1281.9559902200488, 1856.625916871043), centerY=1921.8288508563833, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 997.9364303176739, 1281.9559902200488, 1856.6259168701104), centerY=1926.249388752729, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1002.3569682149825, 1281.9559902200488, 1856.6259168701106), centerY=1930.6699266500377, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1005.6723716379645, 1281.9559902200488, 1856.6259168701101), centerY=1933.9853300730197, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1008.9877750614528, 1281.9559902200488, 1856.6259168710435), centerY=1937.3007334969745, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1011.1980440096017, 1281.9559902200488, 1856.6259168701104), centerY=1939.511002444657, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1013.4083129587648, 1281.9559902200488, 1856.6259168710435), centerY=1941.7212713942865, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1015.6185819069115, 1281.9559902200488, 1856.6259168701104), centerY=1943.9315403419666, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1016.7237163812383, 1281.9559902200488, 1856.6259168701104), centerY=1945.0366748162935, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1017.8288508560768, 1281.9559902200488, 1856.6259168710435), centerY=1946.1418092915985, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1018.9339853298933, 1281.9559902200488, 1856.6259168701104), centerY=1947.2469437649484, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1020.0391198047328, 1281.9559902200488, 1856.6259168710435), centerY=1948.3520782402545, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1020.0391198047328, 1281.9559902200488, 1856.6259168710435), centerY=1948.3520782402545, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1021.1442542785481, 1281.9559902200488, 1856.6259168701104), centerY=1949.4572127136034, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1021.1442542785481, 1281.9559902200488, 1856.6259168701104), centerY=1949.4572127136034, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1022.2493887533889, 1281.9559902200488, 1856.6259168710435), centerY=1950.5623471889107, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1023.3545232277169, 1281.9559902200488, 1856.625916871043), centerY=1951.6674816632385, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1023.3545232272025, 1281.9559902200488, 1856.6259168701104), centerY=1951.6674816622576, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1023.3545232272025, 1281.9559902200488, 1856.6259168701104), centerY=1951.6674816622576, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1023.3545232272025, 1281.9559902200488, 1856.6259168701104), centerY=1951.6674816622576, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1023.3545232272021, 1281.9559902200488, 1856.6259168701104), centerY=1951.6674816622572, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1023.3545232272021, 1281.9559902200488, 1856.6259168701104), centerY=1951.6674816622572, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1024.4596577020438, 1281.9559902200488, 1856.6259168710435), centerY=1952.7726161375656, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1025.5647921763718, 1281.9559902200488, 1856.6259168710433), centerY=1953.8777506118936, newIndex=318, lastNotified=318
+[ContinuousScroll] updateVisibleSlots: visibleRect=(-1.1051344743276288, 1025.5647921758564, 1281.9559902200488, 1856.6259168701104), centerY=1953.8777506109116, newIndex=318, lastNotified=318
