@@ -6,7 +6,9 @@
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 基礎可用版：`ContinuousScrollContentView`、圖片尺寸預載、fit-to-width 佈局、index 追蹤、menu toggle |
 | Phase 2 | ✅ 完成 | 動態視窗 Resize：`CADisplayLink` 動畫、中心點保持、全螢幕處理、狀態恢復修正 |
-| Phase 3 | 📋 待辦 | 優化完善：捲動方向感知預取、記憶體監控、大圖 subsample、**實際圖片渲染** |
+| Phase 3.1 | ✅ 完成 | 實際圖片渲染：`ImageSlotView` (layer-backed GPU 渲染)、view recycling、非同步載入 |
+| Phase 3.2 | ✅ 完成 | 捲動方向感知預取：`NavigationThrottle` 20Hz 節流、`PrefetchDirection` 整合 |
+| Phase 3.3+ | 📋 待辦 | 記憶體監控、大圖 subsample、鍵盤導航、Quick Grid |
 
 ---
 
@@ -40,23 +42,30 @@
 
 ## Phase 3 實作細節
 
-### 🔴 核心功能（必須完成）
+### ✅ 3.1 實際圖片渲染（已完成）
 
-#### 3.1 實際圖片渲染
-- **現狀**：`draw(_:)` 只繪製灰色 placeholder
-- **目標**：實作 view recycling + `layer.contents = cgImage` GPU 渲染
-- **技術方案**：
-  - 建立 `ImageSlotView` 類別（layer-backed, `wantsUpdateLayer = true`）
-  - 在 `reflectScrolledClipView` 中管理 slot 的 dequeue/reuse
-  - 透過 `ImageLoader` 非同步載入圖片
-- **參考**：`QuickGridView` 的 cell recycling 模式
+**實作檔案**：
+- `Cee/Views/ImageSlotView.swift` - Layer-backed GPU 渲染 slot
+- `Cee/Views/ContinuousScrollContentView.swift` - View recycling 邏輯
 
-#### 3.2 捲動方向感知預取
-- **目標**：根據捲動方向預載即將進入 viewport 的圖片
-- **技術方案**：
-  - 在 `reflectScrolledClipView` 中追蹤 `lastContentOffset`
-  - 計算捲動方向，觸發 `ImageLoader.prefetch(indices:priority:)`
-- **可複用**：`NavigationThrottle`（20Hz 節流）、`ImageLoader` 預取架構
+**技術方案**：
+- `ImageSlotView` 使用 `wantsUpdateLayer = true` + `layer.contents = cgImage`
+- View recycling：`activeSlots` / `reusableSlots` + `bufferCount = 2`
+- 非同步載入：透過 `ImageLoader.loadImage(at:)` / `loadPDFPage(url:pageIndex:)`
+- Stale write 防護：`slot.imageIndex == index` 檢查
+- Configuration generation ID：防止 folder 切換時的 stale write
+
+### ✅ 3.2 捲動方向感知預取（已完成）
+
+**實作檔案**：
+- `Cee/Views/ContinuousScrollContentView.swift` - `triggerPrefetch(visibleRange:)`
+
+**技術方案**：
+- 捲動方向追蹤：`lastScrollY` 比較（標準座標系統）
+- 20Hz 節流：複用 `NavigationThrottle`
+- 預取觸發：`ImageLoader.updateCache(prefetchDirection:)`
+
+### 📋 待辦功能（Phase 3.3+）
 
 ### 🟡 效能優化
 
