@@ -38,6 +38,17 @@ class ContinuousScrollContentView: NSView {
     private var reusableSlots: [ImageSlotView] = []
     private let bufferCount: Int = 2  // visible 前後各 buffer 2 張
 
+    // MARK: - Scroll Direction Tracking (Phase 3.2)
+
+    /// 上次捲動的 Y 座標（用於計算捲動方向）
+    internal var lastScrollY: CGFloat?
+
+    /// 捲動方向（true = 往下捲動，    /// 小 y = 視覺下方 =        /// 大 y = 視覺上方）
+    private(set) var isScrollingDown: Bool = true
+
+    /// 預取節流器（20Hz）
+    private var prefetchThrottle = NavigationThrottle()
+
     // MARK: - Index Tracking
 
     /// 當前圖片變更回調：(index, scaledImageSize)
@@ -57,6 +68,9 @@ class ContinuousScrollContentView: NSView {
         self.imageLoader = imageLoader
         self.lastNotifiedIndex = -1
 
+        // 重置捲動方向
+        resetScrollDirection()
+
         // 清理舊的 slots
         for slot in activeSlots {
             slot.removeFromSuperview()
@@ -69,6 +83,12 @@ class ContinuousScrollContentView: NSView {
         Task { [weak self] in
             await self?.preloadImageSizesParallel()
         }
+    }
+
+    /// 重置捲動方向（用於 folder 切換時）
+    private func resetScrollDirection() {
+        lastScrollY = nil
+        isScrollingDown = true
     }
 
     /// 平行預載所有圖片尺寸
@@ -150,6 +170,9 @@ class ContinuousScrollContentView: NSView {
 
     /// 更新可見範圍內的 slots（對外入口）
     func updateVisibleSlots(for visibleBounds: NSRect) {
+        // 更新捲動方向
+        updateScrollDirection(currentY: visibleBounds.midY)
+
         // 原有的 index tracking
         let newIndex = calculateCurrentIndex(for: visibleBounds.midY)
         if newIndex != lastNotifiedIndex {
@@ -158,7 +181,20 @@ class ContinuousScrollContentView: NSView {
         }
 
         // View recycling
-        manageSlotViews(for: visibleBounds)
+        let visibleRange = manageSlotViews(for: visibleBounds)
+
+        // 觸發預取
+        triggerPrefetch(visibleRange: visibleRange)
+    }
+
+    /// 更新捲動方向
+    /// - Parameter currentY: 當前捲動位置（標準座標系統，y=0 在底部）
+    func updateScrollDirection(currentY: CGFloat) {
+        if let lastY = lastScrollY {
+            // 標準座標系統（y=0 在底部）：小 y = 視覺下方 = index 增加
+            isScrollingDown = currentY < lastY
+        }
+        lastScrollY = currentY
     }
 
     /// 計算可見範圍（含 buffer）
@@ -210,7 +246,9 @@ class ContinuousScrollContentView: NSView {
     }
 
     /// 管理可見範圍內的 slot views（view recycling 核心方法）
-    private func manageSlotViews(for visibleRect: NSRect) {
+    /// - Returns: 可見範圍（含 buffer）
+    @discardableResult
+    private func manageSlotViews(for visibleRect: NSRect) -> ClosedRange<Int> {
         let visibleRange = calculateVisibleRange(for: visibleRect)
 
         // 1. 回收超出範圍的 slots
@@ -230,6 +268,8 @@ class ContinuousScrollContentView: NSView {
             activeSlots.append(slot)
             loadImage(for: index, into: slot)
         }
+
+        return visibleRange
     }
 
     /// 計算指定 index 圖片的 frame
@@ -283,6 +323,42 @@ class ContinuousScrollContentView: NSView {
         slot.setLoadTask(task)
     }
 
+    // MARK: - Prefetch (Phase 3.2)
+
+    /// 觸發預取（根據捲動方向）
+    private func triggerPrefetch(visibleRange: ClosedRange<Int>) {
+        // 節流檢查（20Hz）
+        guard prefetchThrottle.shouldProceed() else { return }
+
+        guard let folder = folder,
+              let loader = imageLoader else { return }
+
+        // 計算預取範圍
+        let prefetchCount = 5
+        let prefetchStart: Int
+        let prefetchEnd: Int
+
+        if isScrollingDown {
+            prefetchStart = visibleRange.upperBound + 1
+            prefetchEnd = min(folder.images.count - 1, visibleRange.upperBound + prefetchCount)
+        } else {
+            prefetchStart = max(0, visibleRange.lowerBound - prefetchCount)
+            prefetchEnd = visibleRange.lowerBound - 1
+        }
+
+        guard prefetchStart <= prefetchEnd else { return }
+
+        // 觸發 ImageLoader 預取
+        let direction: PrefetchDirection = isScrollingDown ? .forward : .backward
+        Task {
+            await loader.updateCache(
+                currentIndex: visibleRange.lowerBound,
+                items: folder.images,
+                prefetchDirection: direction
+            )
+        }
+    }
+
     // MARK: - Index Tracking
 
     /// 通知圖片變更
@@ -296,7 +372,6 @@ class ContinuousScrollContentView: NSView {
     }
 
     // MARK: - Layout Helpers
-
 
     /// 計算當前中心點對應的圖片索引
     /// scrollY 是標準座標系統中的 Y 座標（y=0 在底部）

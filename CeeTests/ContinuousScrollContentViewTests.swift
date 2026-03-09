@@ -129,4 +129,37 @@ final class ContinuousScrollContentViewTests: XCTestCase {
         // This test will be expanded when view recycling is implemented
         XCTAssertNotNil(contentView)
     }
+
+    // MARK: - Scroll Direction Tests
+
+    func testUpdateScrollDirection_detectsDownwardScroll() {
+        // Given: Set last scroll position
+        contentView.lastScrollY = 1000
+
+        // When: Scroll to smaller y (visually down in standard coordinates)
+        contentView.updateScrollDirection(currentY: 500)
+
+        // Then: Should detect downward scroll
+        XCTAssertTrue(contentView.isScrollingDown, "Scrolling to smaller y should be downward (toward larger index)")
+    }
+
+    func testUpdateScrollDirection_detectsUpwardScroll() {
+        // Given: Set last scroll position
+        contentView.lastScrollY = 500
+
+        // When: Scroll to larger y (visually up in standard coordinates)
+        contentView.updateScrollDirection(currentY: 1000)
+
+        // Then: Should detect upward scroll
+        XCTAssertFalse(contentView.isScrollingDown, "Scrolling to larger y should be upward (toward smaller index)")
+    }
+
+    func testUpdateScrollDirection_firstCall_noCrash() {
+        // Given: No previous scroll position (lastScrollY is nil)
+        // When: First scroll update
+        contentView.updateScrollDirection(currentY: 500)
+
+        // Then: Should not crash, isScrollingDown should remain default
+        XCTAssertNotNil(contentView)
+    }
 }
