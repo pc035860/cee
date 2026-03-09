@@ -9,6 +9,9 @@ class ContinuousScrollContentView: NSView {
     private var folder: ImageFolder?
     private weak var imageLoader: ImageLoader?
 
+    /// Configuration generation ID（防止 stale write）
+    private var configurationID: UUID = UUID()
+
     /// 預載的圖片尺寸
     private(set) var imageSizes: [NSSize] = []
 
@@ -23,6 +26,10 @@ class ContinuousScrollContentView: NSView {
         didSet {
             guard oldValue != containerWidth else { return }
             recalculateLayout()
+            // 更新現有 activeSlots 的 frame
+            for slot in activeSlots {
+                slot.frame = frameForImage(at: slot.imageIndex)
+            }
         }
     }
 
@@ -67,12 +74,14 @@ class ContinuousScrollContentView: NSView {
         self.folder = folder
         self.imageLoader = imageLoader
         self.lastNotifiedIndex = -1
+        self.configurationID = UUID()  // 新的 configuration generation
 
         // 重置捲動方向
         resetScrollDirection()
 
-        // 清理舊的 slots
+        // 清理舊的 slots（先取消載入任務再移除）
         for slot in activeSlots {
+            slot.prepareForReuse()
             slot.removeFromSuperview()
         }
         activeSlots.removeAll()
@@ -80,8 +89,44 @@ class ContinuousScrollContentView: NSView {
 
         NSLog("[ContinuousScroll] configure: folder.images.count=\(folder.images.count), containerWidth=\(containerWidth)")
 
+        // 在 Task 外部捕獲所有需要的值，避免資料競爭
+        let capturedFolder = folder
+        let capturedLoader: ImageLoader? = imageLoader
+        let capturedConfigurationID = configurationID
+        let capturedDefaultRatio = defaultAspectRatio
+
         Task { [weak self] in
-            await self?.preloadImageSizesParallel()
+            guard let loader = capturedLoader else { return }
+
+            // 使用 TaskGroup 平行載入
+            let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
+                for (index, item) in capturedFolder.images.enumerated() {
+                    group.addTask {
+                        if let size = await loader.getImageSize(for: item.url) {
+                            return (index, size)
+                        } else {
+                            // 無法取得尺寸時使用預設比例
+                            return (index, NSSize(width: Constants.defaultWindowWidth, height: Constants.defaultWindowWidth / capturedDefaultRatio))
+                        }
+                    }
+                }
+
+                var results: [(Int, NSSize)] = []
+                for await result in group {
+                    results.append(result)
+                }
+                return results.sorted { $0.0 < $1.0 }.map { $0.1 }
+            }
+
+            await MainActor.run { [weak self] in
+                // Stale write 防護：確認 configurationID 仍然匹配
+                guard self?.configurationID == capturedConfigurationID else { return }
+                self?.imageSizes = sizes
+                NSLog("[ContinuousScroll] preloaded \(sizes.count) image sizes")
+                self?.recalculateLayout()
+                // 通知預載完成
+                self?.onPreloadComplete?()
+            }
         }
     }
 
@@ -89,42 +134,6 @@ class ContinuousScrollContentView: NSView {
     private func resetScrollDirection() {
         lastScrollY = nil
         isScrollingDown = true
-    }
-
-    /// 平行預載所有圖片尺寸
-    private func preloadImageSizesParallel() async {
-        guard let folder = folder, let loader = imageLoader else { return }
-
-        // Capture default aspect ratio before entering TaskGroup
-        let defaultRatio = defaultAspectRatio
-
-        // 使用 TaskGroup 平行載入
-        let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
-            for (index, item) in folder.images.enumerated() {
-                group.addTask {
-                    if let size = await loader.getImageSize(for: item.url) {
-                        return (index, size)
-                    } else {
-                        // 無法取得尺寸時使用預設比例
-                        return (index, NSSize(width: 800, height: 800 / defaultRatio))
-                    }
-                }
-            }
-
-            var results: [(Int, NSSize)] = []
-            for await result in group {
-                results.append(result)
-            }
-            return results.sorted { $0.0 < $1.0 }.map { $0.1 }
-        }
-
-        await MainActor.run { [weak self] in
-            self?.imageSizes = sizes
-            NSLog("[ContinuousScroll] preloaded \(sizes.count) image sizes")
-            self?.recalculateLayout()
-            // 通知預載完成
-            self?.onPreloadComplete?()
-        }
     }
 
     /// 重新計算佈局（使用標準座標系統：y=0 在底部）
@@ -198,31 +207,38 @@ class ContinuousScrollContentView: NSView {
     }
 
     /// 計算可見範圍（含 buffer）
+    /// 使用標準座標系統：y=0 在底部，大 y 在頂部
     func calculateVisibleRange(for visibleRect: NSRect) -> ClosedRange<Int> {
         guard !imageSizes.isEmpty else { return 0...0 }
 
-        let topY = visibleRect.minY
-        let bottomY = visibleRect.maxY
+        // visibleRect.minY = 視覺底部（較小的 y）
+        // visibleRect.maxY = 視覺頂部（較大的 y）
+        let visibleBottom = visibleRect.minY
+        let visibleTop = visibleRect.maxY
 
-        // Binary search 找出可見範圍
-        var firstIndex = 0
-        var lastIndex = imageSizes.count - 1
+        // 找出與 visibleRect 有 overlap 的圖片邊界 indices
+        // 圖片範圍：[yOffset, yOffset + height]
+        // Overlap 條件：圖片頂部 > visibleBottom && 圖片底部 < visibleTop
+        var firstVisible: Int?
+        var lastVisible: Int?
 
-        // 找第一個可見的 index
-        for (i, yOffset) in yOffsets.enumerated() {
+        for i in 0..<imageSizes.count {
+            let yOffset = yOffsets[i]
             let height = scaledHeights[safe: i] ?? containerWidth / defaultAspectRatio
-            if yOffset + height >= topY {
-                firstIndex = i
-                break
+            let imageBottom = yOffset
+            let imageTop = yOffset + height
+
+            // 檢查是否有 overlap
+            if imageTop > visibleBottom && imageBottom < visibleTop {
+                if firstVisible == nil { firstVisible = i }
+                lastVisible = i
             }
         }
 
-        // 找最後一個可見的 index
-        for (i, yOffset) in yOffsets.enumerated() {
-            if yOffset > bottomY {
-                lastIndex = max(firstIndex, i - 1)
-                break
-            }
+        // 如果沒有可見圖片，返回 0...0
+        guard let firstIndex = firstVisible,
+              let lastIndex = lastVisible else {
+            return 0...0
         }
 
         // 加上 buffer
@@ -398,14 +414,5 @@ class ContinuousScrollContentView: NSView {
 
         // 超出範圍時返回邊界值
         return max(0, min(scaledHeights.count - 1, high))
-    }
-}
-
-// MARK: - Array Safe Subscript
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        guard indices.contains(index) else { return nil }
-        return self[index]
     }
 }
