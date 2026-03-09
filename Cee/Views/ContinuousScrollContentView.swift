@@ -9,6 +9,9 @@ class ContinuousScrollContentView: NSView {
     private var folder: ImageFolder?
     private weak var imageLoader: ImageLoader?
 
+    /// Configuration generation ID（防止 stale write）
+    private var configurationID: UUID = UUID()
+
     /// 預載的圖片尺寸
     private(set) var imageSizes: [NSSize] = []
 
@@ -23,6 +26,10 @@ class ContinuousScrollContentView: NSView {
         didSet {
             guard oldValue != containerWidth else { return }
             recalculateLayout()
+            // 更新現有 activeSlots 的 frame
+            for slot in activeSlots {
+                slot.frame = frameForImage(at: slot.imageIndex)
+            }
         }
     }
 
@@ -31,6 +38,23 @@ class ContinuousScrollContentView: NSView {
 
     /// 預設圖片高度（無法取得尺寸時使用）
     private let defaultAspectRatio: CGFloat = 4.0 / 3.0
+
+    // MARK: - View Recycling
+
+    private var activeSlots: [ImageSlotView] = []
+    private var reusableSlots: [ImageSlotView] = []
+    private let bufferCount: Int = 2  // visible 前後各 buffer 2 張
+
+    // MARK: - Scroll Direction Tracking (Phase 3.2)
+
+    /// 上次捲動的 Y 座標（用於計算捲動方向）
+    internal var lastScrollY: CGFloat?
+
+    /// 捲動方向（true = 往下捲動，    /// 小 y = 視覺下方 =        /// 大 y = 視覺上方）
+    private(set) var isScrollingDown: Bool = true
+
+    /// 預取節流器（20Hz）
+    private var prefetchThrottle = NavigationThrottle()
 
     // MARK: - Index Tracking
 
@@ -50,48 +74,66 @@ class ContinuousScrollContentView: NSView {
         self.folder = folder
         self.imageLoader = imageLoader
         self.lastNotifiedIndex = -1
+        self.configurationID = UUID()  // 新的 configuration generation
+
+        // 重置捲動方向
+        resetScrollDirection()
+
+        // 清理舊的 slots（先取消載入任務再移除）
+        for slot in activeSlots {
+            slot.prepareForReuse()
+            slot.removeFromSuperview()
+        }
+        activeSlots.removeAll()
+        reusableSlots.removeAll()
 
         NSLog("[ContinuousScroll] configure: folder.images.count=\(folder.images.count), containerWidth=\(containerWidth)")
 
+        // 在 Task 外部捕獲所有需要的值，避免資料競爭
+        let capturedFolder = folder
+        let capturedLoader: ImageLoader? = imageLoader
+        let capturedConfigurationID = configurationID
+        let capturedDefaultRatio = defaultAspectRatio
+
         Task { [weak self] in
-            await self?.preloadImageSizesParallel()
+            guard let loader = capturedLoader else { return }
+
+            // 使用 TaskGroup 平行載入
+            let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
+                for (index, item) in capturedFolder.images.enumerated() {
+                    group.addTask {
+                        if let size = await loader.getImageSize(for: item.url) {
+                            return (index, size)
+                        } else {
+                            // 無法取得尺寸時使用預設比例
+                            return (index, NSSize(width: Constants.defaultWindowWidth, height: Constants.defaultWindowWidth / capturedDefaultRatio))
+                        }
+                    }
+                }
+
+                var results: [(Int, NSSize)] = []
+                for await result in group {
+                    results.append(result)
+                }
+                return results.sorted { $0.0 < $1.0 }.map { $0.1 }
+            }
+
+            await MainActor.run { [weak self] in
+                // Stale write 防護：確認 configurationID 仍然匹配
+                guard self?.configurationID == capturedConfigurationID else { return }
+                self?.imageSizes = sizes
+                NSLog("[ContinuousScroll] preloaded \(sizes.count) image sizes")
+                self?.recalculateLayout()
+                // 通知預載完成
+                self?.onPreloadComplete?()
+            }
         }
     }
 
-    /// 平行預載所有圖片尺寸
-    private func preloadImageSizesParallel() async {
-        guard let folder = folder, let loader = imageLoader else { return }
-
-        // Capture default aspect ratio before entering TaskGroup
-        let defaultRatio = defaultAspectRatio
-
-        // 使用 TaskGroup 平行載入
-        let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
-            for (index, item) in folder.images.enumerated() {
-                group.addTask {
-                    if let size = await loader.getImageSize(for: item.url) {
-                        return (index, size)
-                    } else {
-                        // 無法取得尺寸時使用預設比例
-                        return (index, NSSize(width: 800, height: 800 / defaultRatio))
-                    }
-                }
-            }
-
-            var results: [(Int, NSSize)] = []
-            for await result in group {
-                results.append(result)
-            }
-            return results.sorted { $0.0 < $1.0 }.map { $0.1 }
-        }
-
-        await MainActor.run { [weak self] in
-            self?.imageSizes = sizes
-            NSLog("[ContinuousScroll] preloaded \(sizes.count) image sizes")
-            self?.recalculateLayout()
-            // 通知預載完成
-            self?.onPreloadComplete?()
-        }
+    /// 重置捲動方向（用於 folder 切換時）
+    private func resetScrollDirection() {
+        lastScrollY = nil
+        isScrollingDown = true
     }
 
     /// 重新計算佈局（使用標準座標系統：y=0 在底部）
@@ -135,19 +177,205 @@ class ContinuousScrollContentView: NSView {
 
     // MARK: - View Recycling
 
-    /// 更新可見範圍內的 slots
-    func updateVisibleSlots(for visibleRect: NSRect) {
-        // 檢測當前 index 變更（基於 viewport 中心點）
-        let viewportCenterY = visibleRect.midY
-        let newIndex = calculateCurrentIndex(for: viewportCenterY)
+    /// 更新可見範圍內的 slots（對外入口）
+    func updateVisibleSlots(for visibleBounds: NSRect) {
+        // 更新捲動方向
+        updateScrollDirection(currentY: visibleBounds.midY)
 
-        NSLog("[ContinuousScroll] updateVisibleSlots: visibleRect=\(visibleRect), centerY=\(viewportCenterY), newIndex=\(newIndex), lastNotified=\(lastNotifiedIndex)")
-
+        // 原有的 index tracking
+        let newIndex = calculateCurrentIndex(for: visibleBounds.midY)
         if newIndex != lastNotifiedIndex {
             lastNotifiedIndex = newIndex
             notifyImageChanged(index: newIndex)
         }
+
+        // View recycling
+        let visibleRange = manageSlotViews(for: visibleBounds)
+
+        // 觸發預取
+        triggerPrefetch(visibleRange: visibleRange)
     }
+
+    /// 更新捲動方向
+    /// - Parameter currentY: 當前捲動位置（標準座標系統，y=0 在底部）
+    func updateScrollDirection(currentY: CGFloat) {
+        if let lastY = lastScrollY {
+            // 標準座標系統（y=0 在底部）：小 y = 視覺下方 = index 增加
+            isScrollingDown = currentY < lastY
+        }
+        lastScrollY = currentY
+    }
+
+    /// 計算可見範圍（含 buffer）
+    /// 使用標準座標系統：y=0 在底部，大 y 在頂部
+    func calculateVisibleRange(for visibleRect: NSRect) -> ClosedRange<Int> {
+        guard !imageSizes.isEmpty else { return 0...0 }
+
+        // visibleRect.minY = 視覺底部（較小的 y）
+        // visibleRect.maxY = 視覺頂部（較大的 y）
+        let visibleBottom = visibleRect.minY
+        let visibleTop = visibleRect.maxY
+
+        // 找出與 visibleRect 有 overlap 的圖片邊界 indices
+        // 圖片範圍：[yOffset, yOffset + height]
+        // Overlap 條件：圖片頂部 > visibleBottom && 圖片底部 < visibleTop
+        var firstVisible: Int?
+        var lastVisible: Int?
+
+        for i in 0..<imageSizes.count {
+            let yOffset = yOffsets[i]
+            let height = scaledHeights[safe: i] ?? containerWidth / defaultAspectRatio
+            let imageBottom = yOffset
+            let imageTop = yOffset + height
+
+            // 檢查是否有 overlap
+            if imageTop > visibleBottom && imageBottom < visibleTop {
+                if firstVisible == nil { firstVisible = i }
+                lastVisible = i
+            }
+        }
+
+        // 如果沒有可見圖片，返回 0...0
+        guard let firstIndex = firstVisible,
+              let lastIndex = lastVisible else {
+            return 0...0
+        }
+
+        // 加上 buffer
+        let bufferedFirst = max(0, firstIndex - bufferCount)
+        let bufferedLast = min(imageSizes.count - 1, lastIndex + bufferCount)
+
+        return bufferedFirst...bufferedLast
+    }
+
+    /// Dequeue 或建立新的 slot
+    private func dequeueOrCreateSlot() -> ImageSlotView {
+        if let reusable = reusableSlots.popLast() {
+            return reusable
+        }
+        return ImageSlotView(frame: .zero)
+    }
+
+    /// 檢查指定 index 的 slot 是否已存在
+    private func isSlotActive(for index: Int) -> Bool {
+        activeSlots.contains { $0.imageIndex == index }
+    }
+
+    /// 管理可見範圍內的 slot views（view recycling 核心方法）
+    /// - Returns: 可見範圍（含 buffer）
+    @discardableResult
+    private func manageSlotViews(for visibleRect: NSRect) -> ClosedRange<Int> {
+        let visibleRange = calculateVisibleRange(for: visibleRect)
+
+        // 1. 回收超出範圍的 slots
+        for slot in activeSlots where !visibleRange.contains(slot.imageIndex) {
+            slot.removeFromSuperview()
+            slot.prepareForReuse()
+            reusableSlots.append(slot)
+        }
+        activeSlots.removeAll { !visibleRange.contains($0.imageIndex) }
+
+        // 2. 為新進入範圍的 indices 建立 slots
+        for index in visibleRange where !isSlotActive(for: index) {
+            let slot = dequeueOrCreateSlot()
+            slot.imageIndex = index
+            slot.frame = frameForImage(at: index)
+            addSubview(slot)
+            activeSlots.append(slot)
+            loadImage(for: index, into: slot)
+        }
+
+        return visibleRange
+    }
+
+    /// 計算指定 index 圖片的 frame
+    func frameForImage(at index: Int) -> NSRect {
+        guard index < imageSizes.count && index < yOffsets.count else {
+            return .zero
+        }
+        let height = scaledHeights[safe: index] ?? containerWidth / defaultAspectRatio
+        let y = yOffsets[index]
+        return NSRect(x: 0, y: y, width: containerWidth, height: height)
+    }
+
+    // MARK: - Async Image Loading
+
+    private func loadImage(for index: Int, into slot: ImageSlotView) {
+        guard let folder = folder,
+              index < folder.images.count,
+              let loader = imageLoader else { return }
+
+        let item = folder.images[index]
+
+        // 取消該 slot 原有的載入任務
+        slot.prepareForReuse()
+        slot.imageIndex = index
+
+        // 建立新的載入任務
+        let task = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+
+            let image: NSImage?
+
+            // 根據類型選擇載入方式
+            if let pageIndex = item.pdfPageIndex {
+                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+            } else {
+                image = await loader.loadImage(at: item.url)
+            }
+
+            guard let image else { return }
+
+            await MainActor.run { [weak self] in
+                // 檢查 self 和 folder 是否仍存在
+                guard let self,
+                      self.folder != nil else { return }
+                // Stale write 防護：確認 slot 仍對應這個 index
+                guard slot.imageIndex == index else { return }
+                slot.setImage(image)
+            }
+        }
+
+        slot.setLoadTask(task)
+    }
+
+    // MARK: - Prefetch (Phase 3.2)
+
+    /// 觸發預取（根據捲動方向）
+    private func triggerPrefetch(visibleRange: ClosedRange<Int>) {
+        // 節流檢查（20Hz）
+        guard prefetchThrottle.shouldProceed() else { return }
+
+        guard let folder = folder,
+              let loader = imageLoader else { return }
+
+        // 計算預取範圍
+        let prefetchCount = 5
+        let prefetchStart: Int
+        let prefetchEnd: Int
+
+        if isScrollingDown {
+            prefetchStart = visibleRange.upperBound + 1
+            prefetchEnd = min(folder.images.count - 1, visibleRange.upperBound + prefetchCount)
+        } else {
+            prefetchStart = max(0, visibleRange.lowerBound - prefetchCount)
+            prefetchEnd = visibleRange.lowerBound - 1
+        }
+
+        guard prefetchStart <= prefetchEnd else { return }
+
+        // 觸發 ImageLoader 預取
+        let direction: PrefetchDirection = isScrollingDown ? .forward : .backward
+        Task {
+            await loader.updateCache(
+                currentIndex: visibleRange.lowerBound,
+                items: folder.images,
+                prefetchDirection: direction
+            )
+        }
+    }
+
+    // MARK: - Index Tracking
 
     /// 通知圖片變更
     private func notifyImageChanged(index: Int) {
@@ -160,26 +388,6 @@ class ContinuousScrollContentView: NSView {
     }
 
     // MARK: - Layout Helpers
-
-    /// 計算指定索引圖片的 frame（fit-to-width）
-    /// 使用標準座標系統：y=0 在底部
-    func frameForImage(at index: Int) -> NSRect {
-        guard scaledHeights.indices.contains(index),
-              yOffsets.indices.contains(index) else {
-            return .zero
-        }
-
-        let scaledHeight = scaledHeights[index]
-        let yOffset = yOffsets[index]
-
-        // 標準座標系統：直接使用累積的 yOffset
-        return NSRect(
-            x: 0,
-            y: yOffset,
-            width: containerWidth,
-            height: scaledHeight
-        )
-    }
 
     /// 計算當前中心點對應的圖片索引
     /// scrollY 是標準座標系統中的 Y 座標（y=0 在底部）
@@ -206,42 +414,5 @@ class ContinuousScrollContentView: NSView {
 
         // 超出範圍時返回邊界值
         return max(0, min(scaledHeights.count - 1, high))
-    }
-
-    // MARK: - Drawing
-
-    // 不覆寫 isFlipped，使用標準座標系統（y=0 在底部）
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        // 繪製背景
-        NSColor.windowBackgroundColor.setFill()
-        dirtyRect.fill()
-
-        // TODO: Phase 2+ - 繪製可見範圍內的圖片
-        // 目前先繪製佔位色塊
-        for i in 0..<scaledHeights.count {
-            let imageFrame = frameForImage(at: i)
-            guard dirtyRect.intersects(imageFrame) else { continue }
-
-            NSColor.secondarySystemFill.setFill()
-            imageFrame.fill()
-
-            // 繪製索引標籤
-            let indexText = "\(i + 1)" as NSString
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 24, weight: .medium),
-                .foregroundColor: NSColor.secondaryLabelColor
-            ]
-            let textSize = indexText.size(withAttributes: attrs)
-            let textRect = NSRect(
-                x: imageFrame.midX - textSize.width / 2,
-                y: imageFrame.midY - textSize.height / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            indexText.draw(in: textRect, withAttributes: attrs)
-        }
     }
 }
