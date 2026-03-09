@@ -293,8 +293,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
         if settings.continuousScrollEnabled {
             continuousScrollContentView?.setScalingFilters(magnification: magFilter, minification: minFilter)
+        } else {
+            dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
         }
-        dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
     }
 
     private func showErrorPlaceholder(_ show: Bool, message: String? = nil) {
@@ -1774,8 +1775,8 @@ extension ImageViewController: ImageScrollViewDelegate {
             if let csView = continuousScrollContentView {
                 csView.updateVisibleSlots(for: scrollView.contentView.bounds)
             }
-            let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
-            statusBarView.updateZoom(magnification, isFitting: isFitting)
+            // isManualZoom 已在上方設為 true，所以 isFitting 必為 false
+            statusBarView.updateZoom(magnification, isFitting: false)
 
             if gesturePhase.isEmpty || gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
                 activeMagnifyAnchor = nil
