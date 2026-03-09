@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "4b389bd18a0b",
+  "strategy": "manual-commit",
+  "branch": "feat/continuous-scroll-perf--phase3.4-3.5",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/4b/389bd18a0b/0/metadata.json",
+      "transcript": "/4b/389bd18a0b/0/full.jsonl",
+      "content_hash": "/4b/389bd18a0b/0/content_hash.txt",
+      "prompt": "/4b/389bd18a0b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 160,
+    "cache_creation_tokens": 334194,
+    "cache_read_tokens": 14724831,
+    "output_tokens": 58699,
+    "api_call_count": 141
+  }
+}
