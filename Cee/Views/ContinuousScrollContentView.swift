@@ -70,10 +70,16 @@ class ContinuousScrollContentView: NSView {
         isZooming = true
     }
 
-    /// 結束 zoom：恢復 slot 回收，立即清理多餘 slots
+    /// 結束 zoom：恢復 slot 回收，處理延遲的記憶體壓力，清理多餘 slots
     func endZoomSuppression(visibleBounds: NSRect) {
         isZooming = false
-        updateVisibleSlots(for: visibleBounds)
+        if let level = pendingPressureLevel {
+            pendingPressureLevel = nil
+            handleMemoryPressure(level)
+            // handleMemoryPressure 內部已呼叫 manageSlotViews，不需重複
+        } else {
+            updateVisibleSlots(for: visibleBounds)
+        }
     }
 
     // MARK: - Scroll Direction Tracking (Phase 3.2)
@@ -83,6 +89,9 @@ class ContinuousScrollContentView: NSView {
 
     /// 捲動方向（true = 往下捲動，    /// 小 y = 視覺下方 =        /// 大 y = 視覺上方）
     private(set) var isScrollingDown: Bool = true
+
+    /// 最後已知的可見區域（用於記憶體壓力處理時參考）
+    private var lastKnownVisibleBounds: NSRect = .zero
 
     /// 預取節流器（20Hz）
     private var prefetchThrottle = NavigationThrottle()
@@ -117,6 +126,9 @@ class ContinuousScrollContentView: NSView {
         }
         activeSlots.removeAll()
         reusableSlots.removeAll()
+
+        // 設定記憶體壓力監控（idempotent — MemoryPressureMonitor 內部有 guard）
+        setupMemoryPressureMonitor()
 
         NSLog("[ContinuousScroll] configure: folder.images.count=\(folder.images.count), containerWidth=\(containerWidth)")
 
@@ -210,6 +222,15 @@ class ContinuousScrollContentView: NSView {
 
     /// 更新可見範圍內的 slots（對外入口）
     func updateVisibleSlots(for visibleBounds: NSRect) {
+        // Cache visible bounds（記憶體壓力處理時使用）
+        lastKnownVisibleBounds = visibleBounds
+
+        // 恢復 buffer count（warning 壓力後，下次 scroll 恢復）
+        if needsBufferRestoration {
+            bufferCount = defaultBufferCount
+            needsBufferRestoration = false
+        }
+
         // 更新捲動方向
         updateScrollDirection(currentY: visibleBounds.midY)
 
@@ -403,9 +424,74 @@ class ContinuousScrollContentView: NSView {
 
     private let memoryPressureMonitor = MemoryPressureMonitor()
 
+    /// 延遲處理的壓力等級（zoom 中暫緩）
+    private var pendingPressureLevel: MemoryPressureMonitor.PressureLevel?
+
+    /// Buffer 需要恢復的標記（warning 後在下次 scroll 恢復）
+    private var needsBufferRestoration: Bool = false
+
+    /// 設定記憶體壓力監控
+    private func setupMemoryPressureMonitor() {
+        memoryPressureMonitor.onPressure = { [weak self] level in
+            self?.handleMemoryPressure(level)
+        }
+        memoryPressureMonitor.start()
+    }
+
+    /// 處理記憶體壓力
+    private func handleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        // Zoom 中延遲處理（取 max：critical > warning）
+        if isZooming {
+            if let existing = pendingPressureLevel {
+                // critical > warning，保留較高等級
+                if level == .critical {
+                    pendingPressureLevel = .critical
+                }
+                // warning 不覆蓋 critical
+                _ = existing  // suppress unused warning
+            } else {
+                pendingPressureLevel = level
+            }
+            return
+        }
+
+        let capturedConfigID = configurationID
+
+        switch level {
+        case .warning:
+            // 縮減 buffer，下次 scroll 時恢復
+            bufferCount = 0
+            needsBufferRestoration = true
+            // 觸發 slot 回收（用縮減後的 buffer）
+            let bounds = lastKnownVisibleBounds
+            if !bounds.isEmpty {
+                manageSlotViews(for: bounds)
+            }
+
+        case .critical:
+            // 核彈選項：清除所有非可見 slot
+            bufferCount = 0
+            // 回收所有非可見 slots
+            let bounds = lastKnownVisibleBounds
+            if !bounds.isEmpty {
+                manageSlotViews(for: bounds)
+            }
+            // 清空 reusable pool 釋放記憶體
+            reusableSlots.removeAll()
+            // 清除 ImageLoader 快取（非同步）
+            guard configurationID == capturedConfigID else { return }
+            Task { [weak self] in
+                await self?.imageLoader?.clearImageCache()
+            }
+        }
+    }
+
     /// Cleanup: stop monitor, cancel tasks, clear slots
     func cleanup() {
         memoryPressureMonitor.stop()
+        pendingPressureLevel = nil
+        needsBufferRestoration = false
+        bufferCount = defaultBufferCount
         for slot in activeSlots {
             slot.prepareForReuse()
             slot.removeFromSuperview()
@@ -419,16 +505,18 @@ class ContinuousScrollContentView: NSView {
     func _testActiveSlotCount() -> Int { activeSlots.count }
     func _testReusableSlotCount() -> Int { reusableSlots.count }
     func _testBufferCount() -> Int { bufferCount }
-    func _testIsMonitorRunning() -> Bool { false }  // Stub: always false until implemented
+    func _testIsMonitorRunning() -> Bool { memoryPressureMonitor._testIsRunning() }
 
     func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
-        // Stub: no-op until implemented
+        handleMemoryPressure(level)
     }
 
     /// Test-only: configure with mock sizes (no ImageLoader needed)
     func _testConfigureWithSizes(_ sizes: [NSSize]) {
+        self.configurationID = UUID()
         self.imageSizes = sizes
         recalculateLayout()
+        setupMemoryPressureMonitor()
     }
 
     // MARK: - Layout Helpers
