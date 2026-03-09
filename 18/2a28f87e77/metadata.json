@@ -3,11 +3,12 @@
   "checkpoint_id": "182a28f87e77",
   "strategy": "manual-commit",
   "branch": "feat/webtoon",
-  "checkpoints_count": 1,
+  "checkpoints_count": 5,
   "files_touched": [
     "Cee/Controllers/ImageViewController.swift",
     "Cee/Views/ContinuousScrollContentView.swift",
-    "Cee/Views/ImageScrollView.swift"
+    "Cee/Views/ImageScrollView.swift",
+    "specs/plan/plan-continuous-scroll-zoom-flicker-fix.md"
   ],
   "sessions": [
     {
@@ -15,13 +16,19 @@
       "transcript": "/18/2a28f87e77/0/full.jsonl",
       "content_hash": "/18/2a28f87e77/0/content_hash.txt",
       "prompt": "/18/2a28f87e77/0/prompt.txt"
+    },
+    {
+      "metadata": "/18/2a28f87e77/1/metadata.json",
+      "transcript": "/18/2a28f87e77/1/full.jsonl",
+      "content_hash": "/18/2a28f87e77/1/content_hash.txt",
+      "prompt": "/18/2a28f87e77/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2683,
-    "cache_creation_tokens": 425301,
-    "cache_read_tokens": 12135246,
-    "output_tokens": 42857,
-    "api_call_count": 126
+    "input_tokens": 3888,
+    "cache_creation_tokens": 537340,
+    "cache_read_tokens": 15277626,
+    "output_tokens": 84435,
+    "api_call_count": 164
   }
 }

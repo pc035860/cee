@@ -1,0 +1,181 @@
+@specs/plan/plan-continuous-scroll-zoom-flicker-fix.md 
+
+review the plan until all pass, then implement it
+before imeplementation, gather proper context with Explore agents (run in parallel)
+
+---
+
+<task-notification>
+<task-id>aff09045fdb2da365</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/tasks/aff09045fdb2da365.output</output-file>
+<status>completed</status>
+<summary>Agent "Review zoom flicker fix plan" completed</summary>
+<result>Now I have a complete understanding. Let me summarize what I've found and formulate the review.
+
+---
+
+## Plan Summary (restated)
+
+1. **Problem**: Continuous scroll mode zoom causes black flicker (slots recycled mid-zoom) and `calculateVisibleRange` is O(n) linear scan.
+2. **Fix 1**: Replace O(n) `calculateVisibleRange` with O(log n) binary search using `calculateCurrentIndex`.
+3. **Fix 2 (Option A)**: Add `isZooming` flag to `ContinuousScrollContentView`; skip slot recycling in `manageSlotViews` while zooming; clean up after zoom ends.
+4. **Fix 3**: Evaluate and possibly remove the double `updateVisibleSlots` call from both `reflectScrolledClipView` and `scrollViewMagnificationDidChange`.
+5. **Implementation order**: Fix 1 -> Fix 2 -> Fix 3 (optional).
+6. **Plan claims**: `yOffsets` is ascending (sorted increasing); `calculateVisibleRange` is at line ~227 and is O(n).
+
+## Verdict
+
+**PASS_WITH_CHANGES**
+
+## Critical issues (must fix)
+
+### 1. Plan contains a factual error about yOffsets ordering
+
+The plan states (line 36): "`yOffsets: [CGFloat]` -- 每張圖片的 Y 座標起始點（從底部累積，已排序遞增）". This is **incorrect**. The `yOffsets` array is **descending**: index 0 has the highest y value (visual top), index N-1 has the lowest y value (visual bottom). The `recalculateLayout()` method at `/Users/pc035860/code/cee/Cee/Views/ContinuousScrollContentView.swift:156-181` clearly builds offsets starting from `totalHeight` and subtracting each image's height:
+
+```swift
+var currentY = totalHeight
+for h in scaledHeights {
+    let bottomY = currentY - h
+    offsets.append(bottomY)
+    currentY = bottomY - imageSpacing
+}
+```
+
+The **implementation** (in the working tree diff) correctly handles this -- the new `calculateVisibleRange` comment on line 229 says "yOffsets 是遞減排列" and the `calculateCurrentIndex` binary search already handles descending order. So the **code is correct** but the **plan document is misleading**. This must be corrected in the plan to avoid confusion for future readers.
+
+### 2. Fix 2 has a critical timing gap: `reflectScrolledClipView` fires BEFORE `isZooming` is set
+
+The implementation of Fix 2 only sets `csView.isZooming = true` inside `scrollViewMagnificationDidChange` (line 1776 of ImageViewController). However, the call chain for pinch/scroll zoom is:
+
+1. `magnify(with:)` / `handleCmdScrollZoom` -> `setMagnificationPreservingInsets` -> `setMagnification` 
+2. AppKit synchronously calls `reflectScrolledClipView` -> `updateVisibleSlots` (**`isZooming` is still `false` here!**)
+3. Control returns to `magnify(with:)` -> `scrollDelegate?.scrollViewMagnificationDidChange` -> sets `csView.isZooming = true` -> calls `updateVisibleSlots` again
+
+This means the **first** `updateVisibleSlots` call per magnification event runs with `isZooming == false`, allowing slot recycling to happen and causing the very flicker the fix is supposed to prevent.
+
+### 3. Keyboard zoom (`zoomIn`/`zoomOut`) does not set `csView.isZooming` at all
+
+The `zoomIn()` and `zoomOut()` methods at `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:972-997` call `setMagnificationCentered`, which calls `scrollView.setMagnification`. This triggers `reflectScrolledClipView` -> `updateVisibleSlots` with `csView.isZooming == false`. Neither `setMagnificationCentered` nor `zoomIn`/`zoomOut` ever sets `csView.isZooming = true`. The magnification delegate is not called in this path. Keyboard zoom will still exhibit the black flicker.
+
+## Plan patch (proposed edits)
+
+### Replace Fix 2 with a more robust approach
+
+Instead of setting `isZooming` only in `scrollViewMagnificationDidChange` (which fires too late), the flag should be set **before** `setMagnification` is called. Two options:
+
+**Option A -- Set `isZooming` in `ImageScrollView` before `setMagnification`:**
+
+In `ImageScrollView.magnify(with:)` and `handleCmdScrollZoom`, set `continuousView.isZooming = true` **before** calling `setMagnificationPreservingInsets`. This way, when `reflectScrolledClipView` fires synchronously, the flag is already set. The delegate callback then handles the end-of-gesture cleanup.
+
+Similarly, in `ImageViewController.setMagnificationCentered`, wrap the `scrollView.setMagnification` call with `csView.isZooming = true` ... `csView.isZooming = false` + `updateVisibleSlots` cleanup.
+
+**Option B (simpler, recommended) -- Set `isZooming` at the `reflectScrolledClipView` level:**
+
+In `ImageScrollView.reflectScrolledClipView`, check if `magnification != 1.0` or if a magnification gesture is in progress and set the flag there. However, this couples the scroll view to the content view's state too much.
+
+**Option C (simplest, recommended) -- Move the `isZooming` guard into `ImageScrollView.reflectScrolledClipView`:**
+
+Since `ImageScrollView` already calls `continuousView.updateVisibleSlots`, it can check `ImageViewController.isZooming` (via the existing delegate or a property) and set `csView.isZooming` before the call. But this requires either exposing `isZooming` from the controller or passing it through the delegate.
+
+**Concrete recommendation:** Add the `isZooming` set/clear to `setMagnificationCentered` in `ImageViewController`:
+
+```swift
+private func setMagnificationCentered(_ targetMagnification: CGFloat) {
+    isZooming = true
+    continuousScrollContentView?.isZooming = true  // ADD
+    defer {
+        isZooming = false
+        // Don't clear csView.isZooming here for gesture zoom (handled by delegate);
+        // DO clear for keyboard zoom (no gesture phase)
+    }
+    ...
+}
+```
+
+And in `zoomIn` / `zoomOut`, after `setMagnificationCentered` returns, do:
+
+```swift
+if settings.continuousScrollEnabled {
+    continuousScrollContentView?.isZooming = false
+    continuousScrollContentView?.updateVisibleSlots(for: scrollView.contentView.bounds)
+}
+```
+
+### Replace Fix 3 description
+
+Fix 3 should **not** remove the `updateVisibleSlots` call from either location. Both are needed:
+- `reflectScrolledClipView` handles normal scroll and the synchronous magnification-triggered bounds change
+- `scrollViewMagnificationDidChange` handles the explicit post-magnification update with correct `isZooming` state
+
+Instead of removing one, Fix 3 should note that the double call is **harmless** given the `isZooming` guard (once properly set): the first call only adds new slots, the second call also only adds new slots, and duplicate additions are guarded by `isSlotActive(for:)`.
+
+### Add step: Update plan's yOffsets description
+
+Change line 36 from "已排序遞增" to "已排序遞減（index 0 = 最大 y = 視覺頂端）".
+
+### Add step: Fix `fitOnScreen` keyboard path
+
+`fitOnScreen` at line 1002 calls `setMagnificationCentered(1.0)` which has the same timing issue. The `isZooming` needs to be set before this call too if in continuous mode, though at magnification 1.0 the visible range should match document space so this is lower risk.
+
+### Reorder implementation
+
+1. **Fix 2 (corrected)** -- Set `isZooming` before any `setMagnification` call that could trigger `reflectScrolledClipView`. This is the highest priority since it fixes the actual flicker bug.
+2. **Fix 1** -- Binary search for `calculateVisibleRange` (already implemented in working tree, just needs commit).
+3. **Fix 3** -- Keep both calls, document why. No code change needed.
+
+## Risks & mitigations
+
+- **Risk**: `activeSlots` grows unbounded during long pinch-zoom gestures because recycling is suppressed. If user zooms out significantly (making many images fit on screen) and then pans while still in the gesture, many slots could accumulate.
+  **Mitigation**: The post-zoom cleanup call (`isZooming = false` + `updateVisibleSlots`) handles this. But consider adding a hard cap (e.g., `activeSlots.count > visibleRange.count * 3`) as a safety valve even during zoom.
+
+- **Risk**: If `scrollViewMagnificationDidChange` is never called with `.ended`/`.cancelled` (e.g., AppKit event sequence anomaly), `isZooming` could remain `true` indefinitely, preventing all recycling.
+  **Mitigation**: Add a timeout-based fallback. Or, more simply, clear `isZooming` on the next `updateVisibleSlots` call that comes from `reflectScrolledClipView` with no active magnification gesture (check `scrollView.magnification` hasn't changed since last call).
+
+- **Risk**: `calculateCurrentIndex` returns `max(0, min(count-1, high))` when `scrollY` falls outside all image bounds. During zoom, `visibleRect.maxY` could exceed `totalHeight`, returning index 0, while `visibleRect.minY` could be below 0, returning `count-1`. This would produce `firstVisible=0, lastVisible=count-1` -- the entire image set, defeating the purpose of buffer limits.
+  **Mitigation**: This is actually correct behavior -- if the viewport genuinely spans the entire document, all images should be visible. But verify the binary search edge cases with unit tests for extreme zoom-out scenarios.
+
+- **Risk**: The `isSlotActive(for:)` check is O(n) linear scan on `activeSlots` array. With many accumulated slots during zoom, this could degrade the inner loop of `manageSlotViews`.
+  **Mitigation**: Consider using a `Set<Int>` (`activeSlotIndices`) alongside the array for O(1) lookup. Low priority since `activeSlots` is typically small (< 20).
+
+## Test plan
+
+1. **Unit test: `calculateVisibleRange` binary search correctness**
+   - Test with 3+ images, verify range matches expected indices for various `visibleRect` positions
+   - Test edge case: `visibleRect` spans entire document (extreme zoom out)
+   - Test edge case: `visibleRect` is between two images (in spacing gap)
+   - Test edge case: single image, `visibleRect` covers it partially
+
+2. **Unit test: `manageSlotViews` with `isZooming` flag**
+   - Set `isZooming = true`, call `manageSlotViews`, verify no slots are removed from `activeSlots`
+   - Set `isZooming = false`, call `manageSlotViews`, verify out-of-range slots ARE recycled
+
+3. **Unit test: `isZooming` lifecycle for keyboard zoom**
+   - Verify `isZooming` is set before `setMagnification` and cleared after cleanup
+
+4. **Manual test: Pinch zoom in/out** -- no black flicker, smooth transition
+5. **Manual test: Cmd+=/Cmd+-** -- no black flicker
+6. **Manual test: Cmd+scroll zoom** -- no black flicker
+7. **Manual test: Zoom then scroll** -- slots properly recycled after zoom ends (check memory)
+8. **Manual test: Non-continuous mode** -- regression check, all zoom behavior unchanged
+9. **Manual test: Rapid pinch zoom with many images** -- no excessive memory growth
+
+## Open questions
+
+1. In the working tree, the keyboard zoom paths (`zoomIn`, `zoomOut`, `fitOnScreen`) do NOT set `csView.isZooming`. Was this intentionally left out because keyboard zoom steps are small enough that the visible range change is negligible, or is this a bug? If intentional, the plan should document this rationale. If a bug, it should be added to the fix scope.
+
+2. Is there an existing mechanism that detects "magnification gesture in progress" from `ImageScrollView` that could be exposed to `reflectScrolledClipView` to set `isZooming` at the right time? The `ImageScrollView` knows when `magnify(with:)` is executing -- a simple boolean flag there could propagate to the content view before `reflectScrolledClipView` fires.
+
+3. The plan mentions `bufferCount = 2`. Has there been empirical testing that 2 is sufficient for high-magnification zoom? At 3x-4x zoom, the document-space visible area shrinks to 1/3-1/4, and buffer=2 might not cover the screen-space visible images. Should the buffer be dynamically scaled by magnification (e.g., `bufferCount * magnification`)?</result>
+<usage><total_tokens>53321</total_tokens><tool_uses>39</tool_uses><duration_ms>205249</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-501/-Users-pc035860-code-cee/tasks/aff09045fdb2da365.output
+
+---
+
+update the plan file
+
+---
+
+/review-loop codex
