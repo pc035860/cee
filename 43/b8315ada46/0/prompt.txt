@@ -1,0 +1,16 @@
+/takeover
+
+---
+
+剛剛的問題最後經 codex 確認應該都修正了
+
+幫我整理一下 @specs/brainstorm/brainstorm-continuous-scroll.md 中的 phase 3 項目
+上面未 commit 那部分就是新增的
+
+---
+
+整理到 spec 檔案
+
+---
+
+/commit
