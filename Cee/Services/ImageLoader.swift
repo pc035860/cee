@@ -363,6 +363,7 @@ actor ImageLoader {
 
         // 釋放超出範圍的快取
         cache = cache.filter { activeImageURLs.contains($0.key) }
+        displayCache = displayCache.filter { activeImageURLs.contains($0.key) }
         thumbnailCache = thumbnailCache.filter { activeImageURLs.contains($0.key.url) }
         pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
         pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
@@ -405,9 +406,10 @@ actor ImageLoader {
         thumbnailCache.removeAll()
     }
 
-    /// 清空主圖片快取、PDF 快取及取消所有預載任務（記憶體壓力時呼叫）
+    /// 清空主圖片快取、PDF 快取、顯示快取及取消所有預載任務（記憶體壓力時呼叫）
     func clearImageCache() {
         cache.removeAll()
+        displayCache.removeAll()
         pdfCache.removeAll()
         pdfDocumentCache.removeAll()
         for (_, task) in prefetchTasks { task.cancel() }
@@ -421,12 +423,61 @@ actor ImageLoader {
     private var displayCache: [URL: NSImage] = [:]
 
     /// Load image subsampled for display at given pixel width (continuous scroll mode)
+    /// - Parameter maxWidth: Target display width in pixels (include Retina scale factor)
     func loadImageForDisplay(at url: URL, maxWidth: CGFloat) async -> NSImage? {
-        // Stub: delegates to full decode for now (tests should fail on dimensions)
         if let cached = displayCache[url] { return cached }
-        let image = await loadImage(at: url)
+
+        let image = await Task.detached(priority: .userInitiated) {
+            Self.decodeImageForDisplay(at: url, maxWidth: maxWidth)
+        }.value
+
         if let image { displayCache[url] = image }
         return image
+    }
+
+    /// Decode with subsample for large images, full decode for small ones
+    private static func decodeImageForDisplay(at url: URL, maxWidth: CGFloat) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return decodeImage(at: url)
+        }
+
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let pixelWidth = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let pixelHeight = properties[kCGImagePropertyPixelHeight] as? CGFloat else {
+            return decodeImage(at: url)
+        }
+
+        // EXIF orientation 5-8: swap w/h (sensor dimensions don't match display orientation)
+        let orientation = properties[kCGImagePropertyOrientation] as? UInt32 ?? 1
+        let sourceWidth = (orientation >= 5 && orientation <= 8) ? pixelHeight : pixelWidth
+
+        // Calculate subsample factor: maxWidth is already in display pixels
+        let ratio = sourceWidth / maxWidth
+        let subsampleFactor: Int
+        if ratio >= 4.0 {
+            subsampleFactor = 4
+        } else if ratio >= 2.0 {
+            subsampleFactor = 2
+        } else {
+            // No subsample needed — full decode
+            return decodeImage(at: url)
+        }
+
+        // Use thumbnail API with subsample for JPEG/HEIF DCT fast path
+        // CGImageSource scales proportionally from maxWidth
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxWidth,
+            kCGImageSourceSubsampleFactor: subsampleFactor,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return decodeImage(at: url)
+        }
+
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 
     // MARK: - Test-Only Accessors

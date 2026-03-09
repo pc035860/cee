@@ -352,7 +352,12 @@ class ContinuousScrollContentView: NSView {
             if let pageIndex = item.pdfPageIndex {
                 image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
             } else {
-                image = await loader.loadImage(at: item.url)
+                // Phase 3.5: 使用 subsample 載入，節省大圖記憶體
+                // displayPixelWidth = containerWidth * Retina scale factor
+                let displayPixelWidth = await MainActor.run {
+                    self?.containerWidth ?? 800
+                } * (await MainActor.run { self?.window?.backingScaleFactor ?? 2.0 })
+                image = await loader.loadImageForDisplay(at: item.url, maxWidth: displayPixelWidth)
             }
 
             guard let image else { return }

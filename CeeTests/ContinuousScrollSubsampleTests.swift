@@ -19,8 +19,8 @@ final class ContinuousScrollSubsampleTests: XCTestCase {
         XCTAssertNotNil(image, "Should return a valid image")
         guard let image else { return }
 
-        // Subsampled image should be significantly smaller than source
-        let width = image.representations.first?.pixelsWide ?? Int(image.size.width)
+        // Subsampled image should be significantly smaller than source (4000px)
+        let width = Int(image.size.width)
         XCTAssertLessThanOrEqual(width, 800,
                                  "Subsampled image width should be ≤ maxWidth (\(width))")
         XCTAssertGreaterThan(width, 0, "Image should have positive width")
@@ -39,8 +39,9 @@ final class ContinuousScrollSubsampleTests: XCTestCase {
         XCTAssertNotNil(image, "Should return a valid image")
         guard let image else { return }
 
-        // Should be at original resolution (no subsample)
-        let width = image.representations.first?.pixelsWide ?? Int(image.size.width)
+        // Should be at original resolution (no subsample, full decode)
+        // decodeImage creates NSImage(cgImage:size:) where size = cgImage pixel dimensions
+        let width = Int(image.size.width)
         XCTAssertEqual(width, 800, "Small image should be at original width")
     }
 
