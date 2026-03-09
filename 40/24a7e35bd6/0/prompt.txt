@@ -1,0 +1,7 @@
+/auto-impl @specs/plan/plan-2026-03-09_23-00-28_continuous-scroll-zoom.md 
+
+act as one work-unit, start from plan-review phase
+
+---
+
+continue
