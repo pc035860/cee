@@ -3,7 +3,7 @@
   "checkpoint_id": "3148d51d763d",
   "strategy": "manual-commit",
   "branch": "feat/webtoon",
-  "checkpoints_count": 1,
+  "checkpoints_count": 3,
   "files_touched": [
     "CLAUDE.md"
   ],
@@ -13,13 +13,19 @@
       "transcript": "/31/48d51d763d/0/full.jsonl",
       "content_hash": "/31/48d51d763d/0/content_hash.txt",
       "prompt": "/31/48d51d763d/0/prompt.txt"
+    },
+    {
+      "metadata": "/31/48d51d763d/1/metadata.json",
+      "transcript": "/31/48d51d763d/1/full.jsonl",
+      "content_hash": "/31/48d51d763d/1/content_hash.txt",
+      "prompt": "/31/48d51d763d/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2683,
-    "cache_creation_tokens": 425301,
-    "cache_read_tokens": 12135246,
-    "output_tokens": 42857,
-    "api_call_count": 126
+    "input_tokens": 2699,
+    "cache_creation_tokens": 434169,
+    "cache_read_tokens": 13537494,
+    "output_tokens": 45201,
+    "api_call_count": 137
   }
 }
