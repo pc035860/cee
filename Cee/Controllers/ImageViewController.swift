@@ -202,8 +202,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
         
         if settings.continuousScrollEnabled {
-            // In continuous scroll mode, contentView.image is nil, but we still want to show progress
-            let currentImageSize = imageSizeCache[folder.currentIndex] ?? .zero
+            // In continuous scroll mode, use the size from ContinuousScrollContentView
+            let currentImageSize = continuousScrollContentView?.imageSizes[safe: folder.currentIndex] ?? .zero
             statusBarView.update(
                 index: folder.currentIndex + 1,
                 total: total,

@@ -10,7 +10,7 @@ class ContinuousScrollContentView: NSView {
     private weak var imageLoader: ImageLoader?
 
     /// 預載的圖片尺寸
-    private var imageSizes: [NSSize] = []
+    private(set) var imageSizes: [NSSize] = []
 
     /// 縮放後的高度（cache 避免重複計算）
     private var scaledHeights: [CGFloat] = []
