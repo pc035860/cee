@@ -13,7 +13,7 @@ class ContinuousScrollContentView: NSView {
     private(set) var imageSizes: [NSSize] = []
 
     /// 縮放後的高度（cache 避免重複計算）
-    private var scaledHeights: [CGFloat] = []
+    internal var scaledHeights: [CGFloat] = []
 
     /// 每張圖片的 Y 座標起始點（從底部開始累積）
     private var yOffsets: [CGFloat] = []

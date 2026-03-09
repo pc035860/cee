@@ -48,12 +48,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// Unified document size — uses compositeSize in dual mode, single image size otherwise.
     private var currentDocumentSize: NSSize? {
-        // 連續捲動模式：使用當前圖片的縮放尺寸
+        // 連續捲動模式：使用當前圖片的縮放尺寸（fit-to-width）
         if settings.continuousScrollEnabled,
            let contentView = continuousScrollContentView,
            let folder = folder,
-           let imageSize = contentView.imageSizes[safe: folder.currentIndex] {
-            return imageSize
+           contentView.scaledHeights.indices.contains(folder.currentIndex) {
+            let scaledHeight = contentView.scaledHeights[folder.currentIndex]
+            return NSSize(width: contentView.containerWidth, height: scaledHeight)
         }
 
         // 單頁/雙頁模式
@@ -154,11 +155,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         self.folder = newFolder
         imageSizeCache.removeAll()
         loadFolderDualPageSettings()
-        if settings.dualPageEnabled {
+
+        // 根據模式選擇載入方式
+        if settings.continuousScrollEnabled {
+            configureContinuousScrollView()
+        } else if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         } else {
             loadCurrentImage(initialScroll: .top)
         }
+
         // Grid visible → refresh with new folder; otherwise → restore scroll view focus
         if wasGridVisible, let grid = quickGridView, let folder = self.folder, !folder.images.isEmpty {
             grid.clearCache()
@@ -652,7 +658,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func scrollRange(for insets: NSEdgeInsets) -> ScrollRange? {
         let clipView = scrollView.contentView
         let visibleSize = clipView.bounds.size
-        let docSize = dualPageView.frame.size
+
+        // 根據當前模式選擇正確的 document size
+        let docSize: NSSize
+        if settings.continuousScrollEnabled, let contentView = continuousScrollContentView {
+            docSize = contentView.frame.size
+        } else {
+            docSize = dualPageView.frame.size
+        }
 
         guard visibleSize.width > 0, visibleSize.height > 0,
               docSize.width > 0, docSize.height > 0 else { return nil }
@@ -707,6 +720,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func applyCenteringInsetsIfNeeded(reason: String = "unspecified") {
         let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+
+        // 連續捲動模式：fit-to-width，不需要 centering insets
+        if settings.continuousScrollEnabled {
+            let statusBarH = effectiveStatusBarHeight
+            let continuousInsets = NSEdgeInsets(top: 0, left: 0, bottom: statusBarH, right: 0)
+            if !insetsNearlyEqual(scrollView.contentInsets, continuousInsets) {
+                scrollView.contentInsets = continuousInsets
+            }
+            updateScrollDebugAccessibilityValue(range: scrollRange(for: continuousInsets))
+            DebugCentering.log("applyCentering reason=\(reason) continuousMode insets=\(debugInsets(continuousInsets))")
+            return
+        }
+
         guard let imageSize = currentDocumentSize else {
             if !insetsNearlyEqual(scrollView.contentInsets, zeroInsets) {
                 scrollView.contentInsets = zeroInsets
@@ -1273,28 +1299,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateWindowTitle()
         updateStatusBar()
 
-        guard let windowController = view.window?.windowController as? ImageWindowController else {
-            NSLog("[ContinuousScroll] handleImageChanged: no windowController")
-            return
-        }
-
-        // 全螢幕模式：跳過 resize
-        guard view.window?.styleMask.contains(.fullScreen) != true else { return }
-
-        // 計算目標視窗大小
-        let viewportWidth = scrollView.bounds.width
-        let targetHeight = scaledSize.height + effectiveStatusBarHeight
-
-        // 極高圖片 cap 在螢幕高度 90%
-        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        let clampedHeight = min(targetHeight, screenHeight * 0.9)
-
-        let targetSize = NSSize(width: viewportWidth, height: clampedHeight)
-
-        NSLog("[ContinuousScroll] handleImageChanged: targetSize=\(targetSize), viewportWidth=\(viewportWidth)")
-
-        // 觸發動態 resize
-        windowController.animateResize(to: targetSize, preserveCenter: true)
+        // 連續捲動模式下不執行 resize 動畫（使用 fit-to-width， 固定寬度）
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {

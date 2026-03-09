@@ -285,8 +285,10 @@ class ImageWindowController: NSWindowController {
         // 全螢幕模式下跳過 resize
         guard !window.styleMask.contains(.fullScreen) else { return }
 
-        // 停止現有動畫
-        resizeDisplayLink?.isPaused = true
+        // 連續捲動模式下跳過 resize（使用 fit-to-width，固定寬度）
+        if let vc = contentViewController as? ImageViewController, vc.settings.continuousScrollEnabled {
+            return
+        }
 
         // 建立或重用 display link
         let displayLink: CADisplayLink
