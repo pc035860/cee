@@ -182,7 +182,9 @@ xcodebuild -project Cee.xcodeproj -scheme Cee -configuration Debug build
 11. **Strip 邊界 overscroll**：在最頂端/最底端連續 overscroll → 不應觸發意外行為
 
 ### Known Limitations
-- 高倍 zoom 時圖片會模糊（GPU 放大固定解析度圖片）→ 留待 Phase 3.4 subsample 優化
+- 高倍 zoom 時圖片會模糊（GPU 放大固定解析度圖片）→ 留待 Phase 3.5 subsample 優化
+- **Zoom 閃爍 + 效能差**：slot recycling 使用 document-space bounds，zoom 時仍可見的 slot 被誤回收 → Phase 3.3.1 修復
+- `calculateVisibleRange` 為 O(n) 線性掃描，zoom 時高頻呼叫成為瓶頸 → Phase 3.3.1 改 binary search
 
 ---
 

@@ -9,7 +9,8 @@
 | Phase 3.1 | ✅ 完成 | 實際圖片渲染：`ImageSlotView` (layer-backed GPU 渲染)、view recycling、非同步載入 |
 | Phase 3.2 | ✅ 完成 | 捲動方向感知預取：`NavigationThrottle` 20Hz 節流、`PrefetchDirection` 整合 |
 | Phase 3.3 | ✅ 完成 | Zoom 支援：`effectiveMinMagnification` 1.0 clamp、magnification fast path、scaling filters、模式切換 reset |
-| Phase 3.4+ | 📋 待辦 | 記憶體監控、大圖 subsample、鍵盤導航、Quick Grid |
+| Phase 3.3.1 | 🔴 Bug | Zoom 閃爍 + 效能差：slot recycling 誤回收 + `calculateVisibleRange` O(n) |
+| Phase 3.4+ | 📋 待辦 | 記憶體監控、大圖 subsample、鍵盤導航、Quick Grid、Fitting UI 適配 |
 
 ---
 
@@ -83,6 +84,13 @@
 - `ImageSlotView.setScalingFilters` + `ContinuousScrollContentView.setScalingFilters`（含 early-return guard + stored filters for new slots）
 - `configureContinuousScrollView` 同步 `scrollView.continuousScrollEnabled` + 套用 scaling quality
 
+### 🔴 已知 Bug
+
+#### 3.3.1 Zoom 閃爍 + 效能差
+- **現象**：zoom 時出現黑色閃爍，效能不佳
+- **原因**：`updateVisibleSlots` 使用 document-space bounds 判斷可見範圍，zoom in 時 document-space 可見區域縮小，導致仍在螢幕上可見的 slot 被回收（`prepareForReuse` 清除 `cachedCGImage`）再重建，產生黑色閃爍。`calculateVisibleRange` 為 O(n) 線性掃描，高頻呼叫下成為效能瓶頸。
+- **修復方向**：zoom 過程中（`isZooming = true`）擴大 buffer 或暫停 slot 回收；`calculateVisibleRange` 改用 binary search (O(log n))
+
 ### 📋 待辦功能（Phase 3.4+）
 
 ### 🟡 效能優化
@@ -113,6 +121,10 @@
 - **目標**：可調整圖片間距（0px 預設）
 - **實作**：`ViewerSettings.continuousScrollGap` 屬性
 
+#### 3.9 Fitting options UI 適配
+- **目標**：連續捲動模式下 disable 不適用的 menu items，避免介面混淆
+- **範圍**：Shrink H/V、Stretch H/V 等 fitting 選項在連續模式下無意義，應在 `validateMenuItem` 中 disable。`applyFitting` 加 continuous scroll guard。
+
 ### 建議實作順序
 
 ```
@@ -122,9 +134,11 @@ Phase 3.2 ─ 捲動方向感知預取（流暢度）✅
     ↓
 Phase 3.3 ─ Zoom 支援（pinch/keyboard zoom）✅
     ↓
+Phase 3.3.1 ─ Zoom 閃爍修復（bug fix）🔴
+    ↓
 Phase 3.4 ─ 記憶體監控 + Subsample（穩定性）
     ↓
-Phase 3.5+ ─ 鍵盤導航 / Quick Grid / 間距（UX polish）
+Phase 3.5+ ─ 鍵盤導航 / Quick Grid / 間距 / UI 適配（UX polish）
 ```
 
 ---
