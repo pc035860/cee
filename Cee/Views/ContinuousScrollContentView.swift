@@ -355,10 +355,10 @@ class ContinuousScrollContentView: NSView {
                 image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
             } else {
                 // Phase 3.5: 使用 subsample 載入，節省大圖記憶體
-                // displayPixelWidth = containerWidth * Retina scale factor
+                // displayPixelWidth = containerWidth * Retina scale factor（單次 actor hop）
                 let displayPixelWidth = await MainActor.run {
-                    self?.containerWidth ?? 800
-                } * (await MainActor.run { self?.window?.backingScaleFactor ?? 2.0 })
+                    (self?.containerWidth ?? 800) * (self?.window?.backingScaleFactor ?? 2.0)
+                }
                 image = await loader.loadImageForDisplay(at: item.url, maxWidth: displayPixelWidth)
             }
 
@@ -447,16 +447,9 @@ class ContinuousScrollContentView: NSView {
 
     /// 處理記憶體壓力
     private func handleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
-        // Zoom 中延遲處理（取 max：critical > warning）
+        // Zoom 中延遲處理（escalate only：warning 不覆蓋 critical）
         if isZooming {
-            if let existing = pendingPressureLevel {
-                // critical > warning，保留較高等級
-                if level == .critical {
-                    pendingPressureLevel = .critical
-                }
-                // warning 不覆蓋 critical
-                _ = existing  // suppress unused warning
-            } else {
+            if pendingPressureLevel == nil || level == .critical {
                 pendingPressureLevel = level
             }
             return
@@ -464,29 +457,16 @@ class ContinuousScrollContentView: NSView {
 
         let capturedConfigID = configurationID
 
-        switch level {
-        case .warning:
-            // 縮減 buffer，下次 scroll 時恢復
-            bufferCount = 0
-            needsBufferRestoration = true
-            // 觸發 slot 回收（用縮減後的 buffer）
-            let bounds = lastKnownVisibleBounds
-            if !bounds.isEmpty {
-                manageSlotViews(for: bounds)
-            }
+        // 共用：縮減 buffer，觸發 slot 回收
+        bufferCount = 0
+        needsBufferRestoration = true
+        if !lastKnownVisibleBounds.isEmpty {
+            manageSlotViews(for: lastKnownVisibleBounds)
+        }
 
-        case .critical:
-            // 核彈選項：清除所有非可見 slot
-            bufferCount = 0
-            needsBufferRestoration = true  // 下次 scroll 恢復正常 buffer
-            // 回收所有非可見 slots
-            let bounds = lastKnownVisibleBounds
-            if !bounds.isEmpty {
-                manageSlotViews(for: bounds)
-            }
-            // 清空 reusable pool 釋放記憶體
+        // Critical 額外：清空 reusable pool + ImageLoader 快取
+        if level == .critical {
             reusableSlots.removeAll()
-            // 清除 ImageLoader 快取（非同步）
             guard configurationID == capturedConfigID else { return }
             Task { [weak self] in
                 await self?.imageLoader?.clearImageCache()

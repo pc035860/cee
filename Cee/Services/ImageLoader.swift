@@ -412,10 +412,7 @@ actor ImageLoader {
         displayCache.removeAll()
         pdfCache.removeAll()
         pdfDocumentCache.removeAll()
-        for (_, task) in prefetchTasks { task.cancel() }
-        prefetchTasks.removeAll()
-        for (_, task) in imagePrefetchTasks { task.cancel() }
-        imagePrefetchTasks.removeAll()
+        cancelAllPrefetchTasks()
     }
 
     // MARK: - Display Cache (Continuous Scroll Subsample)
@@ -431,11 +428,13 @@ actor ImageLoader {
     /// Load image subsampled for display at given pixel width (continuous scroll mode)
     /// - Parameter maxWidth: Target display width in pixels (include Retina scale factor)
     func loadImageForDisplay(at url: URL, maxWidth: CGFloat) async -> NSImage? {
-        let cacheKey = DisplayCacheKey(url: url, maxWidth: maxWidth)
+        // Quantize to 20px steps to prevent cache churn during resize/zoom
+        let quantizedWidth = ceil(maxWidth / 20.0) * 20.0
+        let cacheKey = DisplayCacheKey(url: url, maxWidth: quantizedWidth)
         if let cached = displayCache[cacheKey] { return cached }
 
         let image = await Task.detached(priority: .userInitiated) {
-            Self.decodeImageForDisplay(at: url, maxWidth: maxWidth)
+            Self.decodeImageForDisplay(at: url, maxWidth: quantizedWidth)
         }.value
 
         // Check cancellation before writing to cache (prevent stale writes after pressure cleanup)
