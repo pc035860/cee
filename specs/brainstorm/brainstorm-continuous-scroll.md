@@ -5,8 +5,98 @@
 | Phase | 狀態 | 說明 |
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 基礎可用版：`ContinuousScrollContentView`、圖片尺寸預載、fit-to-width 佈局、index 追蹤、menu toggle |
-| Phase 2 | ✅ 完成 | 動態視窗 Resize：`CADisplayLink` 動畫、中心點保持、全螢幕處理 |
-| Phase 3 | 📋 待辦 | 優化完善：捲動方向感知預取、記憶體監控、大圖 subsample |
+| Phase 2 | ✅ 完成 | 動態視窗 Resize：`CADisplayLink` 動畫、中心點保持、全螢幕處理、狀態恢復修正 |
+| Phase 3 | 📋 待辦 | 優化完善：捲動方向感知預取、記憶體監控、大圖 subsample、**實際圖片渲染** |
+
+---
+
+## Phase 2 實作細節
+
+### 已完成功能
+
+1. **狀態恢復修正**
+   - `ImageViewController.viewDidAppear()` 現在會檢查 `settings.continuousScrollEnabled` 並恢復模式
+   - `validateMenuItem` 支援 `toggleContinuousScroll` 選項顯示勾選狀態
+   - `loadFolder(_:)` 正確處理 `continuousScrollEnabled` 設定
+
+2. **佈局與中心修正**
+   - `applyCenteringInsetsIfNeeded()` 在連續捲動模式下使用 fit-to-width insets
+   - `scrollRange(for:)` 支援連續捲動模式的 document size
+   - `currentDocumentSize` 在連續捲動模式下使用 `imageSizes`
+
+3. **Status Bar 修正**
+   - `updateStatusBar()` 在連續捲動模式下使用 `continuousScrollContentView?.imageSizes[safe: folder.currentIndex]`
+
+4. **CADisplayLink 動態 Resize**
+   - `ImageWindowController.animateResize()` 使用 CADisplayLink 平滑動畫
+   - 中心點保持計算
+
+5. **座標系統**
+   - `ContinuousScrollContentView` 使用標準 macOS 座標系統（y=0 在底部）以配合 `ImageScrollView` 的 unflipped 行為
+   - Binary search (O(log n)) 用於 index tracking
+   - `scaledHeights` cache 避免重複計算
+
+---
+
+## Phase 3 實作細節
+
+### 🔴 核心功能（必須完成）
+
+#### 3.1 實際圖片渲染
+- **現狀**：`draw(_:)` 只繪製灰色 placeholder
+- **目標**：實作 view recycling + `layer.contents = cgImage` GPU 渲染
+- **技術方案**：
+  - 建立 `ImageSlotView` 類別（layer-backed, `wantsUpdateLayer = true`）
+  - 在 `reflectScrolledClipView` 中管理 slot 的 dequeue/reuse
+  - 透過 `ImageLoader` 非同步載入圖片
+- **參考**：`QuickGridView` 的 cell recycling 模式
+
+#### 3.2 捲動方向感知預取
+- **目標**：根據捲動方向預載即將進入 viewport 的圖片
+- **技術方案**：
+  - 在 `reflectScrolledClipView` 中追蹤 `lastContentOffset`
+  - 計算捲動方向，觸發 `ImageLoader.prefetch(indices:priority:)`
+- **可複用**：`NavigationThrottle`（20Hz 節流）、`ImageLoader` 預取架構
+
+### 🟡 效能優化
+
+#### 3.3 記憶體監控整合
+- **目標**：記憶體壓力過高時自動清理 cache
+- **技術方案**：整合 `MemoryPressureMonitor`（DispatchSource）
+- **可複用**：`QuickGridView` 已有的 monitor 實作
+
+#### 3.4 大圖 Subsample
+- **目標**：使用 `kCGImageSourceSubsampleFactor` 降低大圖記憶體佔用
+- **技術方案**：
+  - 載入時檢查圖片尺寸
+  - 若超過閾值（如 4K），使用 subsample factor 2 或 4
+- **可複用**：`ThumbnailThrottle` 的 subsample 邏輯
+
+### 🟢 功能增強（Nice to have）
+
+#### 3.5 鍵盤導航
+- **目標**：Arrow key 觸發 smooth scroll（而非 page-turn）
+- **實作**：在 `ImageScrollView.keyDown` 中分支處理 continuous mode
+
+#### 3.6 Quick Grid 整合
+- **目標**：從 grid 選擇圖片後，`scrollToIndex()` 跳轉到對應位置
+- **實作**：`ContinuousScrollContentView.scrollToIndex(_:)` 方法
+
+#### 3.7 圖片間距設定
+- **目標**：可調整圖片間距（0px 預設）
+- **實作**：`ViewerSettings.continuousScrollGap` 屬性
+
+### 建議實作順序
+
+```
+Phase 3.1 ─ 實際圖片渲染（核心，才能正常使用）
+    ↓
+Phase 3.2 ─ 捲動方向感知預取（流暢度）
+    ↓
+Phase 3.3 ─ 記憶體監控 + Subsample（穩定性）
+    ↓
+Phase 3.4+ ─ 鍵盤導航 / Quick Grid / 間距（UX polish）
+```
 
 ---
 
@@ -224,12 +314,19 @@ enum ZoomMode {
 - Edge case 處理（極高/極寬、全螢幕、快速捲動）
 
 ### Phase 3 — 優化完善
-- 捲動方向感知預取
-- `MemoryPressureMonitor` 整合
-- 大圖片 subsample（`kCGImageSourceSubsampleFactor`）
-- 鍵盤導航（arrow = smooth scroll）
-- Quick Grid 整合（scrollToIndex）
-- 圖片間距設定（0px 預設，可調）
+
+**核心（必須）：**
+- 🔴 實際圖片渲染（view recycling + `layer.contents = cgImage`）
+- 🔴 捲動方向感知預取
+
+**效能優化：**
+- 🟡 `MemoryPressureMonitor` 整合
+- 🟡 大圖片 subsample（`kCGImageSourceSubsampleFactor`）
+
+**功能增強（Nice to have）：**
+- 🟢 鍵盤導航（arrow = smooth scroll）
+- 🟢 Quick Grid 整合（scrollToIndex）
+- 🟢 圖片間距設定（0px 預設，可調）
 
 ---
 
