@@ -46,6 +46,12 @@ class ImageSlotView: NSView {
         loadTask = task
     }
 
+    // MARK: - Scaling Quality
+    func setScalingFilters(magnification: CALayerContentsFilter, minification: CALayerContentsFilter) {
+        layer?.magnificationFilter = magnification
+        layer?.minificationFilter = minification
+    }
+
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()

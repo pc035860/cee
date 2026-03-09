@@ -1038,6 +1038,7 @@ class ImageScrollView: NSScrollView {
     /// 當 displayedSize < minWindowContent 時 resizeToFitImage 不再縮小視窗，
     /// 但 magnification 會繼續降導致不同步漂移。此方法確保 magnification 不會低於該臨界值。
     func effectiveMinMagnification() -> CGFloat {
+        if continuousScrollEnabled { return 1.0 }
         guard let docView = documentView else { return minMagnification }
         // documentView.frame 是已縮放尺寸，除以 magnification 取得原始圖片尺寸
         let currentMag = magnification

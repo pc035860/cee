@@ -39,6 +39,21 @@ class ContinuousScrollContentView: NSView {
     /// 預設圖片高度（無法取得尺寸時使用）
     private let defaultAspectRatio: CGFloat = 4.0 / 3.0
 
+    // MARK: - Scaling Quality
+
+    /// 當前的縮放 filter（供新建 slot 套用）
+    private var currentMagFilter: CALayerContentsFilter = .linear
+    private var currentMinFilter: CALayerContentsFilter = .linear
+
+    /// 設定所有 active slots 的縮放 filter，並儲存供新 slot 套用
+    func setScalingFilters(magnification: CALayerContentsFilter, minification: CALayerContentsFilter) {
+        currentMagFilter = magnification
+        currentMinFilter = minification
+        for slot in activeSlots {
+            slot.setScalingFilters(magnification: magnification, minification: minification)
+        }
+    }
+
     // MARK: - View Recycling
 
     private var activeSlots: [ImageSlotView] = []
@@ -280,6 +295,7 @@ class ContinuousScrollContentView: NSView {
             let slot = dequeueOrCreateSlot()
             slot.imageIndex = index
             slot.frame = frameForImage(at: index)
+            slot.setScalingFilters(magnification: currentMagFilter, minification: currentMinFilter)
             addSubview(slot)
             activeSlots.append(slot)
             loadImage(for: index, into: slot)
