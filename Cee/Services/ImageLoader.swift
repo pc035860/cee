@@ -363,7 +363,7 @@ actor ImageLoader {
 
         // 釋放超出範圍的快取
         cache = cache.filter { activeImageURLs.contains($0.key) }
-        displayCache = displayCache.filter { activeImageURLs.contains($0.key) }
+        displayCache = displayCache.filter { activeImageURLs.contains($0.key.url) }
         thumbnailCache = thumbnailCache.filter { activeImageURLs.contains($0.key.url) }
         pdfCache = pdfCache.filter { activePDFKeys.contains($0.key) }
         pdfDocumentCache = pdfDocumentCache.filter { activePDFURLs.contains($0.key) }
@@ -420,18 +420,27 @@ actor ImageLoader {
 
     // MARK: - Display Cache (Continuous Scroll Subsample)
 
-    private var displayCache: [URL: NSImage] = [:]
+    /// Composite key: same URL with different maxWidth produces separate cache entries.
+    private struct DisplayCacheKey: Hashable {
+        let url: URL
+        let maxWidth: CGFloat
+    }
+
+    private var displayCache: [DisplayCacheKey: NSImage] = [:]
 
     /// Load image subsampled for display at given pixel width (continuous scroll mode)
     /// - Parameter maxWidth: Target display width in pixels (include Retina scale factor)
     func loadImageForDisplay(at url: URL, maxWidth: CGFloat) async -> NSImage? {
-        if let cached = displayCache[url] { return cached }
+        let cacheKey = DisplayCacheKey(url: url, maxWidth: maxWidth)
+        if let cached = displayCache[cacheKey] { return cached }
 
         let image = await Task.detached(priority: .userInitiated) {
             Self.decodeImageForDisplay(at: url, maxWidth: maxWidth)
         }.value
 
-        if let image { displayCache[url] = image }
+        // Check cancellation before writing to cache (prevent stale writes after pressure cleanup)
+        guard !Task.isCancelled else { return image }
+        if let image { displayCache[cacheKey] = image }
         return image
     }
 
@@ -484,4 +493,7 @@ actor ImageLoader {
 
     func _testImageCacheCount() -> Int { cache.count }
     func _testDisplayCacheCount() -> Int { displayCache.count }
+    func _testDisplayCacheHasEntry(url: URL, maxWidth: CGFloat) -> Bool {
+        displayCache[DisplayCacheKey(url: url, maxWidth: maxWidth)] != nil
+    }
 }

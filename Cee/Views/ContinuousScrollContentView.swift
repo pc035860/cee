@@ -73,6 +73,8 @@ class ContinuousScrollContentView: NSView {
     /// 結束 zoom：恢復 slot 回收，處理延遲的記憶體壓力，清理多餘 slots
     func endZoomSuppression(visibleBounds: NSRect) {
         isZooming = false
+        // 更新 lastKnownVisibleBounds，確保 deferred pressure 使用最新可視區域
+        lastKnownVisibleBounds = visibleBounds
         if let level = pendingPressureLevel {
             pendingPressureLevel = nil
             handleMemoryPressure(level)
@@ -476,6 +478,7 @@ class ContinuousScrollContentView: NSView {
         case .critical:
             // 核彈選項：清除所有非可見 slot
             bufferCount = 0
+            needsBufferRestoration = true  // 下次 scroll 恢復正常 buffer
             // 回收所有非可見 slots
             let bounds = lastKnownVisibleBounds
             if !bounds.isEmpty {

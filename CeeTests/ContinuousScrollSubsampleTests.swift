@@ -57,8 +57,23 @@ final class ContinuousScrollSubsampleTests: XCTestCase {
 
         XCTAssertNotNil(image1)
         XCTAssertNotNil(image2)
-        // Same object from cache
+        // Same object from cache (same URL + same maxWidth)
         XCTAssertTrue(image1 === image2, "Second call should return cached image")
+    }
+
+    // MARK: - Test 3b: Different maxWidth produces different cache entries
+
+    func testDifferentMaxWidth_producesDifferentCacheEntries() async throws {
+        let loader = ImageLoader()
+        let url = try createJPEG(width: 4000, height: 6000)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        _ = await loader.loadImageForDisplay(at: url, maxWidth: 800)
+        _ = await loader.loadImageForDisplay(at: url, maxWidth: 1600)
+
+        let displayCount = await loader._testDisplayCacheCount()
+        XCTAssertEqual(displayCount, 2,
+                       "Different maxWidth should produce separate cache entries")
     }
 
     // MARK: - Test 4: displayCache isolation from main cache
