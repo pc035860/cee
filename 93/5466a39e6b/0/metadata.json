@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "935466a39e6b",
+  "session_id": "f4352197-a467-4194-a679-2bcf35c7da84",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T13:33:33.750662Z",
+  "branch": "feat/brainstorm-continuous-scroll",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Cee/Views/ContinuousScrollContentView.swift",
+    "CeeTests/ContinuousScrollContentViewTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "glm-5",
+  "turn_id": "a83ed4cdf229",
+  "token_usage": {
+    "input_tokens": 258047,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10544256,
+    "output_tokens": 44438,
+    "api_call_count": 100
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T13:33:33.175423Z",
+    "agent_lines": 108,
+    "human_added": 0,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 111,
+    "agent_percentage": 97.2972972972973
+  }
+}
