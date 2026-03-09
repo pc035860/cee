@@ -1,0 +1,54 @@
+/auto-impl @specs/plan/plan-2026-03-09_23-00-28_continuous-scroll-zoom.md 
+
+act as one work-unit, start from plan-review phase
+
+---
+
+continue
+
+---
+
+also update @specs/brainstorm/brainstorm-continuous-scroll.md
+
+---
+
+continue
+
+---
+
+目前我實測發現的問題有以下這些，因為我不確定哪些可能會在後續的 Phase 處理掉，所以我先列出來。
+
+請你幫我看一下 Spec 檔案並整理一下，再跟我討論。
+
+基本上，下面的問題都是以啟用「連續捲動模式」為前提。
+
+1. pinch zoom 不再影響視窗寬/高
+2. grid view 選擇圖片並不會跳轉到該圖片的位置，而是回到第一頁/最後一頁
+
+---
+
+目前我實測發現的問題有以下這些，因為我不確定哪些可能會在後續的 Phase 處理掉，所以我先列出來。
+
+請你幫我看一下 Spec 檔案並整理一下，再跟我討論。
+
+基本上，下面的問題都是以啟用「連續捲動模式」為前提。
+
+1. pinch zoom 不再影響視窗寬/高
+2. grid view 選擇圖片並不會跳轉到該圖片的位置，而是回到第一頁/最後一頁
+3. 使用 zoom 功能 (pinch or keyboard) 感覺效能不是很好，並且會出現閃爍的黑畫面
+4. 因為在「連續捲動模式」下，我們在「非連續捲動模式」時的很多 fitting options 都會被覆蓋掉。
+   這部分我們可能需要調整一下 UI 的顯示，例如把它 disable 之類的，不然我覺得現在介面蠻 confusing 的。
+
+幫我跟現有的 spec 檔案，還有剛剛的 plan 檔案一起 review，然後整理一下：
+
+1. 哪些是可以做未來規劃
+2. 哪些是現有已經 by design 的東西
+3. 哪些是 bug
+
+---
+
+先幫我更新 docs
+
+---
+
+write a bug fixing handover prompt for next agent
