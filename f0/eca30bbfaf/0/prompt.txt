@@ -1,0 +1,10 @@
+/auto-impl @specs/brainstorm/brainstorm-continuous-scroll.md, phase1-2
+
+---
+
+為什麼有時間限制？  你為什麼要停下來？
+
+---
+
+我實測進入連續捲動模式看不到圖片，然後下方解析度會是 0x0
+/silennai:debug
