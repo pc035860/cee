@@ -32,6 +32,12 @@ class ContinuousScrollContentView: NSView {
     /// 預設圖片高度（無法取得尺寸時使用）
     private let defaultAspectRatio: CGFloat = 4.0 / 3.0
 
+    // MARK: - View Recycling
+
+    private var activeSlots: [ImageSlotView] = []
+    private var reusableSlots: [ImageSlotView] = []
+    private let bufferCount: Int = 2  // visible 前後各 buffer 2 張
+
     // MARK: - Index Tracking
 
     /// 當前圖片變更回調：(index, scaledImageSize)
@@ -50,6 +56,13 @@ class ContinuousScrollContentView: NSView {
         self.folder = folder
         self.imageLoader = imageLoader
         self.lastNotifiedIndex = -1
+
+        // 清理舊的 slots
+        for slot in activeSlots {
+            slot.removeFromSuperview()
+        }
+        activeSlots.removeAll()
+        reusableSlots.removeAll()
 
         NSLog("[ContinuousScroll] configure: folder.images.count=\(folder.images.count), containerWidth=\(containerWidth)")
 
@@ -135,19 +148,142 @@ class ContinuousScrollContentView: NSView {
 
     // MARK: - View Recycling
 
-    /// 更新可見範圍內的 slots
-    func updateVisibleSlots(for visibleRect: NSRect) {
-        // 檢測當前 index 變更（基於 viewport 中心點）
-        let viewportCenterY = visibleRect.midY
-        let newIndex = calculateCurrentIndex(for: viewportCenterY)
-
-        NSLog("[ContinuousScroll] updateVisibleSlots: visibleRect=\(visibleRect), centerY=\(viewportCenterY), newIndex=\(newIndex), lastNotified=\(lastNotifiedIndex)")
-
+    /// 更新可見範圍內的 slots（對外入口）
+    func updateVisibleSlots(for visibleBounds: NSRect) {
+        // 原有的 index tracking
+        let newIndex = calculateCurrentIndex(for: visibleBounds.midY)
         if newIndex != lastNotifiedIndex {
             lastNotifiedIndex = newIndex
             notifyImageChanged(index: newIndex)
         }
+
+        // View recycling
+        manageSlotViews(for: visibleBounds)
     }
+
+    /// 計算可見範圍（含 buffer）
+    func calculateVisibleRange(for visibleRect: NSRect) -> ClosedRange<Int> {
+        guard !imageSizes.isEmpty else { return 0...0 }
+
+        let topY = visibleRect.minY
+        let bottomY = visibleRect.maxY
+
+        // Binary search 找出可見範圍
+        var firstIndex = 0
+        var lastIndex = imageSizes.count - 1
+
+        // 找第一個可見的 index
+        for (i, yOffset) in yOffsets.enumerated() {
+            let height = scaledHeights[safe: i] ?? containerWidth / defaultAspectRatio
+            if yOffset + height >= topY {
+                firstIndex = i
+                break
+            }
+        }
+
+        // 找最後一個可見的 index
+        for (i, yOffset) in yOffsets.enumerated() {
+            if yOffset > bottomY {
+                lastIndex = max(firstIndex, i - 1)
+                break
+            }
+        }
+
+        // 加上 buffer
+        let bufferedFirst = max(0, firstIndex - bufferCount)
+        let bufferedLast = min(imageSizes.count - 1, lastIndex + bufferCount)
+
+        return bufferedFirst...bufferedLast
+    }
+
+    /// Dequeue 或建立新的 slot
+    private func dequeueOrCreateSlot() -> ImageSlotView {
+        if let reusable = reusableSlots.popLast() {
+            return reusable
+        }
+        return ImageSlotView(frame: .zero)
+    }
+
+    /// 檢查指定 index 的 slot 是否已存在
+    private func isSlotActive(for index: Int) -> Bool {
+        activeSlots.contains { $0.imageIndex == index }
+    }
+
+    /// 管理可見範圍內的 slot views（view recycling 核心方法）
+    private func manageSlotViews(for visibleRect: NSRect) {
+        let visibleRange = calculateVisibleRange(for: visibleRect)
+
+        // 1. 回收超出範圍的 slots
+        for slot in activeSlots where !visibleRange.contains(slot.imageIndex) {
+            slot.removeFromSuperview()
+            slot.prepareForReuse()
+            reusableSlots.append(slot)
+        }
+        activeSlots.removeAll { !visibleRange.contains($0.imageIndex) }
+
+        // 2. 為新進入範圍的 indices 建立 slots
+        for index in visibleRange where !isSlotActive(for: index) {
+            let slot = dequeueOrCreateSlot()
+            slot.imageIndex = index
+            slot.frame = frameForImage(at: index)
+            addSubview(slot)
+            activeSlots.append(slot)
+            loadImage(for: index, into: slot)
+        }
+    }
+
+    /// 計算指定 index 圖片的 frame
+    func frameForImage(at index: Int) -> NSRect {
+        guard index < imageSizes.count && index < yOffsets.count else {
+            return .zero
+        }
+        let height = scaledHeights[safe: index] ?? containerWidth / defaultAspectRatio
+        let y = yOffsets[index]
+        return NSRect(x: 0, y: y, width: containerWidth, height: height)
+    }
+
+    // MARK: - Async Image Loading
+
+    private func loadImage(for index: Int, into slot: ImageSlotView) {
+        guard let folder = folder,
+              index < folder.images.count,
+              let loader = imageLoader else { return }
+
+        let item = folder.images[index]
+
+        // 取消該 slot 原有的載入任務
+        slot.prepareForReuse()
+        slot.imageIndex = index
+
+        // 建立新的載入任務
+        let task = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+
+            let image: NSImage?
+
+            // 根據類型選擇載入方式
+            if let pageIndex = item.pdfPageIndex {
+                image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
+            } else {
+                image = await loader.loadImage(at: item.url)
+            }
+
+            guard let image else { return }
+
+            await MainActor.run { [weak self] in
+                // 檢查 self 和 folder 是否仍存在
+                guard let self,
+                      self.folder != nil else { return }
+                // Stale write 防護：確認 slot 仍對應這個 index
+                guard slot.imageIndex == index else { return }
+                slot.setImage(image)
+            }
+        }
+
+        slot.setLoadTask(task)
+    }
+
+    // MARK: - Index Tracking
 
     /// 通知圖片變更
     private func notifyImageChanged(index: Int) {
@@ -161,25 +297,6 @@ class ContinuousScrollContentView: NSView {
 
     // MARK: - Layout Helpers
 
-    /// 計算指定索引圖片的 frame（fit-to-width）
-    /// 使用標準座標系統：y=0 在底部
-    func frameForImage(at index: Int) -> NSRect {
-        guard scaledHeights.indices.contains(index),
-              yOffsets.indices.contains(index) else {
-            return .zero
-        }
-
-        let scaledHeight = scaledHeights[index]
-        let yOffset = yOffsets[index]
-
-        // 標準座標系統：直接使用累積的 yOffset
-        return NSRect(
-            x: 0,
-            y: yOffset,
-            width: containerWidth,
-            height: scaledHeight
-        )
-    }
 
     /// 計算當前中心點對應的圖片索引
     /// scrollY 是標準座標系統中的 Y 座標（y=0 在底部）
@@ -207,41 +324,13 @@ class ContinuousScrollContentView: NSView {
         // 超出範圍時返回邊界值
         return max(0, min(scaledHeights.count - 1, high))
     }
+}
 
-    // MARK: - Drawing
+// MARK: - Array Safe Subscript
 
-    // 不覆寫 isFlipped，使用標準座標系統（y=0 在底部）
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        // 繪製背景
-        NSColor.windowBackgroundColor.setFill()
-        dirtyRect.fill()
-
-        // TODO: Phase 2+ - 繪製可見範圍內的圖片
-        // 目前先繪製佔位色塊
-        for i in 0..<scaledHeights.count {
-            let imageFrame = frameForImage(at: i)
-            guard dirtyRect.intersects(imageFrame) else { continue }
-
-            NSColor.secondarySystemFill.setFill()
-            imageFrame.fill()
-
-            // 繪製索引標籤
-            let indexText = "\(i + 1)" as NSString
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 24, weight: .medium),
-                .foregroundColor: NSColor.secondaryLabelColor
-            ]
-            let textSize = indexText.size(withAttributes: attrs)
-            let textRect = NSRect(
-                x: imageFrame.midX - textSize.width / 2,
-                y: imageFrame.midY - textSize.height / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            indexText.draw(in: textRect, withAttributes: attrs)
-        }
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard indices.contains(index) else { return nil }
+        return self[index]
     }
 }
