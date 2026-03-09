@@ -3,21 +3,29 @@
   "checkpoint_id": "a504c2523d43",
   "strategy": "manual-commit",
   "branch": "feat/continuous-scroll-zoom",
-  "checkpoints_count": 0,
-  "files_touched": null,
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cee/Views/ImageSlotView.swift"
+  ],
   "sessions": [
     {
       "metadata": "/a5/04c2523d43/0/metadata.json",
       "transcript": "/a5/04c2523d43/0/full.jsonl",
       "content_hash": "/a5/04c2523d43/0/content_hash.txt",
       "prompt": "/a5/04c2523d43/0/prompt.txt"
+    },
+    {
+      "metadata": "/a5/04c2523d43/1/metadata.json",
+      "transcript": "/a5/04c2523d43/1/full.jsonl",
+      "content_hash": "/a5/04c2523d43/1/content_hash.txt",
+      "prompt": "/a5/04c2523d43/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 58,
+    "input_tokens": 321379,
     "cache_creation_tokens": 101085,
-    "cache_read_tokens": 3487413,
-    "output_tokens": 18602,
-    "api_call_count": 51
+    "cache_read_tokens": 21181493,
+    "output_tokens": 85182,
+    "api_call_count": 225
   }
 }
