@@ -291,7 +291,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 minFilter = .trilinear
             }
         }
-        dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
+        if settings.continuousScrollEnabled {
+            continuousScrollContentView?.setScalingFilters(magnification: magFilter, minification: minFilter)
+        } else {
+            dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
+        }
     }
 
     private func showErrorPlaceholder(_ show: Bool, message: String? = nil) {
@@ -973,7 +977,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
         updateScalingQuality()
 
-        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        if !settings.continuousScrollEnabled {
+            scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        }
     }
 
     @objc func zoomOut(_ sender: Any? = nil) {
@@ -985,11 +991,24 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
         updateScalingQuality()
 
-        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        if !settings.continuousScrollEnabled {
+            scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        }
     }
 
     @objc func fitOnScreen(_ sender: Any? = nil) {
         settings.isManualZoom = false
+
+        if settings.continuousScrollEnabled {
+            setMagnificationCentered(1.0)
+            settings.magnification = 1.0
+            updateScalingQuality()
+            applyCenteringInsetsIfNeeded(reason: "fitOnScreen.continuous")
+            statusBarView.updateZoom(scrollView.magnification, isFitting: true)
+            settings.save()
+            return
+        }
+
         if let imageSize = currentDocumentSize {
             let viewport = effectiveScrollViewport
             if viewport.width > 0, viewport.height > 0 {
@@ -1008,6 +1027,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func actualSize(_ sender: Any? = nil) {
+        // 連續捲動模式下 actual size = fit-to-width (magnification 1.0)
+        if settings.continuousScrollEnabled {
+            fitOnScreen(sender)
+            return
+        }
         settings.isManualZoom = true
         setMagnificationCentered(1.0)
         settings.magnification = 1.0
@@ -1234,8 +1258,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func toggleContinuousScroll(_ sender: Any? = nil) {
         settings.continuousScrollEnabled.toggle()
-        settings.save()
         scrollView.continuousScrollEnabled = settings.continuousScrollEnabled
+        resizeAfterZoomTask?.cancel()  // 隔離舊模式的排隊 resize
+
+        // 重設 magnification 狀態，確保模式切換後 settings 一致
+        scrollView.magnification = 1.0
+        settings.isManualZoom = false
+        settings.magnification = 1.0
+        settings.save()
 
         // 切換模式：更新 documentView
         if settings.continuousScrollEnabled {
@@ -1251,6 +1281,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func configureContinuousScrollView() {
         guard let folder = folder else { return }
 
+        // 確保 scrollView 同步連續捲動狀態（非 toggle 路徑也能正確設定）
+        scrollView.continuousScrollEnabled = true
+
         let contentView = ContinuousScrollContentView()
         contentView.containerWidth = scrollView.bounds.width
         contentView.onCurrentImageChanged = { [weak self] index, scaledSize in
@@ -1263,6 +1296,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         continuousScrollContentView = contentView
         scrollView.documentView = contentView
         contentView.configure(with: folder, imageLoader: loader)
+
+        // 套用當前的 scaling filters 到新的 content view
+        updateScalingQuality()
     }
 
     /// 捲動到當前圖片位置（連續捲動模式）
@@ -1731,6 +1767,24 @@ extension ImageViewController: ImageScrollViewDelegate {
         settings.magnification = magnification
         scheduleDebouncedSettingsSave()
         updateScalingQuality()
+
+        // 連續捲動模式：GPU affine transform only, skip window resize / recenter
+        if settings.continuousScrollEnabled {
+            applyCenteringInsetsIfNeeded(reason: "magnify.continuous")
+            // 保守呼叫 updateVisibleSlots — magnification 改變後 visible bounds 在 document space 改變
+            if let csView = continuousScrollContentView {
+                csView.updateVisibleSlots(for: scrollView.contentView.bounds)
+            }
+            // isManualZoom 已在上方設為 true，所以 isFitting 必為 false
+            statusBarView.updateZoom(magnification, isFitting: false)
+
+            if gesturePhase.isEmpty || gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
+                activeMagnifyAnchor = nil
+                isZooming = false
+            }
+            return
+        }
+
         applyCenteringInsetsIfNeeded(reason: "magnify.phase=\(debugPhase(gesturePhase))")
 
         if !gesturePhase.isEmpty, let anchor = activeMagnifyAnchor {
