@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "c74495b98d2c",
+  "strategy": "manual-commit",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/brainstorm/brainstorm-continuous-scroll.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c7/4495b98d2c/0/metadata.json",
+      "transcript": "/c7/4495b98d2c/0/full.jsonl",
+      "content_hash": "/c7/4495b98d2c/0/content_hash.txt",
+      "prompt": "/c7/4495b98d2c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2683,
+    "cache_creation_tokens": 425301,
+    "cache_read_tokens": 12135246,
+    "output_tokens": 42857,
+    "api_call_count": 126
+  }
+}
