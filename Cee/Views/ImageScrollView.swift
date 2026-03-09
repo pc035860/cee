@@ -1006,6 +1006,9 @@ class ImageScrollView: NSScrollView {
     }
 
     private func setMagnificationPreservingInsets(_ magnification: CGFloat, centeredAt point: NSPoint) {
+        // 連續捲動：在 setMagnification 前暫停 slot 回收，
+        // 避免同步觸發的 reflectScrolledClipView 回收仍在螢幕上的 slots
+        (documentView as? ContinuousScrollContentView)?.beginZoomSuppression()
         let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         let previousInsets = contentInsets
         setMagnification(magnification, centeredAt: point)

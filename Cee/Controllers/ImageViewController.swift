@@ -612,7 +612,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func setMagnificationCentered(_ targetMagnification: CGFloat) {
         isZooming = true
-        defer { isZooming = false }
+        // 在 setMagnification 前暫停 slot 回收（setMagnification 會同步觸發 reflectScrolledClipView）
+        continuousScrollContentView?.beginZoomSuppression()
+        defer {
+            isZooming = false
+            // 鍵盤 zoom 路徑沒有 delegate callback，需在 defer 清理
+            continuousScrollContentView?.endZoomSuppression(visibleBounds: scrollView.contentView.bounds)
+        }
         let effectiveMin = effectiveMinMagnification()
         let clamped = max(effectiveMin, min(Constants.maxMagnification, targetMagnification))
         scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())
@@ -1771,16 +1777,15 @@ extension ImageViewController: ImageScrollViewDelegate {
         // 連續捲動模式：GPU affine transform only, skip window resize / recenter
         if settings.continuousScrollEnabled {
             applyCenteringInsetsIfNeeded(reason: "magnify.continuous")
-            // 保守呼叫 updateVisibleSlots — magnification 改變後 visible bounds 在 document space 改變
-            if let csView = continuousScrollContentView {
-                csView.updateVisibleSlots(for: scrollView.contentView.bounds)
-            }
-            // isManualZoom 已在上方設為 true，所以 isFitting 必為 false
+            // isZooming 已在 setMagnificationPreservingInsets 中設好（reflectScrolledClipView 安全）
+            // reflectScrolledClipView 已同步呼叫 updateVisibleSlots，此處不需重複呼叫
             statusBarView.updateZoom(magnification, isFitting: false)
 
             if gesturePhase.isEmpty || gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
                 activeMagnifyAnchor = nil
                 isZooming = false
+                // Zoom 結束：恢復正常回收，清理多餘 slots
+                continuousScrollContentView?.endZoomSuppression(visibleBounds: scrollView.contentView.bounds)
             }
             return
         }

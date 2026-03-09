@@ -61,6 +61,20 @@ class ContinuousScrollContentView: NSView {
     private var reusableSlots: [ImageSlotView] = []
     private let bufferCount: Int = 2  // visible 前後各 buffer 2 張
 
+    /// Zoom 進行中：跳過 slot 回收，只新增 slot（防止黑色閃爍）
+    private(set) var isZooming: Bool = false
+
+    /// 開始 zoom：暫停 slot 回收
+    func beginZoomSuppression() {
+        isZooming = true
+    }
+
+    /// 結束 zoom：恢復 slot 回收，立即清理多餘 slots
+    func endZoomSuppression(visibleBounds: NSRect) {
+        isZooming = false
+        updateVisibleSlots(for: visibleBounds)
+    }
+
     // MARK: - Scroll Direction Tracking (Phase 3.2)
 
     /// 上次捲動的 Y 座標（用於計算捲動方向）
@@ -222,44 +236,20 @@ class ContinuousScrollContentView: NSView {
         lastScrollY = currentY
     }
 
-    /// 計算可見範圍（含 buffer）
-    /// 使用標準座標系統：y=0 在底部，大 y 在頂部
+    /// 計算可見範圍（含 buffer）— O(log n) binary search
+    /// yOffsets 是遞減排列：index 0 = 最上方（最大 y），index N-1 = 最底部（最小 y）
     func calculateVisibleRange(for visibleRect: NSRect) -> ClosedRange<Int> {
         guard !imageSizes.isEmpty else { return 0...0 }
 
-        // visibleRect.minY = 視覺底部（較小的 y）
-        // visibleRect.maxY = 視覺頂部（較大的 y）
-        let visibleBottom = visibleRect.minY
-        let visibleTop = visibleRect.maxY
+        let count = imageSizes.count
 
-        // 找出與 visibleRect 有 overlap 的圖片邊界 indices
-        // 圖片範圍：[yOffset, yOffset + height]
-        // Overlap 條件：圖片頂部 > visibleBottom && 圖片底部 < visibleTop
-        var firstVisible: Int?
-        var lastVisible: Int?
-
-        for i in 0..<imageSizes.count {
-            let yOffset = yOffsets[i]
-            let height = scaledHeights[safe: i] ?? containerWidth / defaultAspectRatio
-            let imageBottom = yOffset
-            let imageTop = yOffset + height
-
-            // 檢查是否有 overlap
-            if imageTop > visibleBottom && imageBottom < visibleTop {
-                if firstVisible == nil { firstVisible = i }
-                lastVisible = i
-            }
-        }
-
-        // 如果沒有可見圖片，返回 0...0
-        guard let firstIndex = firstVisible,
-              let lastIndex = lastVisible else {
-            return 0...0
-        }
+        // 用 calculateCurrentIndex (binary search) 找到包含 visibleRect 邊界的圖片
+        let firstVisible = calculateCurrentIndex(for: visibleRect.maxY)   // 頂端 → 最上方的可見圖片
+        let lastVisible = calculateCurrentIndex(for: visibleRect.minY)    // 底端 → 最底部的可見圖片
 
         // 加上 buffer
-        let bufferedFirst = max(0, firstIndex - bufferCount)
-        let bufferedLast = min(imageSizes.count - 1, lastIndex + bufferCount)
+        let bufferedFirst = max(0, firstVisible - bufferCount)
+        let bufferedLast = min(count - 1, lastVisible + bufferCount)
 
         return bufferedFirst...bufferedLast
     }
@@ -283,13 +273,15 @@ class ContinuousScrollContentView: NSView {
     private func manageSlotViews(for visibleRect: NSRect) -> ClosedRange<Int> {
         let visibleRange = calculateVisibleRange(for: visibleRect)
 
-        // 1. 回收超出範圍的 slots
-        for slot in activeSlots where !visibleRange.contains(slot.imageIndex) {
-            slot.removeFromSuperview()
-            slot.prepareForReuse()
-            reusableSlots.append(slot)
+        // 1. 回收超出範圍的 slots（zoom 中跳過回收，防止黑色閃爍）
+        if !isZooming {
+            for slot in activeSlots where !visibleRange.contains(slot.imageIndex) {
+                slot.removeFromSuperview()
+                slot.prepareForReuse()
+                reusableSlots.append(slot)
+            }
+            activeSlots.removeAll { !visibleRange.contains($0.imageIndex) }
         }
-        activeSlots.removeAll { !visibleRange.contains($0.imageIndex) }
 
         // 2. 為新進入範圍的 indices 建立 slots
         for index in visibleRange where !isSlotActive(for: index) {
