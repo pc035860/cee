@@ -48,6 +48,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// Unified document size — uses compositeSize in dual mode, single image size otherwise.
     private var currentDocumentSize: NSSize? {
+        // 連續捲動模式：使用當前圖片的縮放尺寸
+        if settings.continuousScrollEnabled,
+           let contentView = continuousScrollContentView,
+           let folder = folder,
+           let imageSize = contentView.imageSizes[safe: folder.currentIndex] {
+            return imageSize
+        }
+
+        // 單頁/雙頁模式
         let size = dualPageView.compositeSize
         guard size.width > 0, size.height > 0 else { return nil }
         return size
@@ -108,11 +117,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return
         }
 
-        loadFolderDualPageSettings()
-        if settings.dualPageEnabled {
-            rebuildSpreadsAndReload()
+        // 恢復連續捲動模式
+        if settings.continuousScrollEnabled {
+            configureContinuousScrollView()
         } else {
-            loadCurrentImage(initialScroll: .top)
+            loadFolderDualPageSettings()
+            if settings.dualPageEnabled {
+                rebuildSpreadsAndReload()
+            } else {
+                loadCurrentImage(initialScroll: .top)
+            }
         }
         view.window?.makeFirstResponder(scrollView)
         // 視窗重新取得 key window 時自動回到 scrollView
@@ -121,6 +135,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     override func viewDidLayout() {
         super.viewDidLayout()
+
+        // 連續捲動模式：更新容器寬度
+        if settings.continuousScrollEnabled {
+            continuousScrollContentView?.containerWidth = scrollView.bounds.width
+        }
+
         applyCenteringInsetsIfNeeded(reason: "viewDidLayout")
     }
 
