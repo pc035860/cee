@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "58dc12ba4215",
+  "strategy": "manual-commit",
+  "branch": "feat/continuous-scroll-perf--phase3.4-3.5",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cee/Services/ImageLoader.swift",
+    "Cee/Views/ContinuousScrollContentView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/58/dc12ba4215/0/metadata.json",
+      "transcript": "/58/dc12ba4215/0/full.jsonl",
+      "content_hash": "/58/dc12ba4215/0/content_hash.txt",
+      "prompt": "/58/dc12ba4215/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 150,
+    "cache_creation_tokens": 329972,
+    "cache_read_tokens": 14270206,
+    "output_tokens": 57370,
+    "api_call_count": 135
+  }
+}

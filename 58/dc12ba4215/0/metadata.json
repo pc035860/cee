@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "58dc12ba4215",
+  "session_id": "eb1d3597-41cf-418d-8d5e-da1e80261d54",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T22:18:07.6887Z",
+  "branch": "feat/continuous-scroll-perf--phase3.4-3.5",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cee/Services/ImageLoader.swift",
+    "Cee/Views/ContinuousScrollContentView.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "turn_id": "69fd1d0d8c82",
+  "token_usage": {
+    "input_tokens": 150,
+    "cache_creation_tokens": 329972,
+    "cache_read_tokens": 14270206,
+    "output_tokens": 57370,
+    "api_call_count": 135
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T22:18:06.891588Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 18,
+    "human_removed": 21,
+    "total_committed": 0,
+    "agent_percentage": 0
+  }
+}
