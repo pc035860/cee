@@ -1,0 +1,20 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "fe165c19d9e9",
+  "session_id": "f4352197-a467-4194-a679-2bcf35c7da84",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T13:19:44.03683Z",
+  "branch": "feat/brainstorm-continuous-scroll",
+  "checkpoints_count": 0,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "glm-5",
+  "turn_id": "a1f854972fb0",
+  "token_usage": {
+    "input_tokens": 199406,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6708160,
+    "output_tokens": 33843,
+    "api_call_count": 69
+  }
+}
