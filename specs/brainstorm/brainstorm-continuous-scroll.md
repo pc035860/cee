@@ -8,7 +8,8 @@
 | Phase 2 | ✅ 完成 | 動態視窗 Resize：`CADisplayLink` 動畫、中心點保持、全螢幕處理、狀態恢復修正 |
 | Phase 3.1 | ✅ 完成 | 實際圖片渲染：`ImageSlotView` (layer-backed GPU 渲染)、view recycling、非同步載入 |
 | Phase 3.2 | ✅ 完成 | 捲動方向感知預取：`NavigationThrottle` 20Hz 節流、`PrefetchDirection` 整合 |
-| Phase 3.3+ | 📋 待辦 | 記憶體監控、大圖 subsample、鍵盤導航、Quick Grid |
+| Phase 3.3 | ✅ 完成 | Zoom 支援：`effectiveMinMagnification` 1.0 clamp、magnification fast path、scaling filters、模式切換 reset |
+| Phase 3.4+ | 📋 待辦 | 記憶體監控、大圖 subsample、鍵盤導航、Quick Grid |
 
 ---
 
@@ -65,16 +66,33 @@
 - 20Hz 節流：複用 `NavigationThrottle`
 - 預取觸發：`ImageLoader.updateCache(prefetchDirection:)`
 
-### 📋 待辦功能（Phase 3.3+）
+### ✅ 3.3 Zoom 支援（已完成）
+
+**實作檔案**：
+- `Cee/Views/ImageScrollView.swift` - `effectiveMinMagnification()` early return
+- `Cee/Controllers/ImageViewController.swift` - magnification fast path, zoom action guards, mode toggle reset
+- `Cee/Views/ContinuousScrollContentView.swift` - `setScalingFilters()` 方法
+- `Cee/Views/ImageSlotView.swift` - `setScalingFilters()` 方法
+
+**技術方案**：
+- `effectiveMinMagnification()` 在連續捲動模式回傳 1.0（fit-to-width 基線）
+- `scrollViewMagnificationDidChange` fast path：跳過 window resize/recenter，僅更新 centering insets + visible slots + status bar
+- `zoomIn/zoomOut` guard `scheduleResizeToFitAfterZoom`
+- `actualSize` redirect 到 `fitOnScreen`（連續模式下 1.0 = fit-to-width）
+- `toggleContinuousScroll` 進入/離開時 reset magnification + `isManualZoom` + `settings.magnification`
+- `ImageSlotView.setScalingFilters` + `ContinuousScrollContentView.setScalingFilters`（含 early-return guard + stored filters for new slots）
+- `configureContinuousScrollView` 同步 `scrollView.continuousScrollEnabled` + 套用 scaling quality
+
+### 📋 待辦功能（Phase 3.4+）
 
 ### 🟡 效能優化
 
-#### 3.3 記憶體監控整合
+#### 3.4 記憶體監控整合
 - **目標**：記憶體壓力過高時自動清理 cache
 - **技術方案**：整合 `MemoryPressureMonitor`（DispatchSource）
 - **可複用**：`QuickGridView` 已有的 monitor 實作
 
-#### 3.4 大圖 Subsample
+#### 3.5 大圖 Subsample
 - **目標**：使用 `kCGImageSourceSubsampleFactor` 降低大圖記憶體佔用
 - **技術方案**：
   - 載入時檢查圖片尺寸
@@ -83,28 +101,30 @@
 
 ### 🟢 功能增強（Nice to have）
 
-#### 3.5 鍵盤導航
+#### 3.6 鍵盤導航
 - **目標**：Arrow key 觸發 smooth scroll（而非 page-turn）
 - **實作**：在 `ImageScrollView.keyDown` 中分支處理 continuous mode
 
-#### 3.6 Quick Grid 整合
+#### 3.7 Quick Grid 整合
 - **目標**：從 grid 選擇圖片後，`scrollToIndex()` 跳轉到對應位置
 - **實作**：`ContinuousScrollContentView.scrollToIndex(_:)` 方法
 
-#### 3.7 圖片間距設定
+#### 3.8 圖片間距設定
 - **目標**：可調整圖片間距（0px 預設）
 - **實作**：`ViewerSettings.continuousScrollGap` 屬性
 
 ### 建議實作順序
 
 ```
-Phase 3.1 ─ 實際圖片渲染（核心，才能正常使用）
+Phase 3.1 ─ 實際圖片渲染（核心，才能正常使用）✅
     ↓
-Phase 3.2 ─ 捲動方向感知預取（流暢度）
+Phase 3.2 ─ 捲動方向感知預取（流暢度）✅
     ↓
-Phase 3.3 ─ 記憶體監控 + Subsample（穩定性）
+Phase 3.3 ─ Zoom 支援（pinch/keyboard zoom）✅
     ↓
-Phase 3.4+ ─ 鍵盤導航 / Quick Grid / 間距（UX polish）
+Phase 3.4 ─ 記憶體監控 + Subsample（穩定性）
+    ↓
+Phase 3.5+ ─ 鍵盤導航 / Quick Grid / 間距（UX polish）
 ```
 
 ---
