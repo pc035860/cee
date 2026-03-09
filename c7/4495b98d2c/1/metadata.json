@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "c74495b98d2c",
+  "session_id": "f67f6a15-2dd9-41ad-bebf-b2927f81b1b5",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T21:11:23.244854Z",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/brainstorm/brainstorm-continuous-scroll.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "turn_id": "0fe631c7e293",
+  "checkpoint_transcript_start": 631,
+  "transcript_lines_at_start": 631,
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 146323,
+    "cache_read_tokens": 855108,
+    "output_tokens": 1282,
+    "api_call_count": 7
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T21:11:22.683017Z",
+    "agent_lines": 14,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 14,
+    "agent_percentage": 100
+  }
+}

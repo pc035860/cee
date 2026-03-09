@@ -1,0 +1,1 @@
+also update @specs/brainstorm/brainstorm-continuous-scroll.md
