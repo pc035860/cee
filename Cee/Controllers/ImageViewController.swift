@@ -1217,6 +1217,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func handleContinuousScrollImageChanged(index: Int, scaledSize: NSSize) {
+        NSLog("[ContinuousScroll] handleImageChanged: index=\(index), scaledSize=\(scaledSize)")
+
         // 同步 folder.currentIndex
         folder?.currentIndex = index
 
@@ -1224,7 +1226,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         updateWindowTitle()
         updateStatusBar()
 
-        guard let windowController = view.window?.windowController as? ImageWindowController else { return }
+        guard let windowController = view.window?.windowController as? ImageWindowController else {
+            NSLog("[ContinuousScroll] handleImageChanged: no windowController")
+            return
+        }
 
         // 全螢幕模式：跳過 resize
         guard view.window?.styleMask.contains(.fullScreen) != true else { return }
@@ -1238,6 +1243,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let clampedHeight = min(targetHeight, screenHeight * 0.9)
 
         let targetSize = NSSize(width: viewportWidth, height: clampedHeight)
+
+        NSLog("[ContinuousScroll] handleImageChanged: targetSize=\(targetSize), viewportWidth=\(viewportWidth)")
 
         // 觸發動態 resize
         windowController.animateResize(to: targetSize, preserveCenter: true)
@@ -1488,6 +1495,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return true
         case #selector(toggleClickToTurnPage(_:)):
             menuItem.state = settings.clickToTurnPage ? .on : .off
+            return true
+        case #selector(toggleContinuousScroll(_:)):
+            menuItem.state = settings.continuousScrollEnabled ? .on : .off
             return true
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true

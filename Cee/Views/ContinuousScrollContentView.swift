@@ -48,6 +48,8 @@ class ContinuousScrollContentView: NSView {
         self.imageLoader = imageLoader
         self.lastNotifiedIndex = -1
 
+        NSLog("[ContinuousScroll] configure: folder.images.count=\(folder.images.count), containerWidth=\(containerWidth)")
+
         Task { [weak self] in
             await self?.preloadImageSizesParallel()
         }
@@ -57,6 +59,9 @@ class ContinuousScrollContentView: NSView {
     private func preloadImageSizesParallel() async {
         guard let folder = folder, let loader = imageLoader else { return }
 
+        // Capture default aspect ratio before entering TaskGroup
+        let defaultRatio = defaultAspectRatio
+
         // 使用 TaskGroup 平行載入
         let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
             for (index, item) in folder.images.enumerated() {
@@ -65,7 +70,7 @@ class ContinuousScrollContentView: NSView {
                         return (index, size)
                     } else {
                         // 無法取得尺寸時使用預設比例
-                        return (index, NSSize(width: 800, height: 800 / self.defaultAspectRatio))
+                        return (index, NSSize(width: 800, height: 800 / defaultRatio))
                     }
                 }
             }
@@ -79,6 +84,7 @@ class ContinuousScrollContentView: NSView {
 
         await MainActor.run { [weak self] in
             self?.imageSizes = sizes
+            NSLog("[ContinuousScroll] preloaded \(sizes.count) image sizes")
             self?.recalculateLayout()
         }
     }
@@ -89,6 +95,7 @@ class ContinuousScrollContentView: NSView {
             scaledHeights = []
             yOffsets = []
             frame = NSRect(x: 0, y: 0, width: containerWidth, height: 0)
+            NSLog("[ContinuousScroll] recalculateLayout: empty imageSizes")
             return
         }
 
@@ -108,6 +115,8 @@ class ContinuousScrollContentView: NSView {
         self.yOffsets = offsets
         frame = NSRect(x: 0, y: 0, width: containerWidth, height: totalHeight)
 
+        NSLog("[ContinuousScroll] recalculateLayout: totalHeight=\(totalHeight), containerWidth=\(containerWidth), frame=\(frame)")
+
         needsDisplay = true
     }
 
@@ -126,6 +135,8 @@ class ContinuousScrollContentView: NSView {
         // 檢測當前 index 變更（基於 viewport 中心點）
         let viewportCenterY = visibleRect.midY
         let newIndex = calculateCurrentIndex(for: viewportCenterY)
+
+        NSLog("[ContinuousScroll] updateVisibleSlots: visibleRect=\(visibleRect), centerY=\(viewportCenterY), newIndex=\(newIndex), lastNotified=\(lastNotifiedIndex)")
 
         if newIndex != lastNotifiedIndex {
             lastNotifiedIndex = newIndex
