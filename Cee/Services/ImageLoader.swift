@@ -406,7 +406,7 @@ actor ImageLoader {
         thumbnailCache.removeAll()
     }
 
-    /// 清空主圖片快取、PDF 快取、顯示快取及取消所有預載任務（記憶體壓力時呼叫）
+    /// 清空所有圖片快取（主快取、顯示快取、PDF、縮圖）及取消所有預載任務（記憶體壓力 critical 時呼叫）
     func clearImageCache() {
         cache.removeAll()
         displayCache.removeAll()
