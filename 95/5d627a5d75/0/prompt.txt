@@ -1,0 +1,5 @@
+/auto-impl @specs/brainstorm/brainstorm-continuous-scroll.md , phase3.1-3.2
+
+---
+
+continue
