@@ -10,7 +10,9 @@
 | Phase 3.2 | ✅ 完成 | 捲動方向感知預取：`NavigationThrottle` 20Hz 節流、`PrefetchDirection` 整合 |
 | Phase 3.3 | ✅ 完成 | Zoom 支援：`effectiveMinMagnification` 1.0 clamp、magnification fast path、scaling filters、模式切換 reset |
 | Phase 3.3.1 | ✅ 完成 | Zoom 閃爍修復：`beginZoomSuppression`/`endZoomSuppression` API + `calculateVisibleRange` O(log n) binary search |
-| Phase 3.4+ | 📋 待辦 | 記憶體監控、大圖 subsample、鍵盤導航、Quick Grid、Fitting UI 適配 |
+| Phase 3.4 | ✅ 完成 | 記憶體監控整合（MemoryPressureMonitor warning/critical 兩階段） |
+| Phase 3.5 | ✅ 完成 | 大圖 Subsample（kCGImageSourceSubsampleFactor + displayCache） |
+| Phase 3.6+ | 📋 待辦 | 鍵盤導航、Quick Grid、間距、Fitting UI 適配 |
 
 ---
 
@@ -102,17 +104,19 @@
 
 ### 🟡 效能優化
 
-#### 3.4 記憶體監控整合
+#### 3.4 記憶體監控整合 ✅
 - **目標**：記憶體壓力過高時自動清理 cache
 - **技術方案**：整合 `MemoryPressureMonitor`（DispatchSource）
 - **可複用**：`QuickGridView` 已有的 monitor 實作
+- **實作**：warning → 縮減 buffer 到 0（下次 scroll 恢復）；critical → 清空 reusable pool + ImageLoader 全快取。Zoom 中延遲處理（escalate only）。
 
-#### 3.5 大圖 Subsample
+#### 3.5 大圖 Subsample ✅
 - **目標**：使用 `kCGImageSourceSubsampleFactor` 降低大圖記憶體佔用
 - **技術方案**：
   - 載入時檢查圖片尺寸
   - 若超過閾值（如 4K），使用 subsample factor 2 或 4
 - **可複用**：`ThumbnailThrottle` 的 subsample 邏輯
+- **實作**：`loadImageForDisplay(at:maxWidth:)` + `DisplayCacheKey(url, maxWidth)` 複合鍵 + 20px 量化。EXIF orientation 5-8 交換寬高。`displayCache` 獨立於 main cache，eviction 跟隨 `updateCache`。
 
 ### 🟢 功能增強（Nice to have）
 
@@ -143,9 +147,11 @@ Phase 3.3 ─ Zoom 支援（pinch/keyboard zoom）✅
     ↓
 Phase 3.3.1 ─ Zoom 閃爍修復（bug fix）✅
     ↓
-Phase 3.4 ─ 記憶體監控 + Subsample（穩定性）
+Phase 3.4 ─ 記憶體監控整合（穩定性）✅
     ↓
-Phase 3.5+ ─ 鍵盤導航 / Quick Grid / 間距 / UI 適配（UX polish）
+Phase 3.5 ─ 大圖 Subsample（記憶體效率）✅
+    ↓
+Phase 3.6+ ─ 鍵盤導航 / Quick Grid / 間距 / UI 適配（UX polish）
 ```
 
 ---
