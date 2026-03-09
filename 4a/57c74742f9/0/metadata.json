@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "4a57c74742f9",
+  "session_id": "bfee0e47-bc6e-43f0-b4e3-88d679e0e876",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T12:27:34.015477Z",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Controllers/ImageWindowController.swift",
+    "Cee/Views/ContinuousScrollContentView.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "glm-5",
+  "turn_id": "31fd8b99f734",
+  "token_usage": {
+    "input_tokens": 131855,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 904576,
+    "output_tokens": 5871,
+    "api_call_count": 17
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T12:27:33.875427Z",
+    "agent_lines": 37,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 37,
+    "agent_percentage": 100
+  }
+}
