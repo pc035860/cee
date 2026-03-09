@@ -59,7 +59,8 @@ class ContinuousScrollContentView: NSView {
 
     private var activeSlots: [ImageSlotView] = []
     private var reusableSlots: [ImageSlotView] = []
-    private let bufferCount: Int = 2  // visible 前後各 buffer 2 張
+    private var bufferCount: Int = 2  // visible 前後各 buffer 2 張
+    private let defaultBufferCount: Int = 2
 
     /// Zoom 進行中：跳過 slot 回收，只新增 slot（防止黑色閃爍）
     private(set) var isZooming: Bool = false
@@ -394,6 +395,40 @@ class ContinuousScrollContentView: NSView {
         let scaledSize = NSSize(width: containerWidth, height: scaledHeight)
 
         onCurrentImageChanged?(index, scaledSize)
+    }
+
+    // MARK: - Layout Helpers
+
+    // MARK: - Memory Pressure Monitoring
+
+    private let memoryPressureMonitor = MemoryPressureMonitor()
+
+    /// Cleanup: stop monitor, cancel tasks, clear slots
+    func cleanup() {
+        memoryPressureMonitor.stop()
+        for slot in activeSlots {
+            slot.prepareForReuse()
+            slot.removeFromSuperview()
+        }
+        activeSlots.removeAll()
+        reusableSlots.removeAll()
+    }
+
+    // MARK: - Test-Only Accessors
+
+    func _testActiveSlotCount() -> Int { activeSlots.count }
+    func _testReusableSlotCount() -> Int { reusableSlots.count }
+    func _testBufferCount() -> Int { bufferCount }
+    func _testIsMonitorRunning() -> Bool { false }  // Stub: always false until implemented
+
+    func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        // Stub: no-op until implemented
+    }
+
+    /// Test-only: configure with mock sizes (no ImageLoader needed)
+    func _testConfigureWithSizes(_ sizes: [NSSize]) {
+        self.imageSizes = sizes
+        recalculateLayout()
     }
 
     // MARK: - Layout Helpers

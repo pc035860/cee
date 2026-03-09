@@ -404,4 +404,19 @@ actor ImageLoader {
         imagePrefetchTasks.removeAll()
         thumbnailCache.removeAll()
     }
+
+    /// 清空主圖片快取、PDF 快取及取消所有預載任務（記憶體壓力時呼叫）
+    func clearImageCache() {
+        cache.removeAll()
+        pdfCache.removeAll()
+        pdfDocumentCache.removeAll()
+        for (_, task) in prefetchTasks { task.cancel() }
+        prefetchTasks.removeAll()
+        for (_, task) in imagePrefetchTasks { task.cancel() }
+        imagePrefetchTasks.removeAll()
+    }
+
+    // MARK: - Test-Only Accessors
+
+    func _testImageCacheCount() -> Int { cache.count }
 }
