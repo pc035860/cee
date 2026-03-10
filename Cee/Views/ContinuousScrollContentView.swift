@@ -34,7 +34,15 @@ class ContinuousScrollContentView: NSView {
     }
 
     /// 圖片間距
-    private let imageSpacing: CGFloat = 0
+    var imageSpacing: CGFloat = 0 {
+        didSet {
+            guard oldValue != imageSpacing else { return }
+            recalculateLayout()
+            for slot in activeSlots {
+                slot.frame = frameForImage(at: slot.imageIndex)
+            }
+        }
+    }
 
     /// 預設圖片高度（無法取得尺寸時使用）
     private let defaultAspectRatio: CGFloat = 4.0 / 3.0

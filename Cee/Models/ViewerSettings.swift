@@ -86,6 +86,8 @@ struct ViewerSettings: Codable {
     // MARK: - Continuous Scroll Mode
     /// true = 啟用連續捲動模式（webtoon-style vertical scrolling）
     var continuousScrollEnabled: Bool = false
+    /// 連續捲動模式下圖片間距（points）
+    var continuousScrollGap: CGFloat = 0
 
     // MARK: - Codable (backward-compatible decoding)
 
@@ -120,6 +122,7 @@ struct ViewerSettings: Codable {
         quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
         reuseWindow = (try? c.decode(Bool.self, forKey: .reuseWindow)) ?? d.reuseWindow
         continuousScrollEnabled = (try? c.decode(Bool.self, forKey: .continuousScrollEnabled)) ?? d.continuousScrollEnabled
+        continuousScrollGap = (try? c.decode(CGFloat.self, forKey: .continuousScrollGap)) ?? d.continuousScrollGap
     }
 
     // MARK: - Persistence

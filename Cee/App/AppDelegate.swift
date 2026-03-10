@@ -160,6 +160,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         navigationMenu.addItem(makeItem(String(localized: "menu.navigation.clickToTurn"),     action: #selector(ImageViewController.toggleClickToTurnPage(_:)),           key: ""))
         navigationMenu.addItem(makeItem(String(localized: "menu.navigation.continuousScroll"), action: #selector(ImageViewController.toggleContinuousScroll(_:)), key: ""))
 
+        // Image Gap submenu (continuous scroll mode)
+        let gapMenuItem = NSMenuItem(title: String(localized: "menu.navigation.imageGap"), action: nil, keyEquivalent: "")
+        let gapMenu = NSMenu(title: String(localized: "menu.navigation.imageGap"))
+        gapMenu.addItem(makeItem(String(localized: "menu.navigation.gapNone"),   action: #selector(ImageViewController.setContinuousGap0(_:)), key: ""))
+        gapMenu.addItem(makeItem(String(localized: "menu.navigation.gapSmall"),  action: #selector(ImageViewController.setContinuousGap2(_:)), key: ""))
+        gapMenu.addItem(makeItem(String(localized: "menu.navigation.gapMedium"), action: #selector(ImageViewController.setContinuousGap4(_:)), key: ""))
+        gapMenu.addItem(makeItem(String(localized: "menu.navigation.gapLarge"),  action: #selector(ImageViewController.setContinuousGap8(_:)), key: ""))
+        gapMenuItem.submenu = gapMenu
+        navigationMenu.addItem(gapMenuItem)
+
         // Trackpad Page-Turn Sensitivity submenu
         let trackpadMenuItem = NSMenuItem(title: String(localized: "menu.navigation.trackpadSensitivity"), action: nil, keyEquivalent: "")
         let trackpadMenu = NSMenu(title: String(localized: "menu.navigation.trackpadSensitivity"))

@@ -576,6 +576,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func applyFitting(for imageSize: NSSize) {
+        guard !settings.continuousScrollEnabled else { return }
         guard imageSize.width > 0, imageSize.height > 0 else { return }
         // documentView frame is now set by DualPageContentView.configureSingle/configureDouble
         // 計算有效 viewport：scrollView 現在填滿 container，需扣除覆蓋的 statusBar 高度
@@ -944,6 +945,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let visibleHeight = clipView.bounds.height
         let currentMinY = clipView.bounds.minY
 
+        // Continuous mode: scroll only, never navigate to next image
+        if settings.continuousScrollEnabled {
+            guard let range = scrollRange(for: scrollView.contentInsets) else { return }
+            let newY = max(currentMinY - visibleHeight, range.minY)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: newY))
+            scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+
         // Visual bottom in unflipped coords = minY near 0
         if currentMinY <= Constants.scrollEdgeThreshold {
             goToNextImage()
@@ -961,6 +971,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let visibleHeight = clipView.bounds.height
         let currentMinY = clipView.bounds.minY
         let docHeight = scrollView.documentView?.frame.height ?? 0
+
+        // Continuous mode: scroll only, never navigate to previous image
+        if settings.continuousScrollEnabled {
+            guard let range = scrollRange(for: scrollView.contentInsets) else { return }
+            let newY = min(currentMinY + visibleHeight, range.maxY)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: newY))
+            scrollView.reflectScrolledClipView(clipView)
+            return
+        }
 
         // Visual top in unflipped coords = maxY near docHeight
         let clipMaxY = currentMinY + visibleHeight
@@ -1284,6 +1303,21 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
+    // MARK: - Image Gap (Continuous Scroll)
+
+    @objc func setContinuousGap0(_ sender: Any?) { setContinuousGap(0) }
+    @objc func setContinuousGap2(_ sender: Any?) { setContinuousGap(2) }
+    @objc func setContinuousGap4(_ sender: Any?) { setContinuousGap(4) }
+    @objc func setContinuousGap8(_ sender: Any?) { setContinuousGap(8) }
+
+    private func setContinuousGap(_ gap: CGFloat) {
+        settings.continuousScrollGap = gap
+        settings.save()
+        guard let contentView = continuousScrollContentView else { return }
+        contentView.imageSpacing = gap
+        scrollToCurrentImageInContinuousMode()
+    }
+
     private func configureContinuousScrollView() {
         guard let folder = folder else { return }
 
@@ -1292,6 +1326,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         let contentView = ContinuousScrollContentView()
         contentView.containerWidth = scrollView.bounds.width
+        contentView.imageSpacing = settings.continuousScrollGap
         contentView.onCurrentImageChanged = { [weak self] index, scaledSize in
             self?.handleContinuousScrollImageChanged(index: index, scaledSize: scaledSize)
         }
@@ -1510,21 +1545,22 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let isContinuous = settings.continuousScrollEnabled
         switch menuItem.action {
         case #selector(fitOnScreen(_:)):
             return true
         case #selector(actualSize(_:)):
             return true
         case #selector(toggleAlwaysFit(_:)):
-            menuItem.state = settings.alwaysFitOnOpen ? .on : .off; return true
+            menuItem.state = settings.alwaysFitOnOpen ? .on : .off; return !isContinuous
         case #selector(toggleShrinkH(_:)):
-            menuItem.state = settings.fittingOptions.shrinkHorizontally ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.shrinkHorizontally ? .on : .off; return !isContinuous
         case #selector(toggleShrinkV(_:)):
-            menuItem.state = settings.fittingOptions.shrinkVertically ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.shrinkVertically ? .on : .off; return !isContinuous
         case #selector(toggleStretchH(_:)):
-            menuItem.state = settings.fittingOptions.stretchHorizontally ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.stretchHorizontally ? .on : .off; return !isContinuous
         case #selector(toggleStretchV(_:)):
-            menuItem.state = settings.fittingOptions.stretchVertically ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.stretchVertically ? .on : .off; return !isContinuous
         case #selector(setScalingLow(_:)):
             menuItem.state = settings.scalingQuality == .low ? .on : .off; return true
         case #selector(setScalingMedium(_:)):
@@ -1554,7 +1590,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(toggleQuickGridScrollAfterZoom(_:)):
             menuItem.state = settings.quickGridScrollAfterZoom ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
-            menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
+            menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return !isContinuous
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
         case #selector(toggleStatusBar(_:)):
@@ -1567,32 +1603,44 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return folder != nil
         case #selector(toggleDualPage(_:)):
             menuItem.state = settings.dualPageEnabled ? .on : .off
-            return true
+            return !isContinuous
         case #selector(togglePageOffset(_:)):
             menuItem.state = settings.firstPageIsCover ? .on : .off
-            return settings.dualPageEnabled  // Only enabled when dual page is on
+            return !isContinuous && settings.dualPageEnabled
         case #selector(toggleReadingDirection(_:)):
             let isRTL = settings.readingDirection.isRTL
             menuItem.state = isRTL ? .on : .off
             menuItem.title = isRTL
                 ? String(localized: "menu.navigation.readingRTL")
                 : String(localized: "menu.navigation.readingLTR")
-            return settings.dualPageEnabled
+            return !isContinuous && settings.dualPageEnabled
         case #selector(toggleDuoPageRTLNavigation(_:)):
             menuItem.state = settings.duoPageRTLNavigation ? .on : .off
-            return settings.dualPageEnabled
+            return !isContinuous && settings.dualPageEnabled
         case #selector(toggleSinglePageRTLNavigation(_:)):
             menuItem.state = settings.singlePageRTLNavigation ? .on : .off
-            return !settings.dualPageEnabled
+            return !isContinuous && !settings.dualPageEnabled
         case #selector(toggleScrollToBottomOnPrevious(_:)):
             menuItem.state = settings.scrollToBottomOnPrevious ? .on : .off
             return true
         case #selector(toggleClickToTurnPage(_:)):
             menuItem.state = settings.clickToTurnPage ? .on : .off
-            return true
+            return !isContinuous
         case #selector(toggleContinuousScroll(_:)):
             menuItem.state = settings.continuousScrollEnabled ? .on : .off
             return true
+        case #selector(setContinuousGap0(_:)):
+            menuItem.state = settings.continuousScrollGap == 0 ? .on : .off
+            return isContinuous
+        case #selector(setContinuousGap2(_:)):
+            menuItem.state = settings.continuousScrollGap == 2 ? .on : .off
+            return isContinuous
+        case #selector(setContinuousGap4(_:)):
+            menuItem.state = settings.continuousScrollGap == 4 ? .on : .off
+            return isContinuous
+        case #selector(setContinuousGap8(_:)):
+            menuItem.state = settings.continuousScrollGap == 8 ? .on : .off
+            return isContinuous
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen
@@ -1842,8 +1890,29 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     func scrollViewRequestNextImage(_ scrollView: ImageScrollView, amount: Int) { navigateNext(amount: amount) }
     func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int) { navigatePrevious(amount: amount) }
-    func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) { goToFirstImage() }
-    func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
+    func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) {
+        if settings.continuousScrollEnabled {
+            // Home: scroll to visual top (highest Y in unflipped coords)
+            let clipView = self.scrollView.contentView
+            guard let range = scrollRange(for: self.scrollView.contentInsets) else { return }
+            clipView.scroll(to: NSPoint(x: 0, y: range.maxY))
+            self.scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+        goToFirstImage()
+    }
+
+    func scrollViewRequestLastImage(_ scrollView: ImageScrollView) {
+        if settings.continuousScrollEnabled {
+            // End: scroll to visual bottom (lowest Y in unflipped coords)
+            let clipView = self.scrollView.contentView
+            guard let range = scrollRange(for: self.scrollView.contentInsets) else { return }
+            clipView.scroll(to: NSPoint(x: 0, y: range.minY))
+            self.scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+        goToLastImage()
+    }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) {
         if let grid = quickGridView {
             grid.pageDown()
@@ -2088,6 +2157,14 @@ extension ImageViewController: QuickGridViewDelegate {
         dismissQuickGrid()
         guard let folder else { return }
         folder.currentIndex = index
+
+        if settings.continuousScrollEnabled {
+            scrollToCurrentImageInContinuousMode()
+            updateWindowTitle()
+            updateStatusBar()
+            return
+        }
+
         if settings.dualPageEnabled {
             folder.syncSpreadIndex()
         }
