@@ -3,7 +3,7 @@
   "checkpoint_id": "2733c5f7d92d",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 3,
+  "checkpoints_count": 4,
   "files_touched": [
     "Cee/Models/ViewerSettings.swift"
   ],
@@ -19,13 +19,19 @@
       "transcript": "/27/33c5f7d92d/1/full.jsonl",
       "content_hash": "/27/33c5f7d92d/1/content_hash.txt",
       "prompt": "/27/33c5f7d92d/1/prompt.txt"
+    },
+    {
+      "metadata": "/27/33c5f7d92d/2/metadata.json",
+      "transcript": "/27/33c5f7d92d/2/full.jsonl",
+      "content_hash": "/27/33c5f7d92d/2/content_hash.txt",
+      "prompt": "/27/33c5f7d92d/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 203,
-    "cache_creation_tokens": 207655,
-    "cache_read_tokens": 1604191,
-    "output_tokens": 7347,
-    "api_call_count": 35
+    "input_tokens": 219,
+    "cache_creation_tokens": 249356,
+    "cache_read_tokens": 2154657,
+    "output_tokens": 11366,
+    "api_call_count": 49
   }
 }
