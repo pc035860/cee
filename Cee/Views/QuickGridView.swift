@@ -879,9 +879,36 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     @objc private func gridFrameDidChange(_ note: Notification) {
         let width = availableLayoutWidth
         guard width != lastLayoutWidth else { return }
+
+        // Capture anchor: real-time computation from current viewport (not cached, avoids stale state)
+        let clipBounds = gridScrollView.contentView.bounds
+        let viewportCenterY = clipBounds.midY
+        let anchorIP = IndexPath(item: cachedVisibleCenter, section: 0)
+        // Capture fractional offset: how far viewport center is from anchor item's top
+        let oldFraction: CGFloat
+        if let oldAttrs = collectionView.layoutAttributesForItem(at: anchorIP) {
+            let rawFraction = (viewportCenterY - oldAttrs.frame.minY) / oldAttrs.frame.height
+            oldFraction = max(0, min(1, rawFraction))
+        } else {
+            oldFraction = 0.5
+        }
+
         updateSpaceAroundLayout()
         collectionView.collectionViewLayout?.invalidateLayout()
         updateScrollerVisibility()
+
+        // Restore: place anchor item at the same fractional position in viewport
+        collectionView.layoutSubtreeIfNeeded()
+        if let attrs = collectionView.layoutAttributesForItem(at: anchorIP) {
+            let newAnchorY = attrs.frame.minY + oldFraction * attrs.frame.height
+            let clipHeight = gridScrollView.contentView.bounds.height
+            let targetOriginY = newAnchorY - clipHeight / 2
+            let docHeight = collectionView.frame.height
+            let maxOriginY = max(0, docHeight - clipHeight)
+            let clampedY = min(max(0, targetOriginY), maxOriginY)
+            gridScrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
+            gridScrollView.reflectScrolledClipView(gridScrollView.contentView)
+        }
     }
 
     /// Update vertical scrollbar visibility based on content overflow.
