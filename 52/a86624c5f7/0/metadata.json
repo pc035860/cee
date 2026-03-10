@@ -1,0 +1,19 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "52a86624c5f7",
+  "session_id": "3100238d-f9ca-42d1-8649-e18193a5a41d",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-10T06:06:57.433491Z",
+  "branch": "feat/continuous-scroll-phase36-39",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "turn_id": "1de4c36d013c",
+  "token_usage": {
+    "input_tokens": 143,
+    "cache_creation_tokens": 182653,
+    "cache_read_tokens": 11795200,
+    "output_tokens": 34196,
+    "api_call_count": 125
+  }
+}
