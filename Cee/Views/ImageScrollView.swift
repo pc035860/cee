@@ -700,6 +700,33 @@ class ImageScrollView: NSScrollView {
     /// 方向鍵根據 viewport overflow 動態切換 pan 或 navigate
     /// 到邊緣時需連續按 N 次才翻頁，防止瀏覽長圖時誤觸
     override func keyDown(with event: NSEvent) {
+        // Continuous scroll mode: smooth scroll only, no page-turn navigation
+        if continuousScrollEnabled {
+            switch event.keyCode {
+            case 124, 123:  // Left/Right Arrow — pan only when zoomed past fit-to-width
+                if viewportOverflow.horizontal {
+                    event.keyCode == 124 ? panRight() : panLeft()
+                }
+            case 125: panDown()   // Down — smooth scroll, no edge-press navigate
+            case 126: panUp()     // Up — smooth scroll, no edge-press navigate
+            case 49, 121:         // Space / PageDown
+                scrollDelegate?.scrollViewRequestPageDown(self)
+            case 116:             // PageUp
+                scrollDelegate?.scrollViewRequestPageUp(self)
+            case 115:             // Home
+                scrollDelegate?.scrollViewRequestFirstImage(self)
+            case 119:             // End
+                scrollDelegate?.scrollViewRequestLastImage(self)
+            case 5 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == []:
+                scrollDelegate?.scrollViewRequestToggleQuickGrid(self)
+            case 53:
+                if window?.styleMask.contains(.fullScreen) == true { window?.toggleFullScreen(nil) }
+                else { super.keyDown(with: event) }
+            default: super.keyDown(with: event)
+            }
+            return
+        }
+
         let overflow = viewportOverflow
         let navAmount = event.modifierFlags.contains(.option) ? Constants.optionKeyJumpAmount : 1
 

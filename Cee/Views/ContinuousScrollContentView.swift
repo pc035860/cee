@@ -23,18 +23,21 @@ class ContinuousScrollContentView: NSView {
 
     /// 容器寬度（用於 fit-to-width 計算）
     var containerWidth: CGFloat = 800 {
-        didSet {
-            guard oldValue != containerWidth else { return }
-            recalculateLayout()
-            // 更新現有 activeSlots 的 frame
-            for slot in activeSlots {
-                slot.frame = frameForImage(at: slot.imageIndex)
-            }
-        }
+        didSet { guard oldValue != containerWidth else { return }; relayoutSlots() }
     }
 
     /// 圖片間距
-    private let imageSpacing: CGFloat = 0
+    var imageSpacing: CGFloat = 0 {
+        didSet { guard oldValue != imageSpacing else { return }; relayoutSlots() }
+    }
+
+    /// 重算 layout 並更新所有 activeSlots 的 frame
+    private func relayoutSlots() {
+        recalculateLayout()
+        for slot in activeSlots {
+            slot.frame = frameForImage(at: slot.imageIndex)
+        }
+    }
 
     /// 預設圖片高度（無法取得尺寸時使用）
     private let defaultAspectRatio: CGFloat = 4.0 / 3.0
