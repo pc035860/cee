@@ -125,7 +125,6 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Grid performance (Phase 3.1-3.2)** — Tier0 adaptive resolution (`max(cellSize*scale, 80)` quantized to 20px steps) + `kCGImageSourceSubsampleFactor: 4` for JPEG/HEIF ≤120px. Priority dequeue in `ThumbnailThrottle` (smaller priority = higher urgency, FIFO tie-break). `cachedVisibleCenter` updated at 20Hz by scroll handler for `cellForItem` priority. Early `Task.isCancelled` guard after throttle acquire, before decode.
 - **`cachedVisibleCenter` pattern** — Avoid calling `indexPathsForVisibleItems()` per-cell in data source. Cache the visible center in the scroll handler (20Hz) and reuse in `cellForItem` + eviction. Initialize in `configure()` to `currentIndex`.
 - **Quantize to prevent cache churn** — When computed `maxSize` varies continuously (e.g., during pinch), quantize to fixed steps (`ceil(raw / step) * step`) so tier comparisons don't flush cache every frame.
-- **Grid resize anchor preservation** — `gridFrameDidChange` captures anchor item index + fractional viewport position before relayout, restores after. Same pattern as `ContinuousScrollContentView.relayoutSlots()`. Uses `cachedVisibleCenter` for O(1) anchor lookup.
 
 ## Recent Significant Changes
 
