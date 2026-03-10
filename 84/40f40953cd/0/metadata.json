@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "8440f40953cd",
+  "session_id": "9297754a-bc74-489b-842c-d9bbae59f0b2",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-10T07:21:18.98789Z",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/plan/plan-2026-03-10_14-53-42_continuous-scroll-resize-anchor.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "turn_id": "4f11b8687d9a",
+  "token_usage": {
+    "input_tokens": 3464,
+    "cache_creation_tokens": 154462,
+    "cache_read_tokens": 7034968,
+    "output_tokens": 22371,
+    "api_call_count": 86
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-10T07:21:18.560049Z",
+    "agent_lines": 78,
+    "human_added": 9,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 88,
+    "agent_percentage": 88.63636363636364
+  }
+}

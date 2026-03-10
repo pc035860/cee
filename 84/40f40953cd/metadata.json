@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "8440f40953cd",
+  "strategy": "manual-commit",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/plan/plan-2026-03-10_14-53-42_continuous-scroll-resize-anchor.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/84/40f40953cd/0/metadata.json",
+      "transcript": "/84/40f40953cd/0/full.jsonl",
+      "content_hash": "/84/40f40953cd/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3464,
+    "cache_creation_tokens": 154462,
+    "cache_read_tokens": 7034968,
+    "output_tokens": 22371,
+    "api_call_count": 86
+  }
+}
