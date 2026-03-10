@@ -48,10 +48,10 @@
 "menu.navigation.clickToTurn" = "Click to Turn Page";
 "menu.navigation.continuousScroll" = "Continuous Scroll";
 "menu.navigation.imageGap" = "Image Gap";
-"menu.navigation.gapNone" = "None (0px)";
-"menu.navigation.gapSmall" = "Small (2px)";
-"menu.navigation.gapMedium" = "Medium (4px)";
-"menu.navigation.gapLarge" = "Large (8px)";
+"menu.navigation.gapNone" = "None";
+"menu.navigation.gapSmall" = "Small (2pt)";
+"menu.navigation.gapMedium" = "Medium (4pt)";
+"menu.navigation.gapLarge" = "Large (8pt)";
 "menu.navigation.trackpadSensitivity" = "Trackpad Page-Turn Sensitivity";
 "menu.navigation.wheelSensitivity" = "Wheel Page-Turn Sensitivity";
 "menu.navigation.sensitivityLow" = "Low";

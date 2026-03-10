@@ -122,7 +122,7 @@ struct ViewerSettings: Codable {
         quickGridCellSize = (try? c.decode(CGFloat.self, forKey: .quickGridCellSize)) ?? d.quickGridCellSize
         reuseWindow = (try? c.decode(Bool.self, forKey: .reuseWindow)) ?? d.reuseWindow
         continuousScrollEnabled = (try? c.decode(Bool.self, forKey: .continuousScrollEnabled)) ?? d.continuousScrollEnabled
-        continuousScrollGap = (try? c.decode(CGFloat.self, forKey: .continuousScrollGap)) ?? d.continuousScrollGap
+        continuousScrollGap = max(0, (try? c.decode(CGFloat.self, forKey: .continuousScrollGap)) ?? d.continuousScrollGap)
     }
 
     // MARK: - Persistence

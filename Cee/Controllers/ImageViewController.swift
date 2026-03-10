@@ -1895,7 +1895,7 @@ extension ImageViewController: ImageScrollViewDelegate {
             // Home: scroll to visual top (highest Y in unflipped coords)
             let clipView = self.scrollView.contentView
             guard let range = scrollRange(for: self.scrollView.contentInsets) else { return }
-            clipView.scroll(to: NSPoint(x: 0, y: range.maxY))
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: range.maxY))
             self.scrollView.reflectScrolledClipView(clipView)
             return
         }
@@ -1907,7 +1907,7 @@ extension ImageViewController: ImageScrollViewDelegate {
             // End: scroll to visual bottom (lowest Y in unflipped coords)
             let clipView = self.scrollView.contentView
             guard let range = scrollRange(for: self.scrollView.contentInsets) else { return }
-            clipView.scroll(to: NSPoint(x: 0, y: range.minY))
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: range.minY))
             self.scrollView.reflectScrolledClipView(clipView)
             return
         }
