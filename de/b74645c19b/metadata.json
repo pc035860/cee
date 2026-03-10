@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "deb74645c19b",
+  "strategy": "manual-commit",
+  "branch": "feat/webtoon",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "CLAUDE.md",
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Views/QuickGridView.swift",
+    "CeeTests/QuickGridViewTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/de/b74645c19b/0/metadata.json",
+      "transcript": "/de/b74645c19b/0/full.jsonl",
+      "content_hash": "/de/b74645c19b/0/content_hash.txt",
+      "prompt": "/de/b74645c19b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1757,
+    "cache_creation_tokens": 212539,
+    "cache_read_tokens": 10339880,
+    "output_tokens": 54931,
+    "api_call_count": 115
+  }
+}
