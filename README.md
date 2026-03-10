@@ -42,6 +42,14 @@ Open an image and Cee automatically scans the folder for all supported images, l
 - Dynamic cell aspect ratio based on folder content
 - Grid persists across folder changes and accepts drag-and-drop
 
+### Continuous Scroll
+- Webtoon-style vertical continuous scrolling mode (Navigation menu or right-click context menu to toggle)
+- All images in the folder are laid out vertically, scroll through them seamlessly
+- Configurable image gap (0 / 2 / 4 / 8 pt) in the Navigation menu
+- Zoom support with fit-to-width baseline
+- GPU-accelerated rendering with view recycling for smooth performance
+- Memory-pressure-aware: automatically reduces buffer on low memory
+
 ### Dual Page View
 - Side-by-side two-page display with height normalization
 - RTL (right-to-left) reading direction support; separate RTL navigation toggle for dual-page and single-page modes (Navigation menu)
