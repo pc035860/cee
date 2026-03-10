@@ -1,0 +1,11 @@
+修正一個問題：進入連續捲動模式（continuous scroll mode）時，程式會自動跳到最後一頁。
+
+理論上，它應該要維持在進入模式前的那一頁。例如：我原本已經瀏覽到第五頁，那進入連續捲動模式後，應該要維持在這一頁才對，而不是跳到最後一頁。
+
+- 使用 agent Explore (haiku, run in foreground) 來做廣泛的程式碼探索與資料蒐集\
+- IMPORTANT: run subagents in parallel\
+- First, use the TaskList tool to plan tasks in the user's best interest. Organize parallelization effectively for optimal results.
+
+---
+
+run review-loop(codex)
