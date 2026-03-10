@@ -37,4 +37,9 @@ final class MemoryPressureMonitor {
     func _testSimulatePressure(_ level: PressureLevel) {
         onPressure?(level)
     }
+
+    /// Test-only: check if the monitor is running.
+    func _testIsRunning() -> Bool {
+        source != nil
+    }
 }

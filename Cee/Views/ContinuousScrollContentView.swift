@@ -59,7 +59,8 @@ class ContinuousScrollContentView: NSView {
 
     private var activeSlots: [ImageSlotView] = []
     private var reusableSlots: [ImageSlotView] = []
-    private let bufferCount: Int = 2  // visible 前後各 buffer 2 張
+    private var bufferCount: Int = 2  // visible 前後各 buffer 2 張
+    private let defaultBufferCount: Int = 2
 
     /// Zoom 進行中：跳過 slot 回收，只新增 slot（防止黑色閃爍）
     private(set) var isZooming: Bool = false
@@ -69,10 +70,18 @@ class ContinuousScrollContentView: NSView {
         isZooming = true
     }
 
-    /// 結束 zoom：恢復 slot 回收，立即清理多餘 slots
+    /// 結束 zoom：恢復 slot 回收，處理延遲的記憶體壓力，清理多餘 slots
     func endZoomSuppression(visibleBounds: NSRect) {
         isZooming = false
-        updateVisibleSlots(for: visibleBounds)
+        // 更新 lastKnownVisibleBounds，確保 deferred pressure 使用最新可視區域
+        lastKnownVisibleBounds = visibleBounds
+        if let level = pendingPressureLevel {
+            pendingPressureLevel = nil
+            handleMemoryPressure(level)
+            // handleMemoryPressure 內部已呼叫 manageSlotViews，不需重複
+        } else {
+            updateVisibleSlots(for: visibleBounds)
+        }
     }
 
     // MARK: - Scroll Direction Tracking (Phase 3.2)
@@ -82,6 +91,9 @@ class ContinuousScrollContentView: NSView {
 
     /// 捲動方向（true = 往下捲動，    /// 小 y = 視覺下方 =        /// 大 y = 視覺上方）
     private(set) var isScrollingDown: Bool = true
+
+    /// 最後已知的可見區域（用於記憶體壓力處理時參考）
+    private var lastKnownVisibleBounds: NSRect = .zero
 
     /// 預取節流器（20Hz）
     private var prefetchThrottle = NavigationThrottle()
@@ -116,6 +128,9 @@ class ContinuousScrollContentView: NSView {
         }
         activeSlots.removeAll()
         reusableSlots.removeAll()
+
+        // 設定記憶體壓力監控（idempotent — MemoryPressureMonitor 內部有 guard）
+        setupMemoryPressureMonitor()
 
         NSLog("[ContinuousScroll] configure: folder.images.count=\(folder.images.count), containerWidth=\(containerWidth)")
 
@@ -209,6 +224,15 @@ class ContinuousScrollContentView: NSView {
 
     /// 更新可見範圍內的 slots（對外入口）
     func updateVisibleSlots(for visibleBounds: NSRect) {
+        // Cache visible bounds（記憶體壓力處理時使用）
+        lastKnownVisibleBounds = visibleBounds
+
+        // 恢復 buffer count（warning 壓力後，下次 scroll 恢復）
+        if needsBufferRestoration {
+            bufferCount = defaultBufferCount
+            needsBufferRestoration = false
+        }
+
         // 更新捲動方向
         updateScrollDirection(currentY: visibleBounds.midY)
 
@@ -330,7 +354,12 @@ class ContinuousScrollContentView: NSView {
             if let pageIndex = item.pdfPageIndex {
                 image = await loader.loadPDFPage(url: item.url, pageIndex: pageIndex)
             } else {
-                image = await loader.loadImage(at: item.url)
+                // Phase 3.5: 使用 subsample 載入，節省大圖記憶體
+                // displayPixelWidth = containerWidth * Retina scale factor（單次 actor hop）
+                let displayPixelWidth = await MainActor.run {
+                    (self?.containerWidth ?? 800) * (self?.window?.backingScaleFactor ?? 2.0)
+                }
+                image = await loader.loadImageForDisplay(at: item.url, maxWidth: displayPixelWidth)
             }
 
             guard let image else { return }
@@ -394,6 +423,88 @@ class ContinuousScrollContentView: NSView {
         let scaledSize = NSSize(width: containerWidth, height: scaledHeight)
 
         onCurrentImageChanged?(index, scaledSize)
+    }
+
+    // MARK: - Layout Helpers
+
+    // MARK: - Memory Pressure Monitoring
+
+    private let memoryPressureMonitor = MemoryPressureMonitor()
+
+    /// 延遲處理的壓力等級（zoom 中暫緩）
+    private var pendingPressureLevel: MemoryPressureMonitor.PressureLevel?
+
+    /// Buffer 需要恢復的標記（warning 後在下次 scroll 恢復）
+    private var needsBufferRestoration: Bool = false
+
+    /// 設定記憶體壓力監控
+    private func setupMemoryPressureMonitor() {
+        memoryPressureMonitor.onPressure = { [weak self] level in
+            self?.handleMemoryPressure(level)
+        }
+        memoryPressureMonitor.start()
+    }
+
+    /// 處理記憶體壓力
+    private func handleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        // Zoom 中延遲處理（escalate only：warning 不覆蓋 critical）
+        if isZooming {
+            if pendingPressureLevel == nil || level == .critical {
+                pendingPressureLevel = level
+            }
+            return
+        }
+
+        let capturedConfigID = configurationID
+
+        // 共用：縮減 buffer，觸發 slot 回收
+        bufferCount = 0
+        needsBufferRestoration = true
+        if !lastKnownVisibleBounds.isEmpty {
+            manageSlotViews(for: lastKnownVisibleBounds)
+        }
+
+        // Critical 額外：清空 reusable pool + ImageLoader 快取
+        if level == .critical {
+            reusableSlots.removeAll()
+            guard configurationID == capturedConfigID else { return }
+            Task { [weak self] in
+                await self?.imageLoader?.clearImageCache()
+            }
+        }
+    }
+
+    /// Cleanup: stop monitor, cancel tasks, clear slots
+    func cleanup() {
+        memoryPressureMonitor.stop()
+        pendingPressureLevel = nil
+        needsBufferRestoration = false
+        bufferCount = defaultBufferCount
+        for slot in activeSlots {
+            slot.prepareForReuse()
+            slot.removeFromSuperview()
+        }
+        activeSlots.removeAll()
+        reusableSlots.removeAll()
+    }
+
+    // MARK: - Test-Only Accessors
+
+    func _testActiveSlotCount() -> Int { activeSlots.count }
+    func _testReusableSlotCount() -> Int { reusableSlots.count }
+    func _testBufferCount() -> Int { bufferCount }
+    func _testIsMonitorRunning() -> Bool { memoryPressureMonitor._testIsRunning() }
+
+    func _testHandleMemoryPressure(_ level: MemoryPressureMonitor.PressureLevel) {
+        handleMemoryPressure(level)
+    }
+
+    /// Test-only: configure with mock sizes (no ImageLoader needed)
+    func _testConfigureWithSizes(_ sizes: [NSSize]) {
+        self.configurationID = UUID()
+        self.imageSizes = sizes
+        recalculateLayout()
+        setupMemoryPressureMonitor()
     }
 
     // MARK: - Layout Helpers
