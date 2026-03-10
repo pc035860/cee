@@ -120,6 +120,9 @@ class ImageWindowController: NSWindowController {
     }
 
     @objc private func windowWillCloseNotification(_ notification: Notification) {
+        // 清理 CADisplayLink 防止記憶體洩漏
+        resizeDisplayLink?.invalidate()
+        resizeDisplayLink = nil
         Self.windows.removeAll { $0 === self }
     }
 
@@ -261,6 +264,140 @@ class ImageWindowController: NSWindowController {
             x: min(max(frame.origin.x, minX), maxX),
             y: min(max(frame.origin.y, minY), maxY)
         )
+    }
+
+    // MARK: - Phase 2: Continuous Scroll Animated Resize
+
+    private var resizeDisplayLink: CADisplayLink?
+    private var resizeAnimationStartFrame: NSRect = .zero
+    private var resizeAnimationTargetSize: NSSize = .zero
+    private var resizeAnimationStartTime: CFTimeInterval = 0
+    private var resizeAnimationDuration: CFTimeInterval = 0.25
+    private var resizeAnimationPreserveCenter: Bool = true
+
+    /// 使用 CADisplayLink 執行動態視窗 resize（macOS 14+）
+    /// - Parameters:
+    ///   - targetSize: 目標視窗大小
+    ///   - preserveCenter: 是否保持視窗中心點位置
+    func animateResize(to targetSize: NSSize, preserveCenter: Bool = true) {
+        guard let window = window else { return }
+
+        // 全螢幕模式下跳過 resize
+        guard !window.styleMask.contains(.fullScreen) else { return }
+
+        // 連續捲動模式下跳過 resize（使用 fit-to-width，固定寬度）
+        if let vc = contentViewController as? ImageViewController, vc.settings.continuousScrollEnabled {
+            return
+        }
+
+        // 建立或重用 display link
+        let displayLink: CADisplayLink
+        if let existing = resizeDisplayLink {
+            displayLink = existing
+        } else {
+            displayLink = window.displayLink(target: self, selector: #selector(resizeAnimationStep(_:)))
+            resizeDisplayLink = displayLink
+        }
+
+        // 設定動畫參數
+        resizeAnimationStartFrame = window.frame
+        resizeAnimationTargetSize = targetSize
+        resizeAnimationStartTime = CACurrentMediaTime()
+        resizeAnimationPreserveCenter = preserveCenter
+
+        displayLink.isPaused = false
+    }
+
+    @objc private func resizeAnimationStep(_ link: CADisplayLink) {
+        guard let window = window else {
+            link.invalidate()
+            resizeDisplayLink = nil
+            return
+        }
+
+        let elapsed = CACurrentMediaTime() - resizeAnimationStartTime
+        let progress = min(1.0, elapsed / resizeAnimationDuration)
+
+        // Ease-in-out 曲線
+        let easedProgress = easeInOut(progress)
+
+        // 插值計算當前 size
+        let currentSize = interpolateSize(
+            from: resizeAnimationStartFrame.size,
+            to: resizeAnimationTargetSize,
+            progress: easedProgress
+        )
+
+        var currentFrame: NSRect
+        if resizeAnimationPreserveCenter {
+            currentFrame = centeredFrame(for: currentSize, relativeTo: resizeAnimationStartFrame)
+        } else {
+            currentFrame = NSRect(
+                x: resizeAnimationStartFrame.origin.x,
+                y: resizeAnimationStartFrame.origin.y,
+                width: currentSize.width,
+                height: currentSize.height
+            )
+        }
+
+        // 螢幕邊界限制
+        if let screen = window.screen {
+            currentFrame = clampToScreen(currentFrame, screen: screen)
+        }
+
+        window.setFrame(currentFrame, display: true)
+
+        // 動畫完成
+        if progress >= 1.0 {
+            link.isPaused = true
+            link.invalidate()
+            resizeDisplayLink = nil
+        }
+    }
+
+    private func easeInOut(_ t: CGFloat) -> CGFloat {
+        return t < 0.5
+            ? 2 * t * t
+            : 1 - pow(-2 * t + 2, 2) / 2
+    }
+
+    private func interpolateSize(from: NSSize, to: NSSize, progress: CGFloat) -> NSSize {
+        NSSize(
+            width: from.width + (to.width - from.width) * progress,
+            height: from.height + (to.height - from.height) * progress
+        )
+    }
+
+    private func centeredFrame(for newSize: NSSize, relativeTo current: NSRect) -> NSRect {
+        let cx = current.midX
+        let cy = current.midY
+        return NSRect(
+            x: cx - newSize.width / 2,
+            y: cy - newSize.height / 2,
+            width: newSize.width,
+            height: newSize.height
+        )
+    }
+
+    private func clampToScreen(_ frame: NSRect, screen: NSScreen) -> NSRect {
+        let screenFrame = screen.visibleFrame
+        var clampedFrame = frame
+
+        // 確保視窗不超出螢幕
+        if frame.maxX > screenFrame.maxX {
+            clampedFrame.origin.x = screenFrame.maxX - frame.width
+        }
+        if frame.minX < screenFrame.minX {
+            clampedFrame.origin.x = screenFrame.minX
+        }
+        if frame.maxY > screenFrame.maxY {
+            clampedFrame.origin.y = screenFrame.maxY - frame.height
+        }
+        if frame.minY < screenFrame.minY {
+            clampedFrame.origin.y = screenFrame.minY
+        }
+
+        return clampedFrame
     }
 
     // MARK: - Window Title

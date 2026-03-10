@@ -95,7 +95,8 @@ class ImageScrollView: NSScrollView {
     private let clickDistanceThreshold: CGFloat = 5  // pixels
     private let clickTimeThreshold: TimeInterval = 0.3  // seconds
 
-    // Phase 3: Option+scroll fast navigation
+    // Continuous scroll mode
+    var continuousScrollEnabled: Bool = false    // Phase 3: Option+scroll fast navigation
     private var optionScrollAccumulator = OptionScrollAccumulator()
     private var lastOptionScrollTime: CFAbsoluteTime = 0
 
@@ -699,6 +700,33 @@ class ImageScrollView: NSScrollView {
     /// 方向鍵根據 viewport overflow 動態切換 pan 或 navigate
     /// 到邊緣時需連續按 N 次才翻頁，防止瀏覽長圖時誤觸
     override func keyDown(with event: NSEvent) {
+        // Continuous scroll mode: smooth scroll only, no page-turn navigation
+        if continuousScrollEnabled {
+            switch event.keyCode {
+            case 124, 123:  // Left/Right Arrow — pan only when zoomed past fit-to-width
+                if viewportOverflow.horizontal {
+                    event.keyCode == 124 ? panRight() : panLeft()
+                }
+            case 125: panDown()   // Down — smooth scroll, no edge-press navigate
+            case 126: panUp()     // Up — smooth scroll, no edge-press navigate
+            case 49, 121:         // Space / PageDown
+                scrollDelegate?.scrollViewRequestPageDown(self)
+            case 116:             // PageUp
+                scrollDelegate?.scrollViewRequestPageUp(self)
+            case 115:             // Home
+                scrollDelegate?.scrollViewRequestFirstImage(self)
+            case 119:             // End
+                scrollDelegate?.scrollViewRequestLastImage(self)
+            case 5 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == []:
+                scrollDelegate?.scrollViewRequestToggleQuickGrid(self)
+            case 53:
+                if window?.styleMask.contains(.fullScreen) == true { window?.toggleFullScreen(nil) }
+                else { super.keyDown(with: event) }
+            default: super.keyDown(with: event)
+            }
+            return
+        }
+
         let overflow = viewportOverflow
         let navAmount = event.modifierFlags.contains(.option) ? Constants.optionKeyJumpAmount : 1
 
@@ -1005,6 +1033,9 @@ class ImageScrollView: NSScrollView {
     }
 
     private func setMagnificationPreservingInsets(_ magnification: CGFloat, centeredAt point: NSPoint) {
+        // 連續捲動：在 setMagnification 前暫停 slot 回收，
+        // 避免同步觸發的 reflectScrolledClipView 回收仍在螢幕上的 slots
+        (documentView as? ContinuousScrollContentView)?.beginZoomSuppression()
         let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         let previousInsets = contentInsets
         setMagnification(magnification, centeredAt: point)
@@ -1037,6 +1068,7 @@ class ImageScrollView: NSScrollView {
     /// 當 displayedSize < minWindowContent 時 resizeToFitImage 不再縮小視窗，
     /// 但 magnification 會繼續降導致不同步漂移。此方法確保 magnification 不會低於該臨界值。
     func effectiveMinMagnification() -> CGFloat {
+        if continuousScrollEnabled { return 1.0 }
         guard let docView = documentView else { return minMagnification }
         // documentView.frame 是已縮放尺寸，除以 magnification 取得原始圖片尺寸
         let currentMag = magnification
@@ -1084,6 +1116,11 @@ class ImageScrollView: NSScrollView {
     // 但在 reflectScrolledClipView 強制 clamp 位置到 top/bottom，阻止實際視覺位移。
     override func reflectScrolledClipView(_ cView: NSClipView) {
         super.reflectScrolledClipView(cView)
+
+        // 連續捲動模式：通知內容視圖更新可見範圍
+        if let continuousView = documentView as? ContinuousScrollContentView {
+            continuousView.updateVisibleSlots(for: cView.bounds)
+        }
 
         guard suppressScrollSequenceAfterPageTurn,
               !isEnforcingScrollPosition,

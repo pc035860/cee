@@ -46,6 +46,12 @@
 "menu.navigation.arrowUD" = "以上下方向鍵翻頁";
 "menu.navigation.scrollToBottom" = "切換至上一張時捲至底部";
 "menu.navigation.clickToTurn" = "點擊翻頁";
+"menu.navigation.continuousScroll" = "連續捲動";
+"menu.navigation.imageGap" = "圖片間距";
+"menu.navigation.gapNone" = "無";
+"menu.navigation.gapSmall" = "小 (2pt)";
+"menu.navigation.gapMedium" = "中 (4pt)";
+"menu.navigation.gapLarge" = "大 (8pt)";
 "menu.navigation.trackpadSensitivity" = "觸控板翻頁靈敏度";
 "menu.navigation.wheelSensitivity" = "滾輪翻頁靈敏度";
 "menu.navigation.sensitivityLow" = "低";

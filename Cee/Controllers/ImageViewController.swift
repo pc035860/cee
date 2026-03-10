@@ -6,6 +6,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private let loader = ImageLoader()
     private var scrollView: ImageScrollView!
     private var dualPageView: DualPageContentView!
+    private var continuousScrollContentView: ContinuousScrollContentView?
     /// Convenience: always the leading page (replaces old stored contentView)
     private var contentView: ImageContentView { dualPageView.leadingPage }
     private var statusBarView: StatusBarView!
@@ -47,6 +48,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// Unified document size — uses compositeSize in dual mode, single image size otherwise.
     private var currentDocumentSize: NSSize? {
+        // 連續捲動模式：使用當前圖片的縮放尺寸（fit-to-width）
+        if settings.continuousScrollEnabled,
+           let contentView = continuousScrollContentView,
+           let folder = folder,
+           contentView.scaledHeights.indices.contains(folder.currentIndex) {
+            let scaledHeight = contentView.scaledHeights[folder.currentIndex]
+            return NSSize(width: contentView.containerWidth, height: scaledHeight)
+        }
+
+        // 單頁/雙頁模式
         let size = dualPageView.compositeSize
         guard size.width > 0, size.height > 0 else { return nil }
         return size
@@ -107,11 +118,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return
         }
 
-        loadFolderDualPageSettings()
-        if settings.dualPageEnabled {
-            rebuildSpreadsAndReload()
+        // 恢復連續捲動模式
+        if settings.continuousScrollEnabled {
+            configureContinuousScrollView()
         } else {
-            loadCurrentImage(initialScroll: .top)
+            loadFolderDualPageSettings()
+            if settings.dualPageEnabled {
+                rebuildSpreadsAndReload()
+            } else {
+                loadCurrentImage(initialScroll: .top)
+            }
         }
         view.window?.makeFirstResponder(scrollView)
         // 視窗重新取得 key window 時自動回到 scrollView
@@ -120,6 +136,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     override func viewDidLayout() {
         super.viewDidLayout()
+
+        // 連續捲動模式：更新容器寬度
+        if settings.continuousScrollEnabled {
+            continuousScrollContentView?.containerWidth = scrollView.bounds.width
+        }
+
         applyCenteringInsetsIfNeeded(reason: "viewDidLayout")
     }
 
@@ -133,11 +155,16 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         self.folder = newFolder
         imageSizeCache.removeAll()
         loadFolderDualPageSettings()
-        if settings.dualPageEnabled {
+
+        // 根據模式選擇載入方式
+        if settings.continuousScrollEnabled {
+            configureContinuousScrollView()
+        } else if settings.dualPageEnabled {
             rebuildSpreadsAndReload()
         } else {
             loadCurrentImage(initialScroll: .top)
         }
+
         // Grid visible → refresh with new folder; otherwise → restore scroll view focus
         if wasGridVisible, let grid = quickGridView, let folder = self.folder, !folder.images.isEmpty {
             grid.clearCache()
@@ -191,13 +218,33 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func updateStatusBar() {
-        guard let folder, let image = contentView.image else {
+        guard let folder = folder else {
             statusBarView.clear()
             return
         }
+        
         let total = folder.images.count
         let zoom = scrollView.magnification
         let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
+        
+        if settings.continuousScrollEnabled {
+            // In continuous scroll mode, use the size from ContinuousScrollContentView
+            let currentImageSize = continuousScrollContentView?.imageSizes[safe: folder.currentIndex] ?? .zero
+            statusBarView.update(
+                index: folder.currentIndex + 1,
+                total: total,
+                zoom: zoom,
+                imageSize: currentImageSize,
+                isFitting: isFitting,
+                indexOverride: nil
+            )
+            return
+        }
+
+        guard let image = contentView.image else {
+            statusBarView.clear()
+            return
+        }
 
         if settings.dualPageEnabled, let spread = folder.currentSpread {
             // Dual mode: "5-6 / 100" for double, "5 / 100" for single spread
@@ -244,7 +291,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
                 minFilter = .trilinear
             }
         }
-        dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
+        if settings.continuousScrollEnabled {
+            continuousScrollContentView?.setScalingFilters(magnification: magFilter, minification: minFilter)
+        } else {
+            dualPageView.setScalingFilters(magnification: magFilter, minification: minFilter)
+        }
     }
 
     private func showErrorPlaceholder(_ show: Bool, message: String? = nil) {
@@ -525,6 +576,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func applyFitting(for imageSize: NSSize) {
+        guard !settings.continuousScrollEnabled else { return }
         guard imageSize.width > 0, imageSize.height > 0 else { return }
         // documentView frame is now set by DualPageContentView.configureSingle/configureDouble
         // 計算有效 viewport：scrollView 現在填滿 container，需扣除覆蓋的 statusBar 高度
@@ -561,7 +613,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func setMagnificationCentered(_ targetMagnification: CGFloat) {
         isZooming = true
-        defer { isZooming = false }
+        // 在 setMagnification 前暫停 slot 回收（setMagnification 會同步觸發 reflectScrolledClipView）
+        continuousScrollContentView?.beginZoomSuppression()
+        defer {
+            isZooming = false
+            // 鍵盤 zoom 路徑沒有 delegate callback，需在 defer 清理
+            continuousScrollContentView?.endZoomSuppression(visibleBounds: scrollView.contentView.bounds)
+        }
         let effectiveMin = effectiveMinMagnification()
         let clamped = max(effectiveMin, min(Constants.maxMagnification, targetMagnification))
         scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())
@@ -611,7 +669,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func scrollRange(for insets: NSEdgeInsets) -> ScrollRange? {
         let clipView = scrollView.contentView
         let visibleSize = clipView.bounds.size
-        let docSize = dualPageView.frame.size
+
+        // 根據當前模式選擇正確的 document size
+        let docSize: NSSize
+        if settings.continuousScrollEnabled, let contentView = continuousScrollContentView {
+            docSize = contentView.frame.size
+        } else {
+            docSize = dualPageView.frame.size
+        }
 
         guard visibleSize.width > 0, visibleSize.height > 0,
               docSize.width > 0, docSize.height > 0 else { return nil }
@@ -666,6 +731,19 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     private func applyCenteringInsetsIfNeeded(reason: String = "unspecified") {
         let zeroInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+
+        // 連續捲動模式：fit-to-width，不需要 centering insets
+        if settings.continuousScrollEnabled {
+            let statusBarH = effectiveStatusBarHeight
+            let continuousInsets = NSEdgeInsets(top: 0, left: 0, bottom: statusBarH, right: 0)
+            if !insetsNearlyEqual(scrollView.contentInsets, continuousInsets) {
+                scrollView.contentInsets = continuousInsets
+            }
+            updateScrollDebugAccessibilityValue(range: scrollRange(for: continuousInsets))
+            DebugCentering.log("applyCentering reason=\(reason) continuousMode insets=\(debugInsets(continuousInsets))")
+            return
+        }
+
         guard let imageSize = currentDocumentSize else {
             if !insetsNearlyEqual(scrollView.contentInsets, zeroInsets) {
                 scrollView.contentInsets = zeroInsets
@@ -867,6 +945,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let visibleHeight = clipView.bounds.height
         let currentMinY = clipView.bounds.minY
 
+        // Continuous mode: scroll only, never navigate to next image
+        if settings.continuousScrollEnabled {
+            guard let range = scrollRange(for: scrollView.contentInsets) else { return }
+            let newY = max(currentMinY - visibleHeight, range.minY)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: newY))
+            scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+
         // Visual bottom in unflipped coords = minY near 0
         if currentMinY <= Constants.scrollEdgeThreshold {
             goToNextImage()
@@ -884,6 +971,15 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         let visibleHeight = clipView.bounds.height
         let currentMinY = clipView.bounds.minY
         let docHeight = scrollView.documentView?.frame.height ?? 0
+
+        // Continuous mode: scroll only, never navigate to previous image
+        if settings.continuousScrollEnabled {
+            guard let range = scrollRange(for: scrollView.contentInsets) else { return }
+            let newY = min(currentMinY + visibleHeight, range.maxY)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: newY))
+            scrollView.reflectScrolledClipView(clipView)
+            return
+        }
 
         // Visual top in unflipped coords = maxY near docHeight
         let clipMaxY = currentMinY + visibleHeight
@@ -906,7 +1002,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
         updateScalingQuality()
 
-        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        if !settings.continuousScrollEnabled {
+            scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        }
     }
 
     @objc func zoomOut(_ sender: Any? = nil) {
@@ -918,11 +1016,24 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.save()
         updateScalingQuality()
 
-        scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        if !settings.continuousScrollEnabled {
+            scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
+        }
     }
 
     @objc func fitOnScreen(_ sender: Any? = nil) {
         settings.isManualZoom = false
+
+        if settings.continuousScrollEnabled {
+            setMagnificationCentered(1.0)
+            settings.magnification = 1.0
+            updateScalingQuality()
+            applyCenteringInsetsIfNeeded(reason: "fitOnScreen.continuous")
+            statusBarView.updateZoom(scrollView.magnification, isFitting: true)
+            settings.save()
+            return
+        }
+
         if let imageSize = currentDocumentSize {
             let viewport = effectiveScrollViewport
             if viewport.width > 0, viewport.height > 0 {
@@ -941,6 +1052,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func actualSize(_ sender: Any? = nil) {
+        // 連續捲動模式下 actual size = fit-to-width (magnification 1.0)
+        if settings.continuousScrollEnabled {
+            fitOnScreen(sender)
+            return
+        }
         settings.isManualZoom = true
         setMagnificationCentered(1.0)
         settings.magnification = 1.0
@@ -1101,6 +1217,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // Restore saved cell size
         grid.applyItemSize(settings.quickGridCellSize)
         grid.scrollAfterZoomEnabled = settings.quickGridScrollAfterZoom
+        grid.isContinuousScrollMode = settings.continuousScrollEnabled
 
         // Persist cell size changes
         grid.onCellSizeDidChange = { [weak self] size in
@@ -1163,6 +1280,114 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.clickToTurnPage.toggle()
         settings.save()
         scrollView.clickToTurnPage = settings.clickToTurnPage
+    }
+
+    @objc func toggleContinuousScroll(_ sender: Any? = nil) {
+        settings.continuousScrollEnabled.toggle()
+        scrollView.continuousScrollEnabled = settings.continuousScrollEnabled
+        quickGridView?.isContinuousScrollMode = settings.continuousScrollEnabled
+        resizeAfterZoomTask?.cancel()  // 隔離舊模式的排隊 resize
+
+        // 重設 magnification 狀態，確保模式切換後 settings 一致
+        scrollView.magnification = 1.0
+        settings.isManualZoom = false
+        settings.magnification = 1.0
+        settings.save()
+
+        // 切換模式：更新 documentView
+        if settings.continuousScrollEnabled {
+            configureContinuousScrollView()
+        } else {
+            // 切換回單頁/雙頁模式
+            scrollView.documentView = dualPageView
+            continuousScrollContentView = nil
+            loadCurrentImage(initialScroll: .top)
+        }
+    }
+
+    // MARK: - Image Gap (Continuous Scroll)
+
+    @objc func setContinuousGap0(_ sender: Any?) { setContinuousGap(0) }
+    @objc func setContinuousGap2(_ sender: Any?) { setContinuousGap(2) }
+    @objc func setContinuousGap4(_ sender: Any?) { setContinuousGap(4) }
+    @objc func setContinuousGap8(_ sender: Any?) { setContinuousGap(8) }
+
+    private func setContinuousGap(_ gap: CGFloat) {
+        guard gap != settings.continuousScrollGap else { return }
+        settings.continuousScrollGap = gap
+        settings.save()
+        guard let contentView = continuousScrollContentView else { return }
+        contentView.imageSpacing = gap
+        scrollToCurrentImageInContinuousMode()
+    }
+
+    private func configureContinuousScrollView() {
+        guard let folder = folder else { return }
+
+        // 確保 scrollView 同步連續捲動狀態（非 toggle 路徑也能正確設定）
+        scrollView.continuousScrollEnabled = true
+
+        let contentView = ContinuousScrollContentView()
+        contentView.containerWidth = scrollView.bounds.width
+        contentView.imageSpacing = settings.continuousScrollGap
+        contentView.onCurrentImageChanged = { [weak self] index, scaledSize in
+            self?.handleContinuousScrollImageChanged(index: index, scaledSize: scaledSize)
+        }
+        // 捕獲進入連續捲動模式時的 currentIndex，
+        // 避免 recalculateLayout → reflectScrolledClipView → updateVisibleSlots
+        // 在 onPreloadComplete 之前將 folder.currentIndex 改成最後一頁
+        let targetIndex = folder.currentIndex
+        contentView.onPreloadComplete = { [weak self] in
+            self?.scrollToImageInContinuousMode(at: targetIndex)
+        }
+
+        continuousScrollContentView = contentView
+        scrollView.documentView = contentView
+        contentView.configure(with: folder, imageLoader: loader)
+
+        // 套用當前的 scaling filters 到新的 content view
+        updateScalingQuality()
+    }
+
+    /// 捲動到當前圖片位置（連續捲動模式）
+    private func scrollToCurrentImageInContinuousMode() {
+        guard let folder = folder else { return }
+        scrollToImageInContinuousMode(at: folder.currentIndex)
+    }
+
+    /// 捲動到指定索引的圖片位置（連續捲動模式）
+    private func scrollToImageInContinuousMode(at index: Int) {
+        guard let contentView = continuousScrollContentView else { return }
+
+        let imageFrame = contentView.frameForImage(at: index)
+
+        guard imageFrame != .zero else {
+            NSLog("[ContinuousScroll] scrollToImage: imageFrame is zero for index=\(index), skipping")
+            return
+        }
+
+        // 計算捲動目標：將圖片置中
+        let clipHeight = scrollView.contentView.bounds.height
+        let targetY = imageFrame.midY - clipHeight / 2
+
+        // 捲動到目標位置
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        NSLog("[ContinuousScroll] scrollToImage: index=\(index), imageFrame=\(imageFrame), targetY=\(targetY)")
+    }
+
+    private func handleContinuousScrollImageChanged(index: Int, scaledSize: NSSize) {
+        NSLog("[ContinuousScroll] handleImageChanged: index=\(index), scaledSize=\(scaledSize)")
+
+        // 同步 folder.currentIndex
+        folder?.currentIndex = index
+
+        // 更新 UI（標題列和狀態列）
+        updateWindowTitle()
+        updateStatusBar()
+
+        // 連續捲動模式下不執行 resize 動畫（使用 fit-to-width， 固定寬度）
     }
 
     @objc func toggleFullScreen(_ sender: Any? = nil) {
@@ -1331,21 +1556,22 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let isContinuous = settings.continuousScrollEnabled
         switch menuItem.action {
         case #selector(fitOnScreen(_:)):
             return true
         case #selector(actualSize(_:)):
             return true
         case #selector(toggleAlwaysFit(_:)):
-            menuItem.state = settings.alwaysFitOnOpen ? .on : .off; return true
+            menuItem.state = settings.alwaysFitOnOpen ? .on : .off; return !isContinuous
         case #selector(toggleShrinkH(_:)):
-            menuItem.state = settings.fittingOptions.shrinkHorizontally ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.shrinkHorizontally ? .on : .off; return !isContinuous
         case #selector(toggleShrinkV(_:)):
-            menuItem.state = settings.fittingOptions.shrinkVertically ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.shrinkVertically ? .on : .off; return !isContinuous
         case #selector(toggleStretchH(_:)):
-            menuItem.state = settings.fittingOptions.stretchHorizontally ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.stretchHorizontally ? .on : .off; return !isContinuous
         case #selector(toggleStretchV(_:)):
-            menuItem.state = settings.fittingOptions.stretchVertically ? .on : .off; return true
+            menuItem.state = settings.fittingOptions.stretchVertically ? .on : .off; return !isContinuous
         case #selector(setScalingLow(_:)):
             menuItem.state = settings.scalingQuality == .low ? .on : .off; return true
         case #selector(setScalingMedium(_:)):
@@ -1375,7 +1601,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(toggleQuickGridScrollAfterZoom(_:)):
             menuItem.state = settings.quickGridScrollAfterZoom ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
-            menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return true
+            menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return !isContinuous
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
         case #selector(toggleStatusBar(_:)):
@@ -1388,29 +1614,44 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return folder != nil
         case #selector(toggleDualPage(_:)):
             menuItem.state = settings.dualPageEnabled ? .on : .off
-            return true
+            return !isContinuous
         case #selector(togglePageOffset(_:)):
             menuItem.state = settings.firstPageIsCover ? .on : .off
-            return settings.dualPageEnabled  // Only enabled when dual page is on
+            return !isContinuous && settings.dualPageEnabled
         case #selector(toggleReadingDirection(_:)):
             let isRTL = settings.readingDirection.isRTL
             menuItem.state = isRTL ? .on : .off
             menuItem.title = isRTL
                 ? String(localized: "menu.navigation.readingRTL")
                 : String(localized: "menu.navigation.readingLTR")
-            return settings.dualPageEnabled
+            return !isContinuous && settings.dualPageEnabled
         case #selector(toggleDuoPageRTLNavigation(_:)):
             menuItem.state = settings.duoPageRTLNavigation ? .on : .off
-            return settings.dualPageEnabled
+            return !isContinuous && settings.dualPageEnabled
         case #selector(toggleSinglePageRTLNavigation(_:)):
             menuItem.state = settings.singlePageRTLNavigation ? .on : .off
-            return !settings.dualPageEnabled
+            return !isContinuous && !settings.dualPageEnabled
         case #selector(toggleScrollToBottomOnPrevious(_:)):
             menuItem.state = settings.scrollToBottomOnPrevious ? .on : .off
             return true
         case #selector(toggleClickToTurnPage(_:)):
             menuItem.state = settings.clickToTurnPage ? .on : .off
+            return !isContinuous
+        case #selector(toggleContinuousScroll(_:)):
+            menuItem.state = settings.continuousScrollEnabled ? .on : .off
             return true
+        case #selector(setContinuousGap0(_:)):
+            menuItem.state = settings.continuousScrollGap == 0 ? .on : .off
+            return isContinuous
+        case #selector(setContinuousGap2(_:)):
+            menuItem.state = settings.continuousScrollGap == 2 ? .on : .off
+            return isContinuous
+        case #selector(setContinuousGap4(_:)):
+            menuItem.state = settings.continuousScrollGap == 4 ? .on : .off
+            return isContinuous
+        case #selector(setContinuousGap8(_:)):
+            menuItem.state = settings.continuousScrollGap == 8 ? .on : .off
+            return isContinuous
         case #selector(ImageViewController.toggleFullScreen(_:)):
             let isFullscreen = view.window?.styleMask.contains(.fullScreen) == true
             menuItem.title = isFullscreen
@@ -1591,6 +1832,23 @@ extension ImageViewController: ImageScrollViewDelegate {
         settings.magnification = magnification
         scheduleDebouncedSettingsSave()
         updateScalingQuality()
+
+        // 連續捲動模式：GPU affine transform only, skip window resize / recenter
+        if settings.continuousScrollEnabled {
+            applyCenteringInsetsIfNeeded(reason: "magnify.continuous")
+            // isZooming 已在 setMagnificationPreservingInsets 中設好（reflectScrolledClipView 安全）
+            // reflectScrolledClipView 已同步呼叫 updateVisibleSlots，此處不需重複呼叫
+            statusBarView.updateZoom(magnification, isFitting: false)
+
+            if gesturePhase.isEmpty || gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
+                activeMagnifyAnchor = nil
+                isZooming = false
+                // Zoom 結束：恢復正常回收，清理多餘 slots
+                continuousScrollContentView?.endZoomSuppression(visibleBounds: scrollView.contentView.bounds)
+            }
+            return
+        }
+
         applyCenteringInsetsIfNeeded(reason: "magnify.phase=\(debugPhase(gesturePhase))")
 
         if !gesturePhase.isEmpty, let anchor = activeMagnifyAnchor {
@@ -1643,8 +1901,29 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     func scrollViewRequestNextImage(_ scrollView: ImageScrollView, amount: Int) { navigateNext(amount: amount) }
     func scrollViewRequestPreviousImage(_ scrollView: ImageScrollView, amount: Int) { navigatePrevious(amount: amount) }
-    func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) { goToFirstImage() }
-    func scrollViewRequestLastImage(_ scrollView: ImageScrollView) { goToLastImage() }
+    func scrollViewRequestFirstImage(_ scrollView: ImageScrollView) {
+        if settings.continuousScrollEnabled {
+            // Home: scroll to visual top (highest Y in unflipped coords)
+            let clipView = self.scrollView.contentView
+            guard let range = scrollRange(for: self.scrollView.contentInsets) else { return }
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: range.maxY))
+            self.scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+        goToFirstImage()
+    }
+
+    func scrollViewRequestLastImage(_ scrollView: ImageScrollView) {
+        if settings.continuousScrollEnabled {
+            // End: scroll to visual bottom (lowest Y in unflipped coords)
+            let clipView = self.scrollView.contentView
+            guard let range = scrollRange(for: self.scrollView.contentInsets) else { return }
+            clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: range.minY))
+            self.scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+        goToLastImage()
+    }
     func scrollViewRequestPageDown(_ scrollView: ImageScrollView) {
         if let grid = quickGridView {
             grid.pageDown()
@@ -1825,6 +2104,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         menu.addItem(makeFittingOptionsSubmenu())
         menu.addItem(makeDualPageSubmenu())
         menu.addItem(makeContextItem(String(localized: "menu.navigation.rtlSingle"),     action: #selector(toggleSinglePageRTLNavigation(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.navigation.continuousScroll"), action: #selector(toggleContinuousScroll(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.view.floatOnTop"), action: #selector(toggleFloatOnTop(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.navigation.quickGrid"), action: #selector(toggleQuickGrid(_:))))
 
@@ -1889,6 +2169,14 @@ extension ImageViewController: QuickGridViewDelegate {
         dismissQuickGrid()
         guard let folder else { return }
         folder.currentIndex = index
+
+        if settings.continuousScrollEnabled {
+            scrollToCurrentImageInContinuousMode()
+            updateWindowTitle()
+            updateStatusBar()
+            return
+        }
+
         if settings.dualPageEnabled {
             folder.syncSpreadIndex()
         }

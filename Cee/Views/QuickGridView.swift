@@ -319,6 +319,10 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     /// Controlled by "Scroll to Cursor After Zoom" menu item (default off).
     var scrollAfterZoomEnabled: Bool = false
 
+    /// When true, preserves scroll anchor during window resize (continuous scroll mode).
+    /// Set by ImageViewController based on `settings.continuousScrollEnabled`.
+    var isContinuousScrollMode: Bool = false
+
     // MARK: - UI
 
     private let gridScrollView = GridScrollView()
@@ -488,6 +492,48 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
 
     private var availableLayoutWidth: CGFloat {
         gridScrollView.contentView.bounds.width
+    }
+
+    // MARK: - Scroll Anchor (Continuous Scroll Resize)
+
+    /// Compute scroll anchor for grid resize preservation.
+    /// Returns the item index at viewport center and fractional position within its row.
+    /// Static for unit testing.
+    static func computeScrollAnchor(
+        viewportMidY: CGFloat, cellHeight: CGFloat, lineSpacing: CGFloat,
+        topInset: CGFloat, columns: Int, itemCount: Int
+    ) -> (itemIndex: Int, fraction: CGFloat) {
+        guard columns > 0, cellHeight > 0, itemCount > 0 else { return (0, 0) }
+        let rowHeight = cellHeight + lineSpacing
+        let row = max(0, Int(floor((viewportMidY - topInset) / rowHeight)))
+        // Anchor to first item of the center row (row determines Y position)
+        let itemIndex = min(row * columns, itemCount - 1)
+        let rowY = topInset + CGFloat(row) * rowHeight
+        let raw = (viewportMidY - rowY) / cellHeight
+        let fraction = max(0, min(1, raw))
+        return (itemIndex, fraction)
+    }
+
+    /// Compute target scroll origin.y to restore anchor after relayout.
+    /// Uses analytical document height (not NSCollectionView.frame.height)
+    /// because layout may not be fully updated during resize.
+    /// Static for unit testing.
+    static func computeRestoredScrollY(
+        anchorItemIndex: Int, anchorFraction: CGFloat,
+        cellHeight: CGFloat, lineSpacing: CGFloat,
+        topInset: CGFloat, bottomInset: CGFloat,
+        columns: Int, viewportHeight: CGFloat, itemCount: Int
+    ) -> CGFloat {
+        guard columns > 0, itemCount > 0 else { return 0 }
+        let newRow = anchorItemIndex / columns
+        let rowHeight = cellHeight + lineSpacing
+        let newRowY = topInset + CGFloat(newRow) * rowHeight
+        let targetMidY = newRowY + anchorFraction * cellHeight
+        // Analytical document height: avoids stale NSCollectionView frame
+        let totalRows = (itemCount + columns - 1) / columns
+        let documentHeight = topInset + CGFloat(totalRows) * rowHeight - lineSpacing + bottomInset
+        let maxScrollY = max(0, documentHeight - viewportHeight)
+        return max(0, min(targetMidY - viewportHeight / 2, maxScrollY))
     }
 
     /// Arithmetic O(1) visible index range from scroll geometry (static for unit testing).
@@ -879,9 +925,52 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
     @objc private func gridFrameDidChange(_ note: Notification) {
         let width = availableLayoutWidth
         guard width != lastLayoutWidth else { return }
+
+        // Capture scroll anchor BEFORE layout changes (continuous scroll mode only).
+        // Uses OLD column count from lastLayoutWidth so anchor maps to current scroll state.
+        let anchor: (itemIndex: Int, fraction: CGFloat)?
+        if isContinuousScrollMode, !items.isEmpty {
+            let oldCols = Self.columnsPerRow(availableWidth: lastLayoutWidth, cellSize: currentCellSize)
+            let clipBounds = gridScrollView.contentView.bounds
+            anchor = Self.computeScrollAnchor(
+                viewportMidY: clipBounds.midY,
+                cellHeight: currentItemSize.height,
+                lineSpacing: flowLayout.minimumLineSpacing,
+                topInset: flowLayout.sectionInset.top,
+                columns: oldCols,
+                itemCount: items.count
+            )
+        } else {
+            anchor = nil
+        }
+
         updateSpaceAroundLayout()
         collectionView.collectionViewLayout?.invalidateLayout()
         updateScrollerVisibility()
+
+        // Restore scroll position AFTER all layout + scroller changes.
+        // Force layout NOW so NSCollectionView's deferred layout pass doesn't
+        // overwrite our scroll position after this method returns.
+        if let anchor {
+            collectionView.layoutSubtreeIfNeeded()
+
+            let newCols = columnsPerRow()
+            let clipView = gridScrollView.contentView
+            let targetY = Self.computeRestoredScrollY(
+                anchorItemIndex: anchor.itemIndex,
+                anchorFraction: anchor.fraction,
+                cellHeight: currentItemSize.height,
+                lineSpacing: flowLayout.minimumLineSpacing,
+                topInset: flowLayout.sectionInset.top,
+                bottomInset: flowLayout.sectionInset.bottom,
+                columns: newCols,
+                viewportHeight: clipView.bounds.height,
+                itemCount: items.count
+            )
+
+            clipView.setBoundsOrigin(NSPoint(x: clipView.bounds.origin.x, y: targetY))
+            gridScrollView.reflectScrolledClipView(clipView)
+        }
     }
 
     /// Update vertical scrollbar visibility based on content overflow.
