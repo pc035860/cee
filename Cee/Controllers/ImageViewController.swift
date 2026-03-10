@@ -1311,6 +1311,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func setContinuousGap8(_ sender: Any?) { setContinuousGap(8) }
 
     private func setContinuousGap(_ gap: CGFloat) {
+        guard gap != settings.continuousScrollGap else { return }
         settings.continuousScrollGap = gap
         settings.save()
         guard let contentView = continuousScrollContentView else { return }

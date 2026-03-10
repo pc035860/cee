@@ -702,10 +702,9 @@ class ImageScrollView: NSScrollView {
     override func keyDown(with event: NSEvent) {
         // Continuous scroll mode: smooth scroll only, no page-turn navigation
         if continuousScrollEnabled {
-            let overflow = viewportOverflow
             switch event.keyCode {
             case 124, 123:  // Left/Right Arrow — pan only when zoomed past fit-to-width
-                if overflow.horizontal {
+                if viewportOverflow.horizontal {
                     event.keyCode == 124 ? panRight() : panLeft()
                 }
             case 125: panDown()   // Down — smooth scroll, no edge-press navigate
