@@ -1,0 +1,13 @@
+regenerate and rebuild
+
+---
+
+regenerate and rebuild
+
+---
+
+regenerate and rebuild
+
+---
+
+build a release build and copy to application
