@@ -1,0 +1,19 @@
+@specs/brainstorm/brainstorm-continuous-scroll.md
+
+有一個問題就是在連續捲動模式下，如果我是透過拖拉視窗的寬度來做 resize 的話，因為圖片會自動 zoom 來貼合視窗寬度，這種情況下圖片就會滑走。
+
+因為放大縮小的關係，比如我原本瀏覽的位置是第 10 張圖，在放大後位置可能就會往上或往下移動。這個問題應該要怎麼解決？我有什麼辦法可以讓圖片保持在同一個位置？
+
+use explore skill with -n 3
+
+---
+
+那會有 performance 的問題嗎？
+
+---
+
+plan
+
+---
+
+run save-plan then, auto-impl
