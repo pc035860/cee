@@ -12,7 +12,7 @@
 | Phase 3.3.1 | ✅ 完成 | Zoom 閃爍修復：`beginZoomSuppression`/`endZoomSuppression` API + `calculateVisibleRange` O(log n) binary search |
 | Phase 3.4 | ✅ 完成 | 記憶體監控整合（MemoryPressureMonitor warning/critical 兩階段） |
 | Phase 3.5 | ✅ 完成 | 大圖 Subsample（kCGImageSourceSubsampleFactor + displayCache） |
-| Phase 3.6+ | 📋 待辦 | 鍵盤導航、Quick Grid、間距、Fitting UI 適配 |
+| Phase 3.6-3.9 | ✅ 完成 | 鍵盤導航、Quick Grid 整合、圖片間距設定、Fitting UI 適配 |
 
 ---
 
@@ -100,8 +100,6 @@
 - 三條路徑保護：pinch zoom（`setMagnificationPreservingInsets`）、Cmd+scroll（同上）、鍵盤 zoom（`setMagnificationCentered` defer）
 - `isZooming` 為 `private(set)`，外部只能透過 `begin`/`end` 方法操作
 
-### 📋 待辦功能（Phase 3.4+）
-
 ### 🟡 效能優化
 
 #### 3.4 記憶體監控整合 ✅
@@ -118,23 +116,23 @@
 - **可複用**：`ThumbnailThrottle` 的 subsample 邏輯
 - **實作**：`loadImageForDisplay(at:maxWidth:)` + `DisplayCacheKey(url, maxWidth)` 複合鍵 + 20px 量化。EXIF orientation 5-8 交換寬高。`displayCache` 獨立於 main cache，eviction 跟隨 `updateCache`。
 
-### 🟢 功能增強（Nice to have）
+### 🟢 功能增強 ✅
 
-#### 3.6 鍵盤導航
+#### 3.6 鍵盤導航 ✅
 - **目標**：Arrow key 觸發 smooth scroll（而非 page-turn）
-- **實作**：在 `ImageScrollView.keyDown` 中分支處理 continuous mode
+- **實作**：`ImageScrollView.keyDown` 中 `continuousScrollEnabled` 早期分支。Up/Down = smooth scroll（無 edge-press）、Space/PageDown/PageUp = 一頁捲動（無導航）、Home/End = 文件首尾（保留水平位置）、Left/Right = zoom 時水平平移。`scrollPageDownOrNext`/`scrollPageUpOrPrev` 使用 `scrollRange(for:)` 做 inset-aware 邊界。
 
-#### 3.7 Quick Grid 整合
-- **目標**：從 grid 選擇圖片後，`scrollToIndex()` 跳轉到對應位置
-- **實作**：`ContinuousScrollContentView.scrollToIndex(_:)` 方法
+#### 3.7 Quick Grid 整合 ✅
+- **目標**：從 grid 選擇圖片後，捲動到對應位置而非重新載入
+- **實作**：`quickGridView(_:didSelectItemAt:)` 連續模式分支呼叫 `scrollToCurrentImageInContinuousMode()` + `updateStatusBar()` fallback。
 
-#### 3.8 圖片間距設定
-- **目標**：可調整圖片間距（0px 預設）
-- **實作**：`ViewerSettings.continuousScrollGap` 屬性
+#### 3.8 圖片間距設定 ✅
+- **目標**：可調整圖片間距（0pt 預設，4 種預設值）
+- **實作**：`ViewerSettings.continuousScrollGap`（CGFloat, 預設 0, decode 時 `max(0, ...)`）。`ContinuousScrollContentView.imageSpacing` 改為 `var` + `didSet` 呼叫 `relayoutSlots()`。Navigation 選單加 Image Gap 子選單（None 0pt / Small 2pt / Medium 4pt / Large 8pt）。
 
-#### 3.9 Fitting options UI 適配
+#### 3.9 Fitting options UI 適配 ✅
 - **目標**：連續捲動模式下 disable 不適用的 menu items，避免介面混淆
-- **範圍**：Shrink H/V、Stretch H/V 等 fitting 選項在連續模式下無意義，應在 `validateMenuItem` 中 disable。`applyFitting` 加 continuous scroll guard。
+- **實作**：`validateMenuItem` 使用 `isContinuous` flag disable fitting（Shrink/Stretch/Always Fit/Resize Auto）、dual page（含 page offset/reading direction）、RTL nav、click-to-turn 等 12 項 menu items。`applyFitting` 加 `guard !settings.continuousScrollEnabled` 防禦性 early return。
 
 ### 建議實作順序
 
@@ -151,7 +149,7 @@ Phase 3.4 ─ 記憶體監控整合（穩定性）✅
     ↓
 Phase 3.5 ─ 大圖 Subsample（記憶體效率）✅
     ↓
-Phase 3.6+ ─ 鍵盤導航 / Quick Grid / 間距 / UI 適配（UX polish）
+Phase 3.6+ ─ 鍵盤導航 / Quick Grid / 間距 / UI 適配（UX polish）✅
 ```
 
 ---
