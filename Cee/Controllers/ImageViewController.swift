@@ -2104,6 +2104,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         menu.addItem(makeFittingOptionsSubmenu())
         menu.addItem(makeDualPageSubmenu())
         menu.addItem(makeContextItem(String(localized: "menu.navigation.rtlSingle"),     action: #selector(toggleSinglePageRTLNavigation(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.navigation.continuousScroll"), action: #selector(toggleContinuousScroll(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.view.floatOnTop"), action: #selector(toggleFloatOnTop(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.navigation.quickGrid"), action: #selector(toggleQuickGrid(_:))))
 
