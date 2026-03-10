@@ -3,7 +3,7 @@
   "checkpoint_id": "fefadea9b844",
   "strategy": "manual-commit",
   "branch": "feat/continuous-scroll-phase36-39",
-  "checkpoints_count": 0,
+  "checkpoints_count": 1,
   "files_touched": [
     "specs/plan/plan-2026-03-10_13-36-58_continuous-scroll-phase36-39.md"
   ],
@@ -13,13 +13,19 @@
       "transcript": "/fe/fadea9b844/0/full.jsonl",
       "content_hash": "/fe/fadea9b844/0/content_hash.txt",
       "prompt": "/fe/fadea9b844/0/prompt.txt"
+    },
+    {
+      "metadata": "/fe/fadea9b844/1/metadata.json",
+      "transcript": "/fe/fadea9b844/1/full.jsonl",
+      "content_hash": "/fe/fadea9b844/1/content_hash.txt",
+      "prompt": "/fe/fadea9b844/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 86,
-    "cache_creation_tokens": 128256,
-    "cache_read_tokens": 5687031,
-    "output_tokens": 23035,
-    "api_call_count": 78
+    "input_tokens": 113,
+    "cache_creation_tokens": 288049,
+    "cache_read_tokens": 6585298,
+    "output_tokens": 34187,
+    "api_call_count": 94
   }
 }

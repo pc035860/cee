@@ -1,0 +1,16 @@
+@specs/brainstorm/brainstorm-continuous-scroll.md 
+
+幫我看一下 phase 3.6-3.9 的 workload 如何
+
+- 使用 適合的subagent 或 agent general-purpose (run in foreground) 來做程式碼的分析\
+- 使用 agent Explore (haiku, run in foreground) 來做廣泛的程式碼探索與資料蒐集\
+- IMPORTANT: run subagents in parallel\
+- First, use the TaskList tool to plan tasks in the user's best interest. Organize parallelization effectively for optimal results.
+
+---
+
+a plan for all these 4 phases
+
+---
+
+/save-plan
