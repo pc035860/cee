@@ -1331,8 +1331,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         contentView.onCurrentImageChanged = { [weak self] index, scaledSize in
             self?.handleContinuousScrollImageChanged(index: index, scaledSize: scaledSize)
         }
+        // 捕獲進入連續捲動模式時的 currentIndex，
+        // 避免 recalculateLayout → reflectScrolledClipView → updateVisibleSlots
+        // 在 onPreloadComplete 之前將 folder.currentIndex 改成最後一頁
+        let targetIndex = folder.currentIndex
         contentView.onPreloadComplete = { [weak self] in
-            self?.scrollToCurrentImageInContinuousMode()
+            self?.scrollToImageInContinuousMode(at: targetIndex)
         }
 
         continuousScrollContentView = contentView
@@ -1345,14 +1349,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     /// 捲動到當前圖片位置（連續捲動模式）
     private func scrollToCurrentImageInContinuousMode() {
-        guard let contentView = continuousScrollContentView,
-              let folder = folder else { return }
+        guard let folder = folder else { return }
+        scrollToImageInContinuousMode(at: folder.currentIndex)
+    }
 
-        let currentIndex = folder.currentIndex
-        let imageFrame = contentView.frameForImage(at: currentIndex)
+    /// 捲動到指定索引的圖片位置（連續捲動模式）
+    private func scrollToImageInContinuousMode(at index: Int) {
+        guard let contentView = continuousScrollContentView else { return }
+
+        let imageFrame = contentView.frameForImage(at: index)
 
         guard imageFrame != .zero else {
-            NSLog("[ContinuousScroll] scrollToCurrentImage: imageFrame is zero, skipping")
+            NSLog("[ContinuousScroll] scrollToImage: imageFrame is zero for index=\(index), skipping")
             return
         }
 
@@ -1364,7 +1372,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
 
-        NSLog("[ContinuousScroll] scrollToCurrentImage: index=\(currentIndex), imageFrame=\(imageFrame), targetY=\(targetY)")
+        NSLog("[ContinuousScroll] scrollToImage: index=\(index), imageFrame=\(imageFrame), targetY=\(targetY)")
     }
 
     private func handleContinuousScrollImageChanged(index: Int, scaledSize: NSSize) {

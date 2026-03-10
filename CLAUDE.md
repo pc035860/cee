@@ -57,6 +57,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **CALayer border clipping in NSCollectionView cells** — `borderWidth` draws half inside, half outside bounds. With `masksToBounds = true` + adjacent cell overlap, borders get clipped. Fix: inset highlightLayer frame by `borderWidth/2` so border is fully inside bounds; set `zPosition` high to render above subview layers.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 - **`setMagnification` synchronously triggers `reflectScrolledClipView`** — Any state that must be set before the scroll/magnify callback (e.g., zoom suppression flags) must be set BEFORE calling `setMagnification`, not after. The delegate callback (`scrollViewMagnificationDidChange`) fires even later.
+- **DocumentView frame change triggers `reflectScrolledClipView`** — Setting `frame` on documentView (e.g., after `recalculateLayout()`) synchronously fires `reflectScrolledClipView` → `updateVisibleSlots`. If this overwrites mutable state (like `folder.currentIndex`) before an async callback completes, capture critical state before the frame change. Note: capturing only protects the callback's target value; the intermediate overwrites still happen. For full protection, add a suppression flag to block `notifyImageChanged` during bootstrap.
 
 ## XCUITest Gotchas
 
