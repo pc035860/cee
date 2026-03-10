@@ -31,12 +31,46 @@ class ContinuousScrollContentView: NSView {
         didSet { guard oldValue != imageSpacing else { return }; relayoutSlots() }
     }
 
-    /// 重算 layout 並更新所有 activeSlots 的 frame
+    /// 重算 layout 並更新所有 activeSlots 的 frame（含 anchor-based 位置保持）
     private func relayoutSlots() {
+        // 1. Capture anchor before relayout
+        let scrollView = enclosingScrollView
+        let hadLayout = !scaledHeights.isEmpty
+        let viewportMidY = scrollView?.contentView.bounds.midY ?? 0
+        let anchorIndex = hadLayout ? calculateCurrentIndex(for: viewportMidY) : 0
+        let fraction: CGFloat
+        if hadLayout {
+            let imageOriginY = yOffsets[anchorIndex]
+            let imageHeight = scaledHeights[anchorIndex]
+            let raw = imageHeight > 0 ? (viewportMidY - imageOriginY) / imageHeight : 0
+            fraction = max(0, min(1, raw))
+        } else {
+            fraction = 0
+        }
+
+        // 2. Relayout
         recalculateLayout()
         for slot in activeSlots {
             slot.frame = frameForImage(at: slot.imageIndex)
         }
+
+        // 3. Restore scroll position
+        guard hadLayout, let scrollView, !scaledHeights.isEmpty,
+              anchorIndex < yOffsets.count else { return }
+        let clipView = scrollView.contentView
+        let newImageOriginY = yOffsets[anchorIndex]
+        let newImageHeight = scaledHeights[anchorIndex]
+        let newMidY = newImageOriginY + fraction * newImageHeight
+        let clipHeight = clipView.bounds.height
+        // Inset-aware clamp: .bottom = visual bottom (minY), .top = visual top (maxY)
+        let insets = scrollView.contentInsets
+        let minY = -insets.bottom
+        let maxY = max(frame.height - clipHeight + insets.top, minY)
+        let targetY = max(minY, min(newMidY - clipHeight / 2, maxY))
+        // Preserve horizontal position (zoom + pan scenario)
+        let currentX = clipView.bounds.origin.x
+        clipView.scroll(to: NSPoint(x: currentX, y: targetY))
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     /// 預設圖片高度（無法取得尺寸時使用）
