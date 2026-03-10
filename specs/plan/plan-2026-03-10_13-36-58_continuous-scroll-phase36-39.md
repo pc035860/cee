@@ -308,3 +308,19 @@ xcodegen generate && xcodebuild -project Cee.xcodeproj -scheme Cee -configuratio
 ```bash
 xcodebuild test -project Cee.xcodeproj -scheme Cee -destination 'platform=macOS' -only-testing:CeeTests
 ```
+
+---
+
+## Completion Status
+
+All 4 phases implemented and verified on 2026-03-10.
+
+| Phase | Status | Commit | Notes |
+|-------|--------|--------|-------|
+| 3.9 | ✅ Done | `7e1cd2b` | Also disables `toggleSinglePageRTLNavigation` and `toggleClickToTurnPage` |
+| 3.7 | ✅ Done | `7e1cd2b` | Added fallback `updateStatusBar()` for same-index selection |
+| 3.6 | ✅ Done | `7e1cd2b` | Uses `scrollRange(for:)` for inset-aware scroll bounds |
+| 3.8 | ✅ Done | `7e1cd2b` | Gap decode clamped to >= 0; units are points (not pixels) |
+
+Review fixes: `7fd84f6` — Home/End preserves horizontal scroll position, localization px→pt
+Simplify: `9821328` — Extract `relayoutSlots()`, early return on same gap, lazy `viewportOverflow`
