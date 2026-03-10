@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "fefadea9b844",
+  "session_id": "3100238d-f9ca-42d1-8649-e18193a5a41d",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-10T05:50:27.127564Z",
+  "branch": "feat/continuous-scroll-phase36-39",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "specs/plan/plan-2026-03-10_13-36-58_continuous-scroll-phase36-39.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "1de4c36d013c",
+  "token_usage": {
+    "input_tokens": 86,
+    "cache_creation_tokens": 128256,
+    "cache_read_tokens": 5687031,
+    "output_tokens": 23035,
+    "api_call_count": 78
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-10T05:50:26.220814Z",
+    "agent_lines": 310,
+    "human_added": 151,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 461,
+    "agent_percentage": 67.24511930585683
+  }
+}
