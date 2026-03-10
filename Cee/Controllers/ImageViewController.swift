@@ -1217,6 +1217,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // Restore saved cell size
         grid.applyItemSize(settings.quickGridCellSize)
         grid.scrollAfterZoomEnabled = settings.quickGridScrollAfterZoom
+        grid.isContinuousScrollMode = settings.continuousScrollEnabled
 
         // Persist cell size changes
         grid.onCellSizeDidChange = { [weak self] size in
@@ -1284,6 +1285,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     @objc func toggleContinuousScroll(_ sender: Any? = nil) {
         settings.continuousScrollEnabled.toggle()
         scrollView.continuousScrollEnabled = settings.continuousScrollEnabled
+        quickGridView?.isContinuousScrollMode = settings.continuousScrollEnabled
         resizeAfterZoomTask?.cancel()  // 隔離舊模式的排隊 resize
 
         // 重設 magnification 狀態，確保模式切換後 settings 一致

@@ -125,6 +125,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Grid performance (Phase 3.1-3.2)** — Tier0 adaptive resolution (`max(cellSize*scale, 80)` quantized to 20px steps) + `kCGImageSourceSubsampleFactor: 4` for JPEG/HEIF ≤120px. Priority dequeue in `ThumbnailThrottle` (smaller priority = higher urgency, FIFO tie-break). `cachedVisibleCenter` updated at 20Hz by scroll handler for `cellForItem` priority. Early `Task.isCancelled` guard after throttle acquire, before decode.
 - **`cachedVisibleCenter` pattern** — Avoid calling `indexPathsForVisibleItems()` per-cell in data source. Cache the visible center in the scroll handler (20Hz) and reuse in `cellForItem` + eviction. Initialize in `configure()` to `currentIndex`.
 - **Quantize to prevent cache churn** — When computed `maxSize` varies continuously (e.g., during pinch), quantize to fixed steps (`ceil(raw / step) * step`) so tier comparisons don't flush cache every frame.
+- **Grid scroll anchor on resize** — `gridFrameDidChange` captures viewport-center anchor (item index + fraction) before layout, restores after. Gated by `isContinuousScrollMode`. Must call `layoutSubtreeIfNeeded()` after `invalidateLayout()` to force immediate layout — otherwise NSCollectionView's deferred layout pass overwrites the restored scroll position. Uses analytical document height (`topInset + totalRows * rowHeight - lineSpacing + bottomInset`) instead of `collectionView.frame.height` which may be stale during resize.
 
 ## Recent Significant Changes
 

@@ -501,4 +501,140 @@ final class QuickGridViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(grid.gridThumbnailCount, maxCount,
                                   "Cache should not exceed memory cap after enforcement")
     }
+
+    // MARK: - Scroll Anchor (Continuous Scroll Resize)
+
+    func testComputeScrollAnchor_atTopOfGrid() {
+        // Viewport center is in the first row
+        let (item, frac) = QuickGridView.computeScrollAnchor(
+            viewportMidY: 50, cellHeight: 100, lineSpacing: 4,
+            topInset: 8, columns: 5, itemCount: 100
+        )
+        // Row 0: rowY = 8, fraction = (50-8)/100 = 0.42
+        XCTAssertEqual(item, 0)
+        XCTAssertEqual(frac, 0.42, accuracy: 0.01)
+    }
+
+    func testComputeScrollAnchor_midGrid() {
+        // viewportMidY = 430, cellH=100, lineSpacing=4, topInset=8, cols=5
+        // rowHeight = 104, row = floor((430-8)/104) = floor(4.05) = 4
+        // itemIndex = 4*5 = 20, rowY = 8 + 4*104 = 424
+        // fraction = (430-424)/100 = 0.06
+        let (item, frac) = QuickGridView.computeScrollAnchor(
+            viewportMidY: 430, cellHeight: 100, lineSpacing: 4,
+            topInset: 8, columns: 5, itemCount: 100
+        )
+        XCTAssertEqual(item, 20)
+        XCTAssertEqual(frac, 0.06, accuracy: 0.01)
+    }
+
+    func testComputeScrollAnchor_emptyItems_returnsZero() {
+        let (item, frac) = QuickGridView.computeScrollAnchor(
+            viewportMidY: 200, cellHeight: 100, lineSpacing: 4,
+            topInset: 8, columns: 5, itemCount: 0
+        )
+        XCTAssertEqual(item, 0)
+        XCTAssertEqual(frac, 0)
+    }
+
+    func testComputeRestoredScrollY_sameColumns_preservesPosition() {
+        // Anchor at item 20 with fraction 0.5, 5 columns → row 4
+        // newRowY = 8 + 4*104 = 424, targetMidY = 424 + 0.5*100 = 474
+        // targetY = 474 - 300 = 174
+        let y = QuickGridView.computeRestoredScrollY(
+            anchorItemIndex: 20, anchorFraction: 0.5,
+            cellHeight: 100, lineSpacing: 4,
+            topInset: 8, bottomInset: 8,
+            columns: 5, viewportHeight: 600, itemCount: 100
+        )
+        XCTAssertEqual(y, 174, accuracy: 0.01)
+    }
+
+    func testComputeRestoredScrollY_columnChange_adjustsRow() {
+        // Anchor item 20 was in row 4 (5 cols). Now 4 cols → row 5.
+        // newRowY = 8 + 5*104 = 528, targetMidY = 528 + 0.5*100 = 578
+        // targetY = 578 - 300 = 278
+        let y = QuickGridView.computeRestoredScrollY(
+            anchorItemIndex: 20, anchorFraction: 0.5,
+            cellHeight: 100, lineSpacing: 4,
+            topInset: 8, bottomInset: 8,
+            columns: 4, viewportHeight: 600, itemCount: 100
+        )
+        XCTAssertEqual(y, 278, accuracy: 0.01)
+    }
+
+    func testComputeRestoredScrollY_clampsToTop() {
+        // Anchor near top, restored Y would be negative → clamp to 0
+        let y = QuickGridView.computeRestoredScrollY(
+            anchorItemIndex: 0, anchorFraction: 0.0,
+            cellHeight: 100, lineSpacing: 4,
+            topInset: 8, bottomInset: 8,
+            columns: 5, viewportHeight: 600, itemCount: 100
+        )
+        XCTAssertEqual(y, 0, accuracy: 0.01)
+    }
+
+    func testComputeRestoredScrollY_clampsToBottom() {
+        // 20 items, 5 cols → 4 rows, docH = 8 + 4*104 - 4 + 8 = 428
+        // viewport 600 > docH 428 → maxScrollY = 0
+        let y = QuickGridView.computeRestoredScrollY(
+            anchorItemIndex: 15, anchorFraction: 0.5,
+            cellHeight: 100, lineSpacing: 4,
+            topInset: 8, bottomInset: 8,
+            columns: 5, viewportHeight: 600, itemCount: 20
+        )
+        XCTAssertEqual(y, 0, accuracy: 0.01)
+    }
+
+    func testScrollAnchor_roundTrip_sameColumns_preservesScrollY() {
+        // Simulate: capture at scrollY with 5 cols, restore with 5 cols → same Y
+        let cellH: CGFloat = 100, lineSpacing: CGFloat = 4
+        let topInset: CGFloat = 8, bottomInset: CGFloat = 8
+        let viewportH: CGFloat = 600
+        let scrollOriginY: CGFloat = 500
+        let viewportMidY = scrollOriginY + viewportH / 2 // 800
+
+        let (item, frac) = QuickGridView.computeScrollAnchor(
+            viewportMidY: viewportMidY, cellHeight: cellH, lineSpacing: lineSpacing,
+            topInset: topInset, columns: 5, itemCount: 200
+        )
+        let restoredY = QuickGridView.computeRestoredScrollY(
+            anchorItemIndex: item, anchorFraction: frac,
+            cellHeight: cellH, lineSpacing: lineSpacing,
+            topInset: topInset, bottomInset: bottomInset,
+            columns: 5, viewportHeight: viewportH, itemCount: 200
+        )
+        // Should restore to approximately the same scrollOriginY
+        XCTAssertEqual(restoredY, scrollOriginY, accuracy: 1.0,
+                       "Round-trip with same columns should preserve scroll position")
+    }
+
+    func testScrollAnchor_roundTrip_columnChange_keepsAnchorVisible() {
+        // Capture with 5 cols, restore with 4 cols → anchor item still in viewport
+        let cellH: CGFloat = 100, lineSpacing: CGFloat = 4
+        let topInset: CGFloat = 8, bottomInset: CGFloat = 8
+        let viewportH: CGFloat = 600
+        let scrollOriginY: CGFloat = 500
+        let viewportMidY = scrollOriginY + viewportH / 2
+
+        let (item, frac) = QuickGridView.computeScrollAnchor(
+            viewportMidY: viewportMidY, cellHeight: cellH, lineSpacing: lineSpacing,
+            topInset: topInset, columns: 5, itemCount: 200
+        )
+
+        let restoredY = QuickGridView.computeRestoredScrollY(
+            anchorItemIndex: item, anchorFraction: frac,
+            cellHeight: cellH, lineSpacing: lineSpacing,
+            topInset: topInset, bottomInset: bottomInset,
+            columns: 4, viewportHeight: viewportH, itemCount: 200
+        )
+
+        // Verify anchor item's row is within restored viewport
+        let newRow = item / 4
+        let newRowY = topInset + CGFloat(newRow) * (cellH + lineSpacing)
+        XCTAssertGreaterThanOrEqual(newRowY, restoredY,
+                                     "Anchor row should be at or below viewport top")
+        XCTAssertLessThanOrEqual(newRowY, restoredY + viewportH,
+                                  "Anchor row should be at or above viewport bottom")
+    }
 }
