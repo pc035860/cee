@@ -129,6 +129,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         viewMenu.addItem(makeItem(String(localized: "menu.view.lowResPreview"), action: #selector(ImageViewController.toggleThumbnailFallback(_:)), key: ""))
         viewMenu.addItem(.separator())
         viewMenu.addItem(makeItem(String(localized: "menu.view.resizeAuto"),    action: #selector(ImageViewController.toggleResizeAutomatically(_:)), key: ""))
+        let fillHeightItem = makeItem(String(localized: "menu.view.fillWindowHeight"), action: #selector(ImageViewController.fillWindowHeight(_:)), key: "f")
+        fillHeightItem.keyEquivalentModifierMask = [.command, .option]
+        viewMenu.addItem(fillHeightItem)
         viewMenu.addItem(makeItem(String(localized: "menu.view.enterFullScreen"), action: #selector(ImageViewController.toggleFullScreen(_:)),        key: "f"))
         viewMenu.addItem(makeItem(String(localized: "menu.view.floatOnTop"),    action: #selector(ImageViewController.toggleFloatOnTop(_:)),          key: ""))
         viewMenu.addItem(.separator())
