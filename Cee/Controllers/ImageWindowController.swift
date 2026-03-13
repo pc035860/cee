@@ -158,6 +158,12 @@ class ImageWindowController: NSWindowController {
               !window.styleMask.contains(.fullScreen),
               !isTransitioningFullScreen else { return }
 
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let vc = self.window?.contentViewController as? ImageViewController else { return }
+            vc.handleWindowDidResize()
+        }
+
         resizeSaveTask?.cancel()
         let size = window.contentView?.bounds.size ?? window.frame.size
         guard size.width >= Constants.minWindowContentWidth,

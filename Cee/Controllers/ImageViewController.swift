@@ -20,6 +20,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var resizeAfterZoomTask: DispatchWorkItem?
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
+    private var isApplyingAutoFitFromWindowResize = false
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     private var activeMagnifyAnchor: NSPoint?
     private var isZooming = false
@@ -143,6 +144,38 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
 
         applyCenteringInsetsIfNeeded(reason: "viewDidLayout")
+    }
+
+    private func fittedMagnification(for imageSize: NSSize, viewport: NSSize? = nil) -> CGFloat? {
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+
+        let viewport = viewport ?? effectiveScrollViewport
+        guard viewport.width > 0, viewport.height > 0 else { return nil }
+
+        let fitted = FittingCalculator.calculate(
+            imageSize: imageSize,
+            viewportSize: viewport,
+            options: settings.fittingOptions
+        )
+        return fitted.width / imageSize.width
+    }
+
+    func handleWindowDidResize() {
+        guard settings.alwaysFitOnOpen,
+              !settings.isManualZoom,
+              !settings.continuousScrollEnabled,
+              !isApplyingAutoFitFromWindowResize,
+              let imageSize = currentDocumentSize,
+              let targetMagnification = fittedMagnification(for: imageSize) else { return }
+
+        guard abs(targetMagnification - scrollView.magnification) > 1e-6 else { return }
+
+        isApplyingAutoFitFromWindowResize = true
+        defer { isApplyingAutoFitFromWindowResize = false }
+
+        setMagnificationCentered(targetMagnification)
+        updateScalingQuality()
+        statusBarView.updateZoom(scrollView.magnification, isFitting: true)
     }
 
     /// 視窗重用時載入新資料夾
@@ -587,12 +620,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
 
         if settings.alwaysFitOnOpen {
-            let fitted = FittingCalculator.calculate(
-                imageSize: imageSize,
-                viewportSize: viewport,
-                options: settings.fittingOptions
-            )
-            setMagnificationCentered(fitted.width / imageSize.width)
+            if let targetMagnification = fittedMagnification(for: imageSize, viewport: viewport) {
+                setMagnificationCentered(targetMagnification)
+            }
         } else if settings.isManualZoom {
             setMagnificationCentered(settings.magnification)
         } else {
@@ -1034,18 +1064,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return
         }
 
-        if let imageSize = currentDocumentSize {
-            let viewport = effectiveScrollViewport
-            if viewport.width > 0, viewport.height > 0 {
-                let fitted = FittingCalculator.calculate(
-                    imageSize: imageSize,
-                    viewportSize: viewport,
-                    options: settings.fittingOptions
-                )
-                setMagnificationCentered(fitted.width / imageSize.width)
-                updateScalingQuality()
-                applyCenteringInsetsIfNeeded(reason: "fitOnScreen")
-            }
+        if let imageSize = currentDocumentSize,
+           let targetMagnification = fittedMagnification(for: imageSize) {
+            setMagnificationCentered(targetMagnification)
+            updateScalingQuality()
+            applyCenteringInsetsIfNeeded(reason: "fitOnScreen")
         }
         settings.save()
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
@@ -1723,20 +1746,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // 在 auto-fit 模式下重新校正 magnification 以匹配實際 viewport。
         if settings.alwaysFitOnOpen && !settings.isManualZoom {
             view.layoutSubtreeIfNeeded()
-            // 使用有效 viewport（扣除 statusBar）來計算 fitting
-            let viewport = effectiveScrollViewport
-            if viewport.width > 0, viewport.height > 0 {
-                let fitted = FittingCalculator.calculate(
-                    imageSize: imageSize,
-                    viewportSize: viewport,
-                    options: settings.fittingOptions
-                )
-                let refitMag = fitted.width / imageSize.width
-                if abs(refitMag - scrollView.magnification) > 1e-6 {
-                    isZooming = true
-                    scrollView.magnification = refitMag
-                    isZooming = false
-                }
+            if let refitMagnification = fittedMagnification(for: imageSize),
+               abs(refitMagnification - scrollView.magnification) > 1e-6 {
+                isZooming = true
+                scrollView.magnification = refitMagnification
+                isZooming = false
             }
         }
 

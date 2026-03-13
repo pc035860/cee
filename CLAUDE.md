@@ -129,6 +129,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Auto-fit on window resize:** `alwaysFitOnOpen` now also re-applies fitting during `NSWindow.didResizeNotification`, but only when `isManualZoom == false` and not in continuous scroll mode. `ImageWindowController.windowDidResizeNotification` forwards resize events to `ImageViewController.handleWindowDidResize()`; manual zoom must remain untouched.
 - **Trackpad page-turn momentum fix:** NSScrollView fallback deceleration animation bypasses `scrollWheel` override. Solved by passing momentum to super + `reflectScrolledClipView` clamp. `suppressScrollSequenceAfterPageTurn` blocks old scroll sequence; `commitPageTurn(goingDown:)` unifies page-turn state. See "Scroll & Page-Turn" gotchas above.
 - **Click to turn page:** Single-click on left/right edge turns page (configurable in Navigation menu).
 - **Navigation menu:** New "Navigation" menu between View and Go. Reading mode (Dual Page, RTL) and nav settings (Arrow keys, Scroll to Bottom, page-turn sensitivity) moved there from View/Go menus.
