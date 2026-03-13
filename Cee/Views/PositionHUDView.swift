@@ -29,10 +29,11 @@ final class PositionHUDView: NSView {
         layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.82).cgColor
         layer?.cornerRadius = 16
 
-        // 標籤
         positionLabel.font = .monospacedDigitSystemFont(ofSize: 36, weight: .bold)
         positionLabel.textColor = .white
         positionLabel.alignment = .center
+        positionLabel.lineBreakMode = .byWordWrapping
+        positionLabel.maximumNumberOfLines = 2
         positionLabel.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(positionLabel)
@@ -57,27 +58,18 @@ final class PositionHUDView: NSView {
 
     // MARK: - Public API
 
-    /// 更新位置文字並顯示 HUD，自動排程淡出
     func show(current: Int, total: Int) {
+        positionLabel.font = .monospacedDigitSystemFont(ofSize: 36, weight: .bold)
         positionLabel.stringValue = "\(current) / \(total)"
-
-        // 取消之前的淡出計時
-        fadeTimer?.cancel()
-        showVersion &+= 1  // 遞增版本，使舊的 fade completion 失效
-
-        if isHidden || alphaValue < 1 {
-            isHidden = false
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.15
-                animator().alphaValue = 1
-            }
-        }
-
-        // 排程淡出
-        scheduleFadeOut()
+        present(fadeDelay: Constants.positionHUDFadeDelay)
     }
 
-    /// 立即隱藏 HUD（不帶動畫）
+    func show(message: String, fadeDelay: TimeInterval = Constants.positionHUDFadeDelay) {
+        positionLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        positionLabel.stringValue = message
+        present(fadeDelay: fadeDelay)
+    }
+
     func dismiss() {
         fadeTimer?.cancel()
         fadeTimer = nil
@@ -87,7 +79,22 @@ final class PositionHUDView: NSView {
 
     // MARK: - Private
 
-    private func scheduleFadeOut() {
+    private func present(fadeDelay: TimeInterval) {
+        fadeTimer?.cancel()
+        showVersion &+= 1
+
+        if isHidden || alphaValue < 1 {
+            isHidden = false
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                animator().alphaValue = 1
+            }
+        }
+
+        scheduleFadeOut(after: fadeDelay)
+    }
+
+    private func scheduleFadeOut(after delay: TimeInterval) {
         fadeTimer?.cancel()
         let version = showVersion
         let timer = DispatchWorkItem { [weak self] in
@@ -96,14 +103,16 @@ final class PositionHUDView: NSView {
                 ctx.duration = 0.3
                 self.animator().alphaValue = 0
             } completionHandler: { [weak self] in
-                guard let self, self.showVersion == version else { return }
-                self.isHidden = true
-                self.onFadeOut?()
+                Task { @MainActor [weak self] in
+                    guard let self, self.showVersion == version else { return }
+                    self.isHidden = true
+                    self.onFadeOut?()
+                }
             }
         }
         fadeTimer = timer
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + Constants.positionHUDFadeDelay,
+            deadline: .now() + delay,
             execute: timer
         )
     }

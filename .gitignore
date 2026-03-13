@@ -9,6 +9,8 @@ DerivedData/
 
 .agents/skills/*
 .claude/skills/*
+.factory/docs/*
+.factory/settings.json
 
 TestResults.xcresult/
 xcodebuild.log

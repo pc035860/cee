@@ -40,6 +40,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             height: scrollView.bounds.height - effectiveStatusBarHeight
         )
     }
+
+    private var isAutoFitActive: Bool {
+        settings.alwaysFitOnOpen && !settings.isManualZoom
+    }
+
     private var imageSizeCache: [Int: CGSize] = [:]
     private var navigationThrottle = NavigationThrottle(interval: 0.05)
     private var lastPrefetchDirection: PrefetchDirection = .none
@@ -175,7 +180,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         setMagnificationCentered(targetMagnification)
         updateScalingQuality()
-        statusBarView.updateZoom(scrollView.magnification, isFitting: true)
+        updateStatusBarZoom()
     }
 
     /// 視窗重用時載入新資料夾
@@ -255,20 +260,18 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             statusBarView.clear()
             return
         }
-        
+
         let total = folder.images.count
         let zoom = scrollView.magnification
-        let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
+        let zoomMode = zoomStatusMode(for: zoom)
         
         if settings.continuousScrollEnabled {
-            // In continuous scroll mode, use the size from ContinuousScrollContentView
             let currentImageSize = continuousScrollContentView?.imageSizes[safe: folder.currentIndex] ?? .zero
             statusBarView.update(
                 index: folder.currentIndex + 1,
                 total: total,
-                zoom: zoom,
+                zoomMode: zoomMode,
                 imageSize: currentImageSize,
-                isFitting: isFitting,
                 indexOverride: nil
             )
             return
@@ -280,27 +283,62 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
 
         if settings.dualPageEnabled, let spread = folder.currentSpread {
-            // Dual mode: "5-6 / 100" for double, "5 / 100" for single spread
             let pageNums = spread.indices.map { String($0 + 1) }.joined(separator: "-")
             let indexText = "\(pageNums) / \(total)"
-            // Show leading page size (composite size would be confusing)
             statusBarView.update(
                 index: folder.currentIndex + 1,
                 total: total,
-                zoom: zoom,
+                zoomMode: zoomMode,
                 imageSize: image.size,
-                isFitting: isFitting,
                 indexOverride: indexText
             )
         } else {
             statusBarView.update(
                 index: folder.currentIndex + 1,
                 total: total,
-                zoom: zoom,
-                imageSize: image.size,
-                isFitting: isFitting
+                zoomMode: zoomMode,
+                imageSize: image.size
             )
         }
+    }
+
+    private func zoomStatusMode(for zoom: CGFloat? = nil) -> ZoomStatusMode {
+        let currentZoom = zoom ?? scrollView.magnification
+        let windowAuto = !settings.continuousScrollEnabled && shouldResizeWindowToMatchImage()
+
+        if isAutoFitActive {
+            return .fit
+        }
+
+        if currentZoom >= 0.99 && currentZoom <= 1.01 {
+            return .actual(windowAuto: windowAuto)
+        }
+
+        return .manual(percent: Int(round(currentZoom * 100)), windowAuto: windowAuto)
+    }
+
+    private func updateStatusBarZoom(_ zoom: CGFloat? = nil) {
+        statusBarView.updateZoom(zoomStatusMode(for: zoom))
+    }
+
+    private func enterManualZoom() {
+        let wasAutoFit = isAutoFitActive
+        settings.isManualZoom = true
+
+        if wasAutoFit {
+            showManualZoomHintIfNeeded()
+        }
+    }
+
+    private func showManualZoomHintIfNeeded() {
+        guard !isUITesting, !settings.hasShownManualZoomHint else { return }
+
+        settings.hasShownManualZoomHint = true
+        settings.save()
+        showPositionHUD(
+            message: String(localized: "hint.manualZoomExitFit"),
+            fadeDelay: Constants.manualZoomHintFadeDelay
+        )
     }
 
     private func updateScalingQuality() {
@@ -1025,12 +1063,13 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     // MARK: - Zoom Actions (@objc for menu routing via first responder chain)
 
     @objc func zoomIn(_ sender: Any? = nil) {
-        settings.isManualZoom = true
+        enterManualZoom()
         let newMag = scrollView.magnification + Constants.zoomStep
         setMagnificationCentered(min(newMag, Constants.maxMagnification))
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
+        updateStatusBarZoom()
 
         if !settings.continuousScrollEnabled {
             scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
@@ -1038,13 +1077,14 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func zoomOut(_ sender: Any? = nil) {
-        settings.isManualZoom = true
+        enterManualZoom()
         let newMag = scrollView.magnification - Constants.zoomStep
         let effectiveMin = effectiveMinMagnification()
         setMagnificationCentered(max(newMag, effectiveMin))
         settings.magnification = scrollView.magnification
         settings.save()
         updateScalingQuality()
+        updateStatusBarZoom()
 
         if !settings.continuousScrollEnabled {
             scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
@@ -1059,7 +1099,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             settings.magnification = 1.0
             updateScalingQuality()
             applyCenteringInsetsIfNeeded(reason: "fitOnScreen.continuous")
-            statusBarView.updateZoom(scrollView.magnification, isFitting: true)
+            updateStatusBarZoom()
             settings.save()
             return
         }
@@ -1071,6 +1111,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             applyCenteringInsetsIfNeeded(reason: "fitOnScreen")
         }
         settings.save()
+        updateStatusBarZoom()
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
 
@@ -1080,11 +1121,12 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             fitOnScreen(sender)
             return
         }
-        settings.isManualZoom = true
+        enterManualZoom()
         setMagnificationCentered(1.0)
         settings.magnification = 1.0
         settings.save()
         updateScalingQuality()
+        updateStatusBarZoom()
 
         scheduleResizeToFitAfterZoom(magnification: scrollView.magnification)
     }
@@ -1098,6 +1140,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
         settings.save()
         if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
+        updateStatusBar()
     }
 
     @objc func toggleShowPixels(_ sender: Any? = nil) {
@@ -1114,6 +1157,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         } else {
             resizeAfterZoomTask?.cancel()
         }
+        updateStatusBar()
     }
 
     @objc func fillWindowHeight(_ sender: Any? = nil) {
@@ -1435,8 +1479,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
         view.layoutSubtreeIfNeeded()
 
-        // Re-apply AutoFit if in auto-fit mode (not manual zoom)
-        if !settings.isManualZoom && settings.alwaysFitOnOpen {
+        if isAutoFitActive {
             if let imageSize = currentDocumentSize {
                 applyFitting(for: imageSize)
             }
@@ -1848,7 +1891,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
         }
 
-        settings.isManualZoom = true
+        enterManualZoom()
         settings.magnification = magnification
         scheduleDebouncedSettingsSave()
         updateScalingQuality()
@@ -1856,14 +1899,11 @@ extension ImageViewController: ImageScrollViewDelegate {
         // 連續捲動模式：GPU affine transform only, skip window resize / recenter
         if settings.continuousScrollEnabled {
             applyCenteringInsetsIfNeeded(reason: "magnify.continuous")
-            // isZooming 已在 setMagnificationPreservingInsets 中設好（reflectScrolledClipView 安全）
-            // reflectScrolledClipView 已同步呼叫 updateVisibleSlots，此處不需重複呼叫
-            statusBarView.updateZoom(magnification, isFitting: false)
+            updateStatusBarZoom(magnification)
 
             if gesturePhase.isEmpty || gesturePhase.contains(.ended) || gesturePhase.contains(.cancelled) {
                 activeMagnifyAnchor = nil
                 isZooming = false
-                // Zoom 結束：恢復正常回收，清理多餘 slots
                 continuousScrollContentView?.endZoomSuppression(visibleBounds: scrollView.contentView.bounds)
             }
             return
@@ -1876,8 +1916,7 @@ extension ImageViewController: ImageScrollViewDelegate {
             applyCenteringInsetsIfNeeded(reason: "magnify.recenter.phase=\(debugPhase(gesturePhase))")
         }
 
-        let isFitting = !settings.isManualZoom && settings.alwaysFitOnOpen
-        statusBarView.updateZoom(magnification, isFitting: isFitting)  // Status Bar 更新縮放
+        updateStatusBarZoom(magnification)
 
         if gesturePhase.isEmpty {
             isZooming = false
@@ -2060,7 +2099,7 @@ extension ImageViewController: ImageScrollViewDelegate {
 
     // MARK: - Position HUD (Phase 3)
 
-    private func showPositionHUD(current: Int, total: Int) {
+    private func ensurePositionHUD() {
         if positionHUDView == nil {
             let hud = PositionHUDView()
             hud.translatesAutoresizingMaskIntoConstraints = false
@@ -2068,12 +2107,21 @@ extension ImageViewController: ImageScrollViewDelegate {
             NSLayoutConstraint.activate([
                 hud.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                 hud.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -effectiveStatusBarHeight / 2),
-                hud.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
+                hud.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
                 hud.heightAnchor.constraint(equalToConstant: 72),
             ])
             positionHUDView = hud
         }
+    }
+
+    private func showPositionHUD(current: Int, total: Int) {
+        ensurePositionHUD()
         positionHUDView?.show(current: current, total: total)
+    }
+
+    private func showPositionHUD(message: String, fadeDelay: TimeInterval = Constants.positionHUDFadeDelay) {
+        ensurePositionHUD()
+        positionHUDView?.show(message: message, fadeDelay: fadeDelay)
     }
 
     private func dismissPositionHUD() {

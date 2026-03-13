@@ -4,6 +4,24 @@ import XCTest
 @MainActor
 final class ImageViewControllerTests: XCTestCase {
 
+    func testZoomStatusFormatter_fit() {
+        XCTAssertEqual(ZoomStatusFormatter.text(for: .fit), String(localized: "status.fit"))
+    }
+
+    func testZoomStatusFormatter_actualWithWindowAuto() {
+        XCTAssertEqual(
+            ZoomStatusFormatter.text(for: .actual(windowAuto: true)),
+            String(localized: "status.actual") + " 100% · " + String(localized: "status.windowAuto")
+        )
+    }
+
+    func testZoomStatusFormatter_manualWithWindowAuto() {
+        XCTAssertEqual(
+            ZoomStatusFormatter.text(for: .manual(percent: 125, windowAuto: true)),
+            String(localized: "status.manual") + " 125% · " + String(localized: "status.windowAuto")
+        )
+    }
+
     private var controller: ImageViewController!
     private var scrollView: ImageScrollView!
     private var documentView: DualPageContentView!

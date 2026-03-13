@@ -15,7 +15,7 @@
 "menu.view.actualSize" = "實際大小";
 "menu.view.zoomIn" = "放大";
 "menu.view.zoomOut" = "縮小";
-"menu.view.alwaysFit" = "開啟時自動縮放至視窗";
+"menu.view.alwaysFit" = "以 Fit 模式開啟";
 "menu.view.fittingOptions" = "縮放選項";
 "menu.view.shrinkH" = "水平縮小至視窗";
 "menu.view.shrinkV" = "垂直縮小至視窗";
@@ -27,7 +27,7 @@
 "menu.view.scalingHigh" = "高";
 "menu.view.showPixels" = "放大時顯示像素";
 "menu.view.lowResPreview" = "瀏覽時使用低解析度預覽";
-"menu.view.resizeAuto" = "縮放時自動調整視窗大小";
+"menu.view.resizeAuto" = "手動縮放時同步調整視窗";
 "menu.view.fillWindowHeight" = "拉滿視窗高度";
 "menu.view.enterFullScreen" = "進入全螢幕";
 "menu.view.exitFullScreen" = "離開全螢幕";
@@ -89,4 +89,10 @@
 "window.pdfPage %lld" = "第 %lld 頁";
 
 /* Status Bar */
-"status.fit" = "適配";
+"status.fit" = "FIT";
+"status.actual" = "ACTUAL";
+"status.manual" = "MANUAL";
+"status.windowAuto" = "WINDOW AUTO";
+
+/* Hint */
+"hint.manualZoomExitFit" = "已切換到手動縮放，按 ⌘0 回到 Fit";

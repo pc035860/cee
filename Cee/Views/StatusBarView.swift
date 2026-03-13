@@ -1,5 +1,32 @@
 import AppKit
 
+enum ZoomStatusMode: Equatable {
+    case fit
+    case actual(windowAuto: Bool)
+    case manual(percent: Int, windowAuto: Bool)
+}
+
+enum ZoomStatusFormatter {
+    static func text(for mode: ZoomStatusMode) -> String {
+        let baseText: String
+        let windowAuto: Bool
+
+        switch mode {
+        case .fit:
+            return String(localized: "status.fit")
+        case .actual(let isWindowAuto):
+            baseText = String(localized: "status.actual") + " 100%"
+            windowAuto = isWindowAuto
+        case .manual(let percent, let isWindowAuto):
+            baseText = String(localized: "status.manual") + " \(percent)%"
+            windowAuto = isWindowAuto
+        }
+
+        guard windowAuto else { return baseText }
+        return baseText + " · " + String(localized: "status.windowAuto")
+    }
+}
+
 final class StatusBarView: NSVisualEffectView {
 
     // MARK: - UI Elements
@@ -83,30 +110,15 @@ final class StatusBarView: NSVisualEffectView {
 
     // MARK: - Update Methods
 
-    /// 更新所有顯示內容
-    /// - Parameter `isFitting`: 當圖片處於 fitting 模式時為 true
-    /// - Parameter `indexOverride`: 自訂頁碼文字（例如雙頁模式 "5-6 / 100"），nil 時使用預設格式
-    func update(index: Int, total: Int, zoom: CGFloat, imageSize: NSSize, isFitting: Bool,
+    func update(index: Int, total: Int, zoomMode: ZoomStatusMode, imageSize: NSSize,
                 indexOverride: String? = nil) {
         indexLabel.stringValue = indexOverride ?? "\(index) / \(total)"
-        zoomLabel.stringValue = zoomText(for: zoom, isFitting: isFitting)
+        zoomLabel.stringValue = ZoomStatusFormatter.text(for: zoomMode)
         sizeLabel.stringValue = "\(Int(imageSize.width)) × \(Int(imageSize.height))"
     }
 
-    /// 僅更新縮放
-    /// - Parameter `isFitting`: 當圖片處於 fitting 模式時為 true
-    func updateZoom(_ zoom: CGFloat, isFitting: Bool) {
-        zoomLabel.stringValue = zoomText(for: zoom, isFitting: isFitting)
-    }
-
-    private func zoomText(for zoom: CGFloat, isFitting: Bool) -> String {
-        if isFitting {
-            return String(localized: "status.fit")
-        } else if zoom >= 0.99 && zoom <= 1.01 {
-            return "100%"
-        } else {
-            return "\(Int(round(zoom * 100)))%"
-        }
+    func updateZoom(_ zoomMode: ZoomStatusMode) {
+        zoomLabel.stringValue = ZoomStatusFormatter.text(for: zoomMode)
     }
 
     /// 僅更新索引

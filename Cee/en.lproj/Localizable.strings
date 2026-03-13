@@ -15,7 +15,7 @@
 "menu.view.actualSize" = "Actual Size";
 "menu.view.zoomIn" = "Zoom In";
 "menu.view.zoomOut" = "Zoom Out";
-"menu.view.alwaysFit" = "Always Fit Opened Images";
+"menu.view.alwaysFit" = "Open in Fit Mode";
 "menu.view.fittingOptions" = "Fitting Options";
 "menu.view.shrinkH" = "Shrink to Fit Horizontally";
 "menu.view.shrinkV" = "Shrink to Fit Vertically";
@@ -27,7 +27,7 @@
 "menu.view.scalingHigh" = "High";
 "menu.view.showPixels" = "Show Pixels When Zooming In";
 "menu.view.lowResPreview" = "Use Low-Res Preview While Browsing";
-"menu.view.resizeAuto" = "Resize Window Automatically";
+"menu.view.resizeAuto" = "Resize Window During Manual Zoom";
 "menu.view.fillWindowHeight" = "Fill Window Height";
 "menu.view.enterFullScreen" = "Enter Full Screen";
 "menu.view.exitFullScreen" = "Exit Full Screen";
@@ -89,4 +89,10 @@
 "window.pdfPage %lld" = "Page %lld";
 
 /* Status Bar */
-"status.fit" = "Fit";
+"status.fit" = "FIT";
+"status.actual" = "ACTUAL";
+"status.manual" = "MANUAL";
+"status.windowAuto" = "WINDOW AUTO";
+
+/* Hint */
+"hint.manualZoomExitFit" = "Switched to manual zoom. Press ⌘0 to return to Fit.";

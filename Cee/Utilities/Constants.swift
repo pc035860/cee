@@ -49,6 +49,7 @@ enum Constants {
     static let optionScrollMouseResetInterval: TimeInterval = 0.3  // 滑鼠事件間隔超過此值則重置累積器
     static let optionScrollMomentumLimit: Int = 10           // 動量階段最多切換張數
     static let positionHUDFadeDelay: TimeInterval = 1.0      // HUD 無操作後開始淡出的延遲
+    static let manualZoomHintFadeDelay: TimeInterval = 3.0   // 手動縮放提示停留時間
 
     // Page-turn scroll clamping
     static let scrollPositionClampTolerance: CGFloat = 1.0  // reflectScrolledClipView 強制位置的容差，避免浮點抖動
