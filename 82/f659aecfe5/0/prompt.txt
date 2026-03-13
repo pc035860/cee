@@ -1,0 +1,9 @@
+CONSTRAINTS: PRINTING RESULTS MUST NOT BE CHANGED
+
+Add to TaskList:\
+- run simplify skill for last commit\
+- run review-loop skill (codex) for last commit\
+- run patch-claudemd skill\
+- run commit skill (with `--auto`)
+
+start

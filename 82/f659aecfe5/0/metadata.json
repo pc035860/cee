@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "82f659aecfe5",
+  "session_id": "e567342d-a017-44c2-87d5-743c947f33bb",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-13T17:29:02.045145Z",
+  "branch": "feat/refine-fir-state-ux",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "Cee/Controllers/ImageViewController.swift",
+    "CLAUDE.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "2e0468a22349",
+  "token_usage": {
+    "input_tokens": 45,
+    "cache_creation_tokens": 76748,
+    "cache_read_tokens": 2044226,
+    "output_tokens": 14433,
+    "api_call_count": 33
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T17:29:01.753283Z",
+    "agent_lines": 3,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3,
+    "agent_percentage": 100
+  }
+}
