@@ -193,7 +193,7 @@ class ImageWindowController: NSWindowController {
               !window.styleMask.contains(.fullScreen) else { return }
         let visibleFrame = screen.visibleFrame
         let maxSize = visibleFrame.size
-        var targetSize = NSSize(
+        let targetSize = NSSize(
             width: min(size.width, maxSize.width),
             height: min(size.height, maxSize.height)
         )
@@ -252,6 +252,25 @@ class ImageWindowController: NSWindowController {
                 "resizeToFitImage after frame=\(String(format: "%.1f,%.1f %.1f×%.1f", after.origin.x, after.origin.y, after.width, after.height))"
             )
         }
+    }
+
+    func fillWindowHeight() {
+        guard let window,
+              let screen = window.screen,
+              !window.styleMask.contains(.fullScreen) else { return }
+        let targetFrame = Self.expandedHeightFrame(from: window.frame, within: screen.visibleFrame)
+        window.setFrame(targetFrame, display: true, animate: false)
+    }
+
+    static func expandedHeightFrame(from frame: NSRect, within visibleFrame: NSRect) -> NSRect {
+        let maxX = max(visibleFrame.maxX - frame.width, visibleFrame.minX)
+        let originX = min(max(frame.midX - frame.width / 2.0, visibleFrame.minX), maxX)
+        return NSRect(
+            x: originX,
+            y: visibleFrame.minY,
+            width: frame.width,
+            height: visibleFrame.height
+        )
     }
 
     private func clampedWindowOrigin(for frame: NSRect, within visibleFrame: NSRect) -> NSPoint {

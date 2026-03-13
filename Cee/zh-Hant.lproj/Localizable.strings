@@ -28,6 +28,7 @@
 "menu.view.showPixels" = "放大時顯示像素";
 "menu.view.lowResPreview" = "瀏覽時使用低解析度預覽";
 "menu.view.resizeAuto" = "縮放時自動調整視窗大小";
+"menu.view.fillWindowHeight" = "拉滿視窗高度";
 "menu.view.enterFullScreen" = "進入全螢幕";
 "menu.view.exitFullScreen" = "離開全螢幕";
 "menu.view.floatOnTop" = "浮動於最上層";

@@ -28,6 +28,7 @@
 "menu.view.showPixels" = "Show Pixels When Zooming In";
 "menu.view.lowResPreview" = "Use Low-Res Preview While Browsing";
 "menu.view.resizeAuto" = "Resize Window Automatically";
+"menu.view.fillWindowHeight" = "Fill Window Height";
 "menu.view.enterFullScreen" = "Enter Full Screen";
 "menu.view.exitFullScreen" = "Exit Full Screen";
 "menu.view.floatOnTop" = "Float on Top";

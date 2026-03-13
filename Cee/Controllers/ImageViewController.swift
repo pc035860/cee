@@ -1093,6 +1093,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
+    @objc func fillWindowHeight(_ sender: Any? = nil) {
+        (view.window?.windowController as? ImageWindowController)?.fillWindowHeight()
+    }
+
     @objc func toggleFloatOnTop(_ sender: Any? = nil) {
         settings.floatOnTop.toggle()
         view.window?.level = settings.floatOnTop ? .floating : .normal
@@ -1602,6 +1606,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             menuItem.state = settings.quickGridScrollAfterZoom ? .on : .off; return true
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return !isContinuous
+        case #selector(fillWindowHeight(_:)):
+            return view.window?.styleMask.contains(.fullScreen) != true
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
         case #selector(toggleStatusBar(_:)):
@@ -2105,6 +2111,7 @@ extension ImageViewController: ImageScrollViewDelegate {
         menu.addItem(makeDualPageSubmenu())
         menu.addItem(makeContextItem(String(localized: "menu.navigation.rtlSingle"),     action: #selector(toggleSinglePageRTLNavigation(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.navigation.continuousScroll"), action: #selector(toggleContinuousScroll(_:))))
+        menu.addItem(makeContextItem(String(localized: "menu.view.fillWindowHeight"), action: #selector(fillWindowHeight(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.view.floatOnTop"), action: #selector(toggleFloatOnTop(_:))))
         menu.addItem(makeContextItem(String(localized: "menu.navigation.quickGrid"), action: #selector(toggleQuickGrid(_:))))
 
