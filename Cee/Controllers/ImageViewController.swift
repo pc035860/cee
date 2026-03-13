@@ -1607,7 +1607,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         case #selector(toggleResizeAutomatically(_:)):
             menuItem.state = settings.resizeWindowAutomatically ? .on : .off; return !isContinuous
         case #selector(fillWindowHeight(_:)):
-            return view.window?.styleMask.contains(.fullScreen) != true
+            return view.window?.styleMask.contains(.fullScreen) == false
         case #selector(toggleFloatOnTop(_:)):
             menuItem.state = settings.floatOnTop ? .on : .off; return true
         case #selector(toggleStatusBar(_:)):

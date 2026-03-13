@@ -263,12 +263,13 @@ class ImageWindowController: NSWindowController {
     }
 
     static func expandedHeightFrame(from frame: NSRect, within visibleFrame: NSRect) -> NSRect {
-        let maxX = max(visibleFrame.maxX - frame.width, visibleFrame.minX)
-        let originX = min(max(frame.midX - frame.width / 2.0, visibleFrame.minX), maxX)
+        let width = min(frame.width, visibleFrame.width)
+        let maxX = max(visibleFrame.maxX - width, visibleFrame.minX)
+        let originX = min(max(frame.minX, visibleFrame.minX), maxX)
         return NSRect(
             x: originX,
             y: visibleFrame.minY,
-            width: frame.width,
+            width: width,
             height: visibleFrame.height
         )
     }
