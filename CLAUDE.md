@@ -72,6 +72,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Anchor out-of-bounds** — When anchor lies outside document bounds, use document center. Clamping causes rightward bias.
 - **`isZooming` flag** suppresses force-recenter during zoom to preserve pan position.
 - **resizeToFitImage below min** — When target < window minimum, early return to avoid drift.
+- **Zoom state model** — `ZoomStatusMode` enum (`.fit`/`.actual`/`.manual`) + `ZoomStatusFormatter` for status bar display. `isAutoFitActive` computed property = `alwaysFitOnOpen && !isManualZoom`; always use this instead of inline checks. All manual zoom entry must go through `enterManualZoom()` (handles one-time hint + state transition).
 
 ## Scroll & Page-Turn
 
@@ -129,6 +130,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Zoom state surfacing:** `ZoomStatusMode` enum + `ZoomStatusFormatter` replaced raw `(zoom, isFitting)` pairs in status bar. Three modes: FIT (auto-fit active), ACTUAL 100%, MANUAL xx%. Optional `WINDOW AUTO` suffix when window auto-resize is active. `enterManualZoom()` encapsulates all manual zoom transitions with a one-time `PositionHUDView` hint (persisted via `hasShownManualZoomHint`). `PositionHUDView` now supports arbitrary text messages in addition to position display.
 - **Auto-fit on window resize:** `alwaysFitOnOpen` now also re-applies fitting during `NSWindow.didResizeNotification`, but only when `isManualZoom == false` and not in continuous scroll mode. `ImageWindowController.windowDidResizeNotification` forwards resize events to `ImageViewController.handleWindowDidResize()`; manual zoom must remain untouched.
 - **Trackpad page-turn momentum fix:** NSScrollView fallback deceleration animation bypasses `scrollWheel` override. Solved by passing momentum to super + `reflectScrolledClipView` clamp. `suppressScrollSequenceAfterPageTurn` blocks old scroll sequence; `commitPageTurn(goingDown:)` unifies page-turn state. See "Scroll & Page-Turn" gotchas above.
 - **Click to turn page:** Single-click on left/right edge turns page (configurable in Navigation menu).

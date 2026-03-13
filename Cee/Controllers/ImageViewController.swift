@@ -1787,7 +1787,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         // Window resize 後 Auto Layout 可能 pixel-align scrollView bounds，
         // 導致 scrollView 比 imageSize * mag 小幾個 pixel。
         // 在 auto-fit 模式下重新校正 magnification 以匹配實際 viewport。
-        if settings.alwaysFitOnOpen && !settings.isManualZoom {
+        if isAutoFitActive {
             view.layoutSubtreeIfNeeded()
             if let refitMagnification = fittedMagnification(for: imageSize),
                abs(refitMagnification - scrollView.magnification) > 1e-6 {
