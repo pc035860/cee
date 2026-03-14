@@ -29,10 +29,13 @@ Open an image and Cee automatically scans the folder for all supported images, l
 ### Zoom & Display
 - Pinch-to-zoom, Cmd+Scroll wheel zoom
 - Fit to screen / Actual pixels / Custom zoom
+- Zoom status display: FIT (auto-fit), ACTUAL 100%, or MANUAL xx% with optional WINDOW AUTO suffix
 - Fullscreen mode, always-on-top window
+- Fill window height without entering fullscreen (⌥⌘F)
 - GPU-accelerated rendering via CALayer
 - Bottom status bar showing dimensions, index, and zoom level (Cmd+/ to toggle)
-- Auto-resize window on open (optional)
+  - Adaptive display: full info in regular windows, percent-only in narrow windows, zoom hidden in minimal mode
+- Auto-resize window on open (optional), re-applies fit during window resize
 - Separate sensitivity settings for trackpad and mouse wheel
 
 ### Quick Grid
@@ -154,6 +157,7 @@ Cee automatically scans the folder for all supported image formats.
 | Zoom in | Cmd+= |
 | Zoom out | Cmd+- |
 | Fullscreen | Cmd+F |
+| Fill window height | Option+Cmd+F |
 | Exit fullscreen | Esc |
 | Toggle status bar | Cmd+/ |
 | Toggle Quick Grid | G |
