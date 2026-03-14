@@ -1,0 +1,1 @@
+/auto-impl /Users/pc035860/code/cee/.factory/docs/2026-03-14-narrow-window-friendly-status-bar.md --from-plan
