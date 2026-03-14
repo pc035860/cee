@@ -60,10 +60,7 @@ class ImageWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        let minContentSize = NSSize(
-            width: Constants.minWindowContentWidth,
-            height: Constants.minWindowContentHeight
-        )
+        let minContentSize = Constants.minWindowContentSize
         window.contentMinSize = minContentSize
         window.minSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: minContentSize)).size
         window.isRestorable = false
@@ -196,10 +193,7 @@ class ImageWindowController: NSWindowController {
 
     func effectiveMinimumContentSize() -> NSSize {
         guard let window else {
-            return NSSize(
-                width: Constants.minWindowContentWidth,
-                height: Constants.minWindowContentHeight
-            )
+            return Constants.minWindowContentSize
         }
 
         return Self.effectiveMinimumContentSize(

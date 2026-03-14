@@ -6,6 +6,10 @@ enum Constants {
     static let defaultWindowSizeRatio: CGFloat = 0.8   // 首次視窗使用螢幕可見區域 80%
     static let minWindowContentWidth: CGFloat = 300
     static let minWindowContentHeight: CGFloat = 300
+    static let minWindowContentSize = NSSize(
+        width: minWindowContentWidth,
+        height: minWindowContentHeight
+    )
     static let cacheRadius: Int = 2                     // 預載當前 ±2 張
     static let prefetchDirectionExtraCount: Int = 5     // 方向性 prefetch 額外預載數
     static let optionKeyJumpAmount: Int = 10            // Option+方向鍵一次跳躍張數

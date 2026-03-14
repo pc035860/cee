@@ -957,7 +957,7 @@ class ImageScrollView: NSScrollView {
         // 不跟隨 Natural Scrolling 反轉（主流慣例：scroll up = zoom in）
         let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.003 : 0.08
         let newMag = magnification + delta * sensitivity
-        let effectiveMin = max(minMagnification, scrollDelegate?.minimumMagnification(for: self) ?? effectiveMinMagnification())
+        let effectiveMin = resolvedMinMagnification()
         let clamped = max(effectiveMin, min(maxMagnification, newMag))
 
         // 以可預測的視窗中心為 anchor（避免 contentInsets 暫時被重置時漂移到左側）
@@ -1024,7 +1024,7 @@ class ImageScrollView: NSScrollView {
     override func magnify(with event: NSEvent) {
         let point = zoomAnchorPoint()
         let newMag = magnification + event.magnification
-        let effectiveMin = max(minMagnification, scrollDelegate?.minimumMagnification(for: self) ?? effectiveMinMagnification())
+        let effectiveMin = resolvedMinMagnification()
         setMagnificationPreservingInsets(
             max(effectiveMin, min(maxMagnification, newMag)),
             centeredAt: point
@@ -1066,6 +1066,12 @@ class ImageScrollView: NSScrollView {
     private func zoomAnchorPoint() -> NSPoint {
         let bounds = contentView.bounds
         return NSPoint(x: bounds.midX, y: bounds.midY)
+    }
+
+    /// Delegate-aware minimum magnification：delegate 覆寫優先，否則使用本地計算。
+    /// Delegate 回傳值已保證 >= minMagnification，無需額外 clamp。
+    private func resolvedMinMagnification() -> CGFloat {
+        scrollDelegate?.minimumMagnification(for: self) ?? effectiveMinMagnification()
     }
 
     /// 根據 documentView 的基礎 layout 尺寸與視窗最小內容尺寸計算最小 magnification。

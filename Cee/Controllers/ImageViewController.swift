@@ -11,6 +11,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var contentView: ImageContentView { dualPageView.leadingPage }
     private var statusBarView: StatusBarView!
     private var statusBarHeightConstraint: NSLayoutConstraint!
+    private var statusBarHorizontalConstraints: [NSLayoutConstraint] = []
     private var currentLoadRequestID: UUID?  // 防止快速翻頁時舊圖覆蓋新圖
     private var currentLoadTask: Task<Void, Never>?  // 可取消前景載入
     private var errorPlaceholderView: ErrorPlaceholderView?
@@ -95,6 +96,11 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             equalToConstant: Constants.statusBarHeight
         )
 
+        statusBarHorizontalConstraints = [
+            statusBarView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            statusBarView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ]
+
         NSLayoutConstraint.activate([
             // ScrollView fills entire container (statusBar overlays on top)
             scrollView.topAnchor.constraint(equalTo: container.topAnchor),
@@ -103,11 +109,9 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
             // StatusBar overlays at bottom
-            statusBarView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            statusBarView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             statusBarView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             statusBarHeightConstraint,
-        ])
+        ] + statusBarHorizontalConstraints)
 
         self.view = container
     }
@@ -250,6 +254,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func applyStatusBar() {
         let visible = settings.showStatusBar
         statusBarView.isHidden = !visible
+        // 隱藏時 deactivate 水平約束，避免 fittingSize 含入隱藏 label 寬度
+        statusBarHorizontalConstraints.forEach { $0.isActive = visible }
         scrollView.dragBottomInset = effectiveStatusBarHeight
         // statusBarHeightConstraint 永遠是 22pt，改由 contentInsets 控制可見性
         applyCenteringInsetsIfNeeded(reason: "applyStatusBar")  // 重要：重新計算置中 insets
@@ -703,12 +709,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             return Constants.minMagnification
         }
 
-        let fallbackMinContentSize = NSSize(
-            width: Constants.minWindowContentWidth,
-            height: Constants.minWindowContentHeight
-        )
         let minContentSize = (view.window?.windowController as? ImageWindowController)?
-            .effectiveMinimumContentSize() ?? fallbackMinContentSize
+            .effectiveMinimumContentSize() ?? Constants.minWindowContentSize
         let minViewportHeight = max(minContentSize.height - effectiveStatusBarHeight, 0)
         let minMagW = minContentSize.width / imageSize.width
         let minMagH = minViewportHeight / imageSize.height

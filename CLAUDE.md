@@ -57,6 +57,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **CALayer border clipping in NSCollectionView cells** — `borderWidth` draws half inside, half outside bounds. With `masksToBounds = true` + adjacent cell overlap, borders get clipped. Fix: inset highlightLayer frame by `borderWidth/2` so border is fully inside bounds; set `zPosition` high to render above subview layers.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 - **`setMagnification` synchronously triggers `reflectScrolledClipView`** — Any state that must be set before the scroll/magnify callback (e.g., zoom suppression flags) must be set BEFORE calling `setMagnification`, not after. The delegate callback (`scrollViewMagnificationDidChange`) fires even later.
+- **Hidden views still affect `fittingSize`** — `isHidden = true` does NOT deactivate Auto Layout constraints. `NSView.fittingSize` on the container will include hidden subviews' intrinsic content widths. Fix: deactivate the hidden view's positional constraints (e.g., leading/trailing) when hiding; reactivate when showing.
 - **DocumentView frame change triggers `reflectScrolledClipView`** — Setting `frame` on documentView (e.g., after `recalculateLayout()`) synchronously fires `reflectScrolledClipView` → `updateVisibleSlots`. If this overwrites mutable state (like `folder.currentIndex`) before an async callback completes, capture critical state before the frame change. Note: capturing only protects the callback's target value; the intermediate overwrites still happen. For full protection, add a suppression flag to block `notifyImageChanged` during bootstrap.
 
 ## XCUITest Gotchas
@@ -71,7 +72,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Centering math: one coordinate space.** Never divide `statusBarH` by magnification.
 - **Anchor out-of-bounds** — When anchor lies outside document bounds, use document center. Clamping causes rightward bias.
 - **`isZooming` flag** suppresses force-recenter during zoom to preserve pan position.
-- **resizeToFitImage below min** — When target < window minimum, early return to avoid drift.
+- **resizeToFitImage clamps to effective minimum** — `effectiveMinimumContentSize()` computes dynamic floor from `max(Constants, contentMinSize, fittingSize)`. `resizeToFitImage` clamps target to this floor (no early return). `effectiveWindowResizeMinMagnification()` uses this to set zoom magnification floor. `resolvedMinMagnification()` in `ImageScrollView` is the delegate-aware entry point for zoom clamping.
 - **Zoom state model** — `ZoomStatusMode` enum (`.fit`/`.actual`/`.manual`) + `ZoomStatusFormatter` for status bar display. `isAutoFitActive` computed property = `alwaysFitOnOpen && !isManualZoom`; always use this instead of inline checks. All manual zoom entry must go through `enterManualZoom()` (handles one-time hint + state transition).
 
 ## Scroll & Page-Turn
