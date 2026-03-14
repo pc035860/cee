@@ -71,6 +71,8 @@ final class StatusBarView: NSVisualEffectView {
 
     private var currentZoomMode: ZoomStatusMode?
     private(set) var currentDisplayMode: DisplayMode = .regular
+    private var cachedRegularThreshold: CGFloat = 0
+    private var cachedCompactThreshold: CGFloat = 0
 
     // MARK: - Constraints
 
@@ -165,7 +167,30 @@ final class StatusBarView: NSVisualEffectView {
     }
 
     private func computeDisplayMode(for width: CGFloat) -> DisplayMode {
-        guard let zoomMode = currentZoomMode else { return .regular }
+        guard currentZoomMode != nil else { return .regular }
+
+        switch currentDisplayMode {
+        case .regular:
+            if width < cachedCompactThreshold { return .minimal }
+            if width < cachedRegularThreshold { return .compact }
+            return .regular
+        case .compact:
+            if width < cachedCompactThreshold { return .minimal }
+            if width >= cachedRegularThreshold + Self.hysteresis { return .regular }
+            return .compact
+        case .minimal:
+            if width >= cachedRegularThreshold + Self.hysteresis { return .regular }
+            if width >= cachedCompactThreshold + Self.hysteresis { return .compact }
+            return .minimal
+        }
+    }
+
+    private func recomputeThresholds() {
+        guard let zoomMode = currentZoomMode else {
+            cachedRegularThreshold = 0
+            cachedCompactThreshold = 0
+            return
+        }
 
         let font = zoomLabel.font ?? .systemFont(ofSize: 11)
         let coreWidth = Self.contentPadding
@@ -175,25 +200,10 @@ final class StatusBarView: NSVisualEffectView {
             + Self.zoomGap
 
         let fullText = ZoomStatusFormatter.text(for: zoomMode, style: .full)
-        let regularThreshold = coreWidth + textWidth(fullText, font: font) + Self.contentPadding
+        cachedRegularThreshold = coreWidth + textWidth(fullText, font: font) + Self.contentPadding
 
         let compactText = ZoomStatusFormatter.text(for: zoomMode, style: .compactPercentOnly)
-        let compactThreshold = coreWidth + textWidth(compactText, font: font) + Self.contentPadding
-
-        switch currentDisplayMode {
-        case .regular:
-            if width < compactThreshold { return .minimal }
-            if width < regularThreshold { return .compact }
-            return .regular
-        case .compact:
-            if width < compactThreshold { return .minimal }
-            if width >= regularThreshold + Self.hysteresis { return .regular }
-            return .compact
-        case .minimal:
-            if width >= regularThreshold + Self.hysteresis { return .regular }
-            if width >= compactThreshold + Self.hysteresis { return .compact }
-            return .minimal
-        }
+        cachedCompactThreshold = coreWidth + textWidth(compactText, font: font) + Self.contentPadding
     }
 
     private func applyDisplayMode(_ mode: DisplayMode) {
@@ -229,18 +239,21 @@ final class StatusBarView: NSVisualEffectView {
         indexLabel.stringValue = indexOverride ?? "\(index) / \(total)"
         currentZoomMode = zoomMode
         sizeLabel.stringValue = "\(Int(imageSize.width)) × \(Int(imageSize.height))"
+        recomputeThresholds()
         applyZoomText()
         needsLayout = true
     }
 
     func updateZoom(_ zoomMode: ZoomStatusMode) {
         currentZoomMode = zoomMode
+        recomputeThresholds()
         applyZoomText()
         needsLayout = true
     }
 
     func updateIndex(current: Int, total: Int) {
         indexLabel.stringValue = "\(current) / \(total)"
+        recomputeThresholds()
     }
 
     func clear() {
