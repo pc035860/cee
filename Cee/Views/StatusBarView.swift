@@ -254,6 +254,7 @@ final class StatusBarView: NSVisualEffectView {
     func updateIndex(current: Int, total: Int) {
         indexLabel.stringValue = "\(current) / \(total)"
         recomputeThresholds()
+        needsLayout = true
     }
 
     func clear() {
