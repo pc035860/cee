@@ -61,6 +61,7 @@ final class ViewerSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.arrowLeftRightNavigation)
         XCTAssertFalse(decoded.arrowUpDownNavigation)
         XCTAssertEqual(decoded.quickGridCellSize, 160, "Missing quickGridCellSize should default to 160")
+        XCTAssertFalse(decoded.hasShownManualZoomHint)
     }
 
     // MARK: - Quick Grid Cell Size
@@ -95,5 +96,20 @@ final class ViewerSettingsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ViewerSettings.self, from: data)
 
         XCTAssertTrue(decoded.continuousScrollEnabled)
+    }
+
+    func testDefaultHasShownManualZoomHint_isFalse() {
+        let settings = ViewerSettings()
+        XCTAssertFalse(settings.hasShownManualZoomHint)
+    }
+
+    func testCodableRoundTrip_hasShownManualZoomHint() throws {
+        var settings = ViewerSettings()
+        settings.hasShownManualZoomHint = true
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(ViewerSettings.self, from: data)
+
+        XCTAssertTrue(decoded.hasShownManualZoomHint)
     }
 }

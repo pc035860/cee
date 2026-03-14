@@ -60,6 +60,7 @@ struct ViewerSettings: Codable {
 
     // MARK: - UI
     var showStatusBar: Bool = true
+    var hasShownManualZoomHint: Bool = false
 
     // MARK: - Dual Page
     var dualPageEnabled: Bool = false
@@ -112,6 +113,7 @@ struct ViewerSettings: Codable {
         lastWindowWidth = try? c.decode(CGFloat.self, forKey: .lastWindowWidth)
         lastWindowHeight = try? c.decode(CGFloat.self, forKey: .lastWindowHeight)
         showStatusBar = (try? c.decode(Bool.self, forKey: .showStatusBar)) ?? d.showStatusBar
+        hasShownManualZoomHint = (try? c.decode(Bool.self, forKey: .hasShownManualZoomHint)) ?? d.hasShownManualZoomHint
         dualPageEnabled = (try? c.decode(Bool.self, forKey: .dualPageEnabled)) ?? d.dualPageEnabled
         firstPageIsCover = (try? c.decode(Bool.self, forKey: .firstPageIsCover)) ?? d.firstPageIsCover
         readingDirection = (try? c.decode(ReadingDirection.self, forKey: .readingDirection)) ?? d.readingDirection

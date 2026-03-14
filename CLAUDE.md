@@ -57,6 +57,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **CALayer border clipping in NSCollectionView cells** — `borderWidth` draws half inside, half outside bounds. With `masksToBounds = true` + adjacent cell overlap, borders get clipped. Fix: inset highlightLayer frame by `borderWidth/2` so border is fully inside bounds; set `zPosition` high to render above subview layers.
 - **`NSCollectionViewPrefetching` doesn't exist in AppKit** — UIKit-only.
 - **`setMagnification` synchronously triggers `reflectScrolledClipView`** — Any state that must be set before the scroll/magnify callback (e.g., zoom suppression flags) must be set BEFORE calling `setMagnification`, not after. The delegate callback (`scrollViewMagnificationDidChange`) fires even later.
+- **Hidden views still affect `fittingSize`** — `isHidden = true` does NOT deactivate Auto Layout constraints. `NSView.fittingSize` on the container will include hidden subviews' intrinsic content widths. Fix: deactivate the hidden view's positional constraints (e.g., leading/trailing) when hiding; reactivate when showing.
 - **DocumentView frame change triggers `reflectScrolledClipView`** — Setting `frame` on documentView (e.g., after `recalculateLayout()`) synchronously fires `reflectScrolledClipView` → `updateVisibleSlots`. If this overwrites mutable state (like `folder.currentIndex`) before an async callback completes, capture critical state before the frame change. Note: capturing only protects the callback's target value; the intermediate overwrites still happen. For full protection, add a suppression flag to block `notifyImageChanged` during bootstrap.
 
 ## XCUITest Gotchas
@@ -71,7 +72,9 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 - **Centering math: one coordinate space.** Never divide `statusBarH` by magnification.
 - **Anchor out-of-bounds** — When anchor lies outside document bounds, use document center. Clamping causes rightward bias.
 - **`isZooming` flag** suppresses force-recenter during zoom to preserve pan position.
-- **resizeToFitImage below min** — When target < window minimum, early return to avoid drift.
+- **resizeToFitImage clamps to effective minimum** — `effectiveMinimumContentSize()` computes dynamic floor from `max(Constants, contentMinSize, fittingSize)`. `resizeToFitImage` clamps target to this floor (no early return). `effectiveWindowResizeMinMagnification()` uses this to set zoom magnification floor. `resolvedMinMagnification()` in `ImageScrollView` is the delegate-aware entry point for zoom clamping.
+- **Zoom state model** — `ZoomStatusMode` enum (`.fit`/`.actual`/`.manual`) + `ZoomStatusFormatter` for status bar display. `ZoomStatusStyle` (`.full`/`.compactPercentOnly`) controls output format. `isAutoFitActive` computed property = `alwaysFitOnOpen && !isManualZoom`; always use this instead of inline checks. All manual zoom entry must go through `enterManualZoom()` (handles one-time hint + state transition).
+- **StatusBarView adaptive display modes** — `DisplayMode` enum (`.regular`/`.compact`/`.minimal`) auto-switches in `layout()` based on `bounds.width` vs cached thresholds. Thresholds are recomputed only when content changes (`recomputeThresholds()` in `update`/`updateZoom`/`updateIndex`), not per-frame. 20pt hysteresis prevents mode oscillation during live resize. In `.minimal` mode, zoomLabel constraints are deactivated (not just hidden) to reduce `fittingSize`. `applyDisplayMode()` must set `currentDisplayMode` BEFORE activating/deactivating constraints (constraint changes trigger synchronous `layout()` re-entry).
 
 ## Scroll & Page-Turn
 
@@ -129,6 +132,8 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 ## Recent Significant Changes
 
+- **Zoom state surfacing:** `ZoomStatusMode` enum + `ZoomStatusFormatter` replaced raw `(zoom, isFitting)` pairs in status bar. Three modes: FIT (auto-fit active), ACTUAL 100%, MANUAL xx%. Optional `WINDOW AUTO` suffix when window auto-resize is active. `enterManualZoom()` encapsulates all manual zoom transitions with a one-time `PositionHUDView` hint (persisted via `hasShownManualZoomHint`). `PositionHUDView` now supports arbitrary text messages in addition to position display.
+- **Narrow-window friendly status bar:** `StatusBarView` replaced center-anchored `sizeLabel` with left-aligned compressible layout. Three adaptive display modes: regular (full zoom text), compact (percent only, e.g., `89%`), minimal (zoom hidden). `ZoomStatusStyle` enum + `ZoomStatusFormatter` default parameter maintains backward compatibility. `fittingSize.width` dropped from 500+ to <200, unblocking narrow-window pinch zoom. Cached thresholds avoid per-frame text measurement in `layout()`.
 - **Auto-fit on window resize:** `alwaysFitOnOpen` now also re-applies fitting during `NSWindow.didResizeNotification`, but only when `isManualZoom == false` and not in continuous scroll mode. `ImageWindowController.windowDidResizeNotification` forwards resize events to `ImageViewController.handleWindowDidResize()`; manual zoom must remain untouched.
 - **Trackpad page-turn momentum fix:** NSScrollView fallback deceleration animation bypasses `scrollWheel` override. Solved by passing momentum to super + `reflectScrolledClipView` clamp. `suppressScrollSequenceAfterPageTurn` blocks old scroll sequence; `commitPageTurn(goingDown:)` unifies page-turn state. See "Scroll & Page-Turn" gotchas above.
 - **Click to turn page:** Single-click on left/right edge turns page (configurable in Navigation menu).
