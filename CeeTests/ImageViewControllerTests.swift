@@ -22,6 +22,26 @@ final class ImageViewControllerTests: XCTestCase {
         )
     }
 
+    func testStatusBarManualZoomTextExpandsFittingWidth() {
+        let statusBar = StatusBarView(frame: NSRect(x: 0, y: 0, width: 10, height: Constants.statusBarHeight))
+
+        statusBar.update(
+            index: 1,
+            total: 999,
+            zoomMode: .manual(percent: 100, windowAuto: true),
+            imageSize: NSSize(width: 4000, height: 3000)
+        )
+
+        XCTAssertGreaterThan(statusBar.fittingSize.width, 500)
+    }
+
+    func testScrollViewEffectiveMinMagnificationUsesDocumentBaseSize() {
+        let scrollView = ImageScrollView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        scrollView.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 1000, height: 500))
+
+        XCTAssertEqual(scrollView.effectiveMinMagnification(), 0.6, accuracy: 0.001)
+    }
+
     private var controller: ImageViewController!
     private var scrollView: ImageScrollView!
     private var documentView: DualPageContentView!

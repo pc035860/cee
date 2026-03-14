@@ -6,6 +6,7 @@ import AppKit
 protocol ImageScrollViewDelegate: AnyObject {
     func scrollViewDidReachBottom(_ scrollView: ImageScrollView)
     func scrollViewDidReachTop(_ scrollView: ImageScrollView)
+    func minimumMagnification(for scrollView: ImageScrollView) -> CGFloat
     func scrollViewMagnificationDidChange(
         _ scrollView: ImageScrollView,
         magnification: CGFloat,
@@ -34,6 +35,9 @@ protocol ImageScrollViewDelegate: AnyObject {
 
 // MARK: - Default Implementation
 extension ImageScrollViewDelegate {
+    func minimumMagnification(for scrollView: ImageScrollView) -> CGFloat {
+        scrollView.effectiveMinMagnification()
+    }
     func contextMenu(for scrollView: ImageScrollView, event: NSEvent) -> NSMenu? { nil }
     func scrollViewDidReceiveDrop(_ scrollView: ImageScrollView, urls: [URL]) {}
     func scrollViewRequestToggleQuickGrid(_ scrollView: ImageScrollView) {}
@@ -953,7 +957,7 @@ class ImageScrollView: NSScrollView {
         // 不跟隨 Natural Scrolling 反轉（主流慣例：scroll up = zoom in）
         let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.003 : 0.08
         let newMag = magnification + delta * sensitivity
-        let effectiveMin = effectiveMinMagnification()
+        let effectiveMin = max(minMagnification, scrollDelegate?.minimumMagnification(for: self) ?? effectiveMinMagnification())
         let clamped = max(effectiveMin, min(maxMagnification, newMag))
 
         // 以可預測的視窗中心為 anchor（避免 contentInsets 暫時被重置時漂移到左側）
@@ -1020,7 +1024,7 @@ class ImageScrollView: NSScrollView {
     override func magnify(with event: NSEvent) {
         let point = zoomAnchorPoint()
         let newMag = magnification + event.magnification
-        let effectiveMin = effectiveMinMagnification()
+        let effectiveMin = max(minMagnification, scrollDelegate?.minimumMagnification(for: self) ?? effectiveMinMagnification())
         setMagnificationPreservingInsets(
             max(effectiveMin, min(maxMagnification, newMag)),
             centeredAt: point
@@ -1064,20 +1068,15 @@ class ImageScrollView: NSScrollView {
         return NSPoint(x: bounds.midX, y: bounds.midY)
     }
 
-    /// 根據圖片原始尺寸與視窗最小尺寸動態計算最小 magnification。
-    /// 當 displayedSize < minWindowContent 時 resizeToFitImage 不再縮小視窗，
-    /// 但 magnification 會繼續降導致不同步漂移。此方法確保 magnification 不會低於該臨界值。
+    /// 根據 documentView 的基礎 layout 尺寸與視窗最小內容尺寸計算最小 magnification。
+    /// NSScrollView magnification 會改變 viewport 的座標縮放，不會重寫 documentView 的 base frame。
     func effectiveMinMagnification() -> CGFloat {
         if continuousScrollEnabled { return 1.0 }
         guard let docView = documentView else { return minMagnification }
-        // documentView.frame 是已縮放尺寸，除以 magnification 取得原始圖片尺寸
-        let currentMag = magnification
-        guard currentMag > 0 else { return minMagnification }
-        let originalWidth = docView.frame.width / currentMag
-        let originalHeight = docView.frame.height / currentMag
-        guard originalWidth > 0, originalHeight > 0 else { return minMagnification }
-        let minMagW = Constants.minWindowContentWidth / originalWidth
-        let minMagH = Constants.minWindowContentHeight / originalHeight
+        let baseSize = docView.frame.size
+        guard baseSize.width > 0, baseSize.height > 0 else { return minMagnification }
+        let minMagW = Constants.minWindowContentWidth / baseSize.width
+        let minMagH = Constants.minWindowContentHeight / baseSize.height
         return max(minMagnification, max(minMagW, minMagH))
     }
 

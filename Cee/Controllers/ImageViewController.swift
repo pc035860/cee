@@ -694,9 +694,30 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         applyCenteringInsetsIfNeeded(reason: "setMagnificationCentered")
     }
 
-    /// Delegates to scrollView's unified effectiveMinMagnification().
+    private func effectiveWindowResizeMinMagnification() -> CGFloat {
+        guard shouldResizeWindowToMatchImage(),
+              !settings.continuousScrollEnabled,
+              let imageSize = currentDocumentSize,
+              imageSize.width > 0,
+              imageSize.height > 0 else {
+            return Constants.minMagnification
+        }
+
+        let fallbackMinContentSize = NSSize(
+            width: Constants.minWindowContentWidth,
+            height: Constants.minWindowContentHeight
+        )
+        let minContentSize = (view.window?.windowController as? ImageWindowController)?
+            .effectiveMinimumContentSize() ?? fallbackMinContentSize
+        let minViewportHeight = max(minContentSize.height - effectiveStatusBarHeight, 0)
+        let minMagW = minContentSize.width / imageSize.width
+        let minMagH = minViewportHeight / imageSize.height
+        return max(Constants.minMagnification, max(minMagW, minMagH))
+    }
+
+    /// Delegates to scrollView's baseline minimum and upgrades it with the real window/content minimum.
     private func effectiveMinMagnification() -> CGFloat {
-        scrollView.effectiveMinMagnification()
+        max(scrollView.effectiveMinMagnification(), effectiveWindowResizeMinMagnification())
     }
 
     private struct ScrollRange {
@@ -1870,6 +1891,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 extension ImageViewController: ImageScrollViewDelegate {
     func scrollViewDidReachBottom(_ scrollView: ImageScrollView) { goToNextImage() }
     func scrollViewDidReachTop(_ scrollView: ImageScrollView) { goToPreviousImage() }
+    func minimumMagnification(for scrollView: ImageScrollView) -> CGFloat { effectiveMinMagnification() }
 
     func scrollViewMagnificationDidChange(
         _ scrollView: ImageScrollView,
