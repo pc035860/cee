@@ -6,8 +6,22 @@ enum ZoomStatusMode: Equatable {
     case manual(percent: Int, windowAuto: Bool)
 }
 
+enum ZoomStatusStyle {
+    case full
+    case compactPercentOnly
+}
+
 enum ZoomStatusFormatter {
-    static func text(for mode: ZoomStatusMode) -> String {
+    static func text(for mode: ZoomStatusMode, style: ZoomStatusStyle = .full) -> String {
+        switch style {
+        case .full:
+            return fullText(for: mode)
+        case .compactPercentOnly:
+            return compactText(for: mode)
+        }
+    }
+
+    private static func fullText(for mode: ZoomStatusMode) -> String {
         let baseText: String
         let windowAuto: Bool
 
@@ -25,9 +39,26 @@ enum ZoomStatusFormatter {
         guard windowAuto else { return baseText }
         return baseText + " · " + String(localized: "status.windowAuto")
     }
+
+    private static func compactText(for mode: ZoomStatusMode) -> String {
+        switch mode {
+        case .fit:
+            return String(localized: "status.fit")
+        case .actual:
+            return "100%"
+        case .manual(let percent, _):
+            return "\(percent)%"
+        }
+    }
 }
 
 final class StatusBarView: NSVisualEffectView {
+
+    enum DisplayMode {
+        case regular
+        case compact
+        case minimal
+    }
 
     // MARK: - UI Elements
 
@@ -35,6 +66,21 @@ final class StatusBarView: NSVisualEffectView {
     private let sizeLabel = NSTextField(labelWithString: "")
     private let indexLabel = NSTextField(labelWithString: "")
     private let zoomLabel = NSTextField(labelWithString: "")
+
+    // MARK: - State
+
+    private var currentZoomMode: ZoomStatusMode?
+    private(set) var currentDisplayMode: DisplayMode = .regular
+
+    // MARK: - Constraints
+
+    private var zoomLabelConstraints: [NSLayoutConstraint] = []
+    private var minimalIndexTrailingConstraint: NSLayoutConstraint!
+
+    private static let contentPadding: CGFloat = 8
+    private static let labelGap: CGFloat = 4
+    private static let zoomGap: CGFloat = 8
+    private static let hysteresis: CGFloat = 20
 
     // MARK: - Initialization
 
@@ -51,17 +97,14 @@ final class StatusBarView: NSVisualEffectView {
     }
 
     private func setupVisualEffect() {
-        // 設定毛玻璃效果，與標題列一致
         material = .titlebar
         blendingMode = .withinWindow
         state = .active
     }
 
     private func setupUI() {
-        // 頂部分隔線（NSBox 原生支援 dynamic color，深淺模式自動切換）
         separator.boxType = .separator
 
-        // 設定文字樣式
         [sizeLabel, indexLabel, zoomLabel].forEach { label in
             label.font = .systemFont(ofSize: 11)
             label.textColor = NSColor.secondaryLabelColor
@@ -69,43 +112,114 @@ final class StatusBarView: NSVisualEffectView {
             label.lineBreakMode = .byClipping
         }
 
-        // 加入 subviews
         addSubview(separator)
         addSubview(sizeLabel)
         addSubview(indexLabel)
         addSubview(zoomLabel)
 
-        // Auto Layout
         separator.translatesAutoresizingMaskIntoConstraints = false
         sizeLabel.translatesAutoresizingMaskIntoConstraints = false
         indexLabel.translatesAutoresizingMaskIntoConstraints = false
         zoomLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // zoomLabel 靠右側（固定最小寬度，不截斷）
-        zoomLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        zoomLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let indexToZoom = indexLabel.trailingAnchor.constraint(
+            equalTo: zoomLabel.leadingAnchor, constant: -Self.zoomGap)
+        indexToZoom.priority = .defaultHigh
+
+        let zoomToTrailing = zoomLabel.trailingAnchor.constraint(
+            equalTo: trailingAnchor, constant: -Self.contentPadding)
+        zoomToTrailing.priority = .defaultHigh
+
+        zoomLabelConstraints = [indexToZoom, zoomToTrailing]
+
+        minimalIndexTrailingConstraint = indexLabel.trailingAnchor.constraint(
+            lessThanOrEqualTo: trailingAnchor, constant: -Self.contentPadding)
+        minimalIndexTrailingConstraint.isActive = false
 
         NSLayoutConstraint.activate([
-            // 分隔線：頂部全寬
             separator.topAnchor.constraint(equalTo: topAnchor),
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: trailingAnchor),
 
-            // 尺寸標籤（置中）
+            sizeLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.contentPadding),
             sizeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            sizeLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
 
-            // 縮放標籤（最右側）
-            zoomLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            zoomLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            zoomLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 36),
+            sizeLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: indexLabel.leadingAnchor, constant: -Self.labelGap),
 
-            // 索引標籤（zoomLabel 左側，保持間距）
             indexLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            indexLabel.trailingAnchor.constraint(equalTo: zoomLabel.leadingAnchor, constant: -12),
 
-            // sizeLabel 不能超出 indexLabel 左邊
-            sizeLabel.trailingAnchor.constraint(lessThanOrEqualTo: indexLabel.leadingAnchor, constant: -8),
-        ])
+            zoomLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ] + zoomLabelConstraints)
+    }
+
+    // MARK: - Layout
+
+    override func layout() {
+        super.layout()
+        let newMode = computeDisplayMode(for: bounds.width)
+        guard newMode != currentDisplayMode else { return }
+        applyDisplayMode(newMode)
+    }
+
+    private func computeDisplayMode(for width: CGFloat) -> DisplayMode {
+        guard let zoomMode = currentZoomMode else { return .regular }
+
+        let font = zoomLabel.font ?? .systemFont(ofSize: 11)
+        let coreWidth = Self.contentPadding
+            + sizeLabel.intrinsicContentSize.width
+            + Self.labelGap
+            + indexLabel.intrinsicContentSize.width
+            + Self.zoomGap
+
+        let fullText = ZoomStatusFormatter.text(for: zoomMode, style: .full)
+        let regularThreshold = coreWidth + textWidth(fullText, font: font) + Self.contentPadding
+
+        let compactText = ZoomStatusFormatter.text(for: zoomMode, style: .compactPercentOnly)
+        let compactThreshold = coreWidth + textWidth(compactText, font: font) + Self.contentPadding
+
+        switch currentDisplayMode {
+        case .regular:
+            if width < compactThreshold { return .minimal }
+            if width < regularThreshold { return .compact }
+            return .regular
+        case .compact:
+            if width < compactThreshold { return .minimal }
+            if width >= regularThreshold + Self.hysteresis { return .regular }
+            return .compact
+        case .minimal:
+            if width >= regularThreshold + Self.hysteresis { return .regular }
+            if width >= compactThreshold + Self.hysteresis { return .compact }
+            return .minimal
+        }
+    }
+
+    private func applyDisplayMode(_ mode: DisplayMode) {
+        currentDisplayMode = mode
+
+        switch mode {
+        case .regular, .compact:
+            zoomLabel.isHidden = false
+            NSLayoutConstraint.deactivate([minimalIndexTrailingConstraint])
+            NSLayoutConstraint.activate(zoomLabelConstraints)
+            applyZoomText()
+        case .minimal:
+            zoomLabel.isHidden = true
+            NSLayoutConstraint.deactivate(zoomLabelConstraints)
+            NSLayoutConstraint.activate([minimalIndexTrailingConstraint])
+        }
+    }
+
+    private func applyZoomText() {
+        guard let zoomMode = currentZoomMode else { return }
+        let style: ZoomStatusStyle = currentDisplayMode == .compact ? .compactPercentOnly : .full
+        zoomLabel.stringValue = ZoomStatusFormatter.text(for: zoomMode, style: style)
+    }
+
+    private func textWidth(_ text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
     // MARK: - Update Methods
@@ -113,23 +227,26 @@ final class StatusBarView: NSVisualEffectView {
     func update(index: Int, total: Int, zoomMode: ZoomStatusMode, imageSize: NSSize,
                 indexOverride: String? = nil) {
         indexLabel.stringValue = indexOverride ?? "\(index) / \(total)"
-        zoomLabel.stringValue = ZoomStatusFormatter.text(for: zoomMode)
+        currentZoomMode = zoomMode
         sizeLabel.stringValue = "\(Int(imageSize.width)) × \(Int(imageSize.height))"
+        applyZoomText()
+        needsLayout = true
     }
 
     func updateZoom(_ zoomMode: ZoomStatusMode) {
-        zoomLabel.stringValue = ZoomStatusFormatter.text(for: zoomMode)
+        currentZoomMode = zoomMode
+        applyZoomText()
+        needsLayout = true
     }
 
-    /// 僅更新索引
     func updateIndex(current: Int, total: Int) {
         indexLabel.stringValue = "\(current) / \(total)"
     }
 
-    /// 清空所有顯示內容（用於 empty state）
     func clear() {
         sizeLabel.stringValue = ""
         indexLabel.stringValue = ""
         zoomLabel.stringValue = ""
+        currentZoomMode = nil
     }
 }

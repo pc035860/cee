@@ -22,7 +22,28 @@ final class ImageViewControllerTests: XCTestCase {
         )
     }
 
-    func testStatusBarManualZoomTextExpandsFittingWidth() {
+    func testZoomStatusFormatter_compactPercentOnly_manual() {
+        XCTAssertEqual(
+            ZoomStatusFormatter.text(for: .manual(percent: 89, windowAuto: true), style: .compactPercentOnly),
+            "89%"
+        )
+    }
+
+    func testZoomStatusFormatter_compactPercentOnly_fit() {
+        XCTAssertEqual(
+            ZoomStatusFormatter.text(for: .fit, style: .compactPercentOnly),
+            String(localized: "status.fit")
+        )
+    }
+
+    func testZoomStatusFormatter_compactPercentOnly_actual() {
+        XCTAssertEqual(
+            ZoomStatusFormatter.text(for: .actual(windowAuto: true), style: .compactPercentOnly),
+            "100%"
+        )
+    }
+
+    func testStatusBarFittingWidthStaysCompact() {
         let statusBar = StatusBarView(frame: NSRect(x: 0, y: 0, width: 10, height: Constants.statusBarHeight))
 
         statusBar.update(
@@ -31,8 +52,38 @@ final class ImageViewControllerTests: XCTestCase {
             zoomMode: .manual(percent: 100, windowAuto: true),
             imageSize: NSSize(width: 4000, height: 3000)
         )
+        statusBar.layoutSubtreeIfNeeded()
 
-        XCTAssertGreaterThan(statusBar.fittingSize.width, 500)
+        XCTAssertLessThan(statusBar.fittingSize.width, 300)
+    }
+
+    func testStatusBarDisplayMode_regularAtWideWidth() {
+        let statusBar = StatusBarView(frame: NSRect(x: 0, y: 0, width: 600, height: Constants.statusBarHeight))
+        statusBar.update(
+            index: 1,
+            total: 100,
+            zoomMode: .manual(percent: 100, windowAuto: true),
+            imageSize: NSSize(width: 800, height: 600)
+        )
+        statusBar.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(statusBar.currentDisplayMode, .regular)
+    }
+
+    func testStatusBarDisplayMode_minimalAtVeryNarrowWidth() {
+        let statusBar = StatusBarView(frame: NSRect(x: 0, y: 0, width: 600, height: Constants.statusBarHeight))
+        statusBar.update(
+            index: 1,
+            total: 100,
+            zoomMode: .manual(percent: 100, windowAuto: true),
+            imageSize: NSSize(width: 800, height: 600)
+        )
+        statusBar.layoutSubtreeIfNeeded()
+
+        statusBar.frame.size.width = 120
+        statusBar.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(statusBar.currentDisplayMode, .minimal)
     }
 
     func testScrollViewEffectiveMinMagnificationUsesDocumentBaseSize() {
