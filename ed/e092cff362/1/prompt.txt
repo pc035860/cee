@@ -1,0 +1,7 @@
+Add to TaskList:\
+- run simplify skill on last commit\
+- run review-loop skill (codex) on last commit\
+- run patch-claudemd skill\
+- run commit skill (with `--auto`)
+
+start
