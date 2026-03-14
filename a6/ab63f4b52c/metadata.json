@@ -3,7 +3,7 @@
   "checkpoint_id": "a6ab63f4b52c",
   "strategy": "manual-commit",
   "branch": "feat/narrow-window-friendly-status-bar",
-  "checkpoints_count": 0,
+  "checkpoints_count": 1,
   "files_touched": [
     "Cee/Views/StatusBarView.swift"
   ],
@@ -13,13 +13,19 @@
       "transcript": "/a6/ab63f4b52c/0/full.jsonl",
       "content_hash": "/a6/ab63f4b52c/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/a6/ab63f4b52c/1/metadata.json",
+      "transcript": "/a6/ab63f4b52c/1/full.jsonl",
+      "content_hash": "/a6/ab63f4b52c/1/content_hash.txt",
+      "prompt": "/a6/ab63f4b52c/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 0,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 0,
-    "output_tokens": 0,
-    "api_call_count": 0
+    "input_tokens": 2389,
+    "cache_creation_tokens": 166757,
+    "cache_read_tokens": 7079475,
+    "output_tokens": 50734,
+    "api_call_count": 81
   }
 }
