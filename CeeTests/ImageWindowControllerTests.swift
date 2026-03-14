@@ -48,6 +48,16 @@ final class ImageWindowControllerTests: XCTestCase {
         XCTAssertEqual(expanded.minY, visibleFrame.minY)
     }
 
+    func testEffectiveMinimumContentSize_usesConfiguredMinWhenLayoutFittingIsSmaller() {
+        let effective = ImageWindowController.effectiveMinimumContentSize(
+            configuredMinContentSize: NSSize(width: 300, height: 300),
+            layoutMinContentSize: NSSize(width: 200, height: 22)
+        )
+
+        XCTAssertEqual(effective.width, 300)
+        XCTAssertEqual(effective.height, 300)
+    }
+
     func testExpandedHeightFrame_clampsWidthToVisibleFrameWhenWindowIsTooWide() {
         let frame = NSRect(x: 20, y: 200, width: 1800, height: 500)
         let visibleFrame = NSRect(x: 80, y: 40, width: 1440, height: 900)
