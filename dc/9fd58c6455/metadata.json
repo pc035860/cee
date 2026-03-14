@@ -5,7 +5,11 @@
   "branch": "feat/refine-fit-state-ux",
   "checkpoints_count": 1,
   "files_touched": [
-    "Cee/Views/ImageScrollView.swift"
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Controllers/ImageWindowController.swift",
+    "Cee/Views/ImageScrollView.swift",
+    "CeeTests/ImageViewControllerTests.swift",
+    "CeeTests/ImageWindowControllerTests.swift"
   ],
   "sessions": [
     {
@@ -13,13 +17,19 @@
       "transcript": "/dc/9fd58c6455/0/full.jsonl",
       "content_hash": "/dc/9fd58c6455/0/content_hash.txt",
       "prompt": "/dc/9fd58c6455/0/prompt.txt"
+    },
+    {
+      "metadata": "/dc/9fd58c6455/1/metadata.json",
+      "transcript": "/dc/9fd58c6455/1/full.jsonl",
+      "content_hash": "/dc/9fd58c6455/1/content_hash.txt",
+      "prompt": "/dc/9fd58c6455/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 23,
-    "cache_creation_tokens": 63825,
-    "cache_read_tokens": 1278179,
-    "output_tokens": 31112,
-    "api_call_count": 19
+    "input_tokens": 49,
+    "cache_creation_tokens": 100926,
+    "cache_read_tokens": 2093549,
+    "output_tokens": 34834,
+    "api_call_count": 39
   }
 }

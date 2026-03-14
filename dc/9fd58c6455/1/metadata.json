@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "dc9fd58c6455",
+  "session_id": "23faee76-cb6a-4802-970f-e62d9553b5d0",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-14T04:07:25.809433Z",
+  "branch": "feat/refine-fit-state-ux",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "Cee/Controllers/ImageViewController.swift",
+    "Cee/Controllers/ImageWindowController.swift",
+    "Cee/Views/ImageScrollView.swift",
+    "CeeTests/ImageViewControllerTests.swift",
+    "CeeTests/ImageWindowControllerTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "b57aa20205ab",
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 37101,
+    "cache_read_tokens": 815370,
+    "output_tokens": 3722,
+    "api_call_count": 20
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-14T04:07:25.787774Z",
+    "agent_lines": 0,
+    "human_added": 80,
+    "human_modified": 36,
+    "human_removed": 0,
+    "total_committed": 84,
+    "agent_percentage": 0
+  }
+}
