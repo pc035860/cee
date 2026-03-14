@@ -1,0 +1,9 @@
+/doc-update README.md
+
+---
+
+驗證應該要跑 subagent 吧？
+
+---
+
+也要更新 zh 版
