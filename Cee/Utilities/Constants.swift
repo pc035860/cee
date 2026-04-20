@@ -10,6 +10,8 @@ enum Constants {
         width: minWindowContentWidth,
         height: minWindowContentHeight
     )
+
+    static let continuousScrollNewWindowContentWidth: CGFloat = 850
     static let cacheRadius: Int = 2                     // 預載當前 ±2 張
     static let prefetchDirectionExtraCount: Int = 5     // 方向性 prefetch 額外預載數
 

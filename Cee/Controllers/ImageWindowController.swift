@@ -51,7 +51,16 @@ class ImageWindowController: NSWindowController {
 
     /// 建立新視窗（內部方法）
     private static func createWindow(with folder: ImageFolder?) {
-        let windowSize = savedOrDefaultWindowSize()
+        let settings = ViewerSettings.load()
+        let windowSize: NSSize
+        if settings.continuousScrollEnabled {
+            windowSize = NSSize(
+                width: Constants.continuousScrollNewWindowContentWidth,
+                height: Constants.minWindowContentHeight
+            )
+        } else {
+            windowSize = savedOrDefaultWindowSize()
+        }
         let viewController = ImageViewController(folder: folder)
 
         let window = NSWindow(
@@ -68,6 +77,24 @@ class ImageWindowController: NSWindowController {
         window.contentViewController = viewController
         window.center()
         window.setAccessibilityIdentifier("imageWindow")
+
+        if settings.continuousScrollEnabled, let screen = NSScreen.main {
+            let visibleFrame = screen.visibleFrame
+            let chrome = verticalChromeHeight(for: window, contentWidth: Constants.continuousScrollNewWindowContentWidth)
+            let contentH = Self.continuousScrollContentHeightForLaunch(
+                visibleFrameHeight: visibleFrame.height,
+                verticalChrome: chrome
+            )
+            let contentSize = NSSize(width: Constants.continuousScrollNewWindowContentWidth, height: contentH)
+            let outer = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
+            let candidateFrame = NSRect(origin: window.frame.origin, size: outer.size)
+            let targetFrame = expandedHeightFrame(from: candidateFrame, within: visibleFrame)
+            let savedMinSize = window.minSize
+            if targetFrame.height < savedMinSize.height {
+                window.minSize = NSSize(width: savedMinSize.width, height: targetFrame.height)
+            }
+            window.setFrame(targetFrame, display: true, animate: false)
+        }
 
         let controller = ImageWindowController(window: window)
         windows.append(controller)  // 加入 collection
@@ -98,6 +125,17 @@ class ImageWindowController: NSWindowController {
             width: screen.visibleFrame.width * ratio,
             height: screen.visibleFrame.height * ratio
         )
+    }
+
+    private static func verticalChromeHeight(for window: NSWindow, contentWidth: CGFloat) -> CGFloat {
+        let probeH: CGFloat = 400
+        let probe = NSRect(x: 0, y: 0, width: contentWidth, height: probeH)
+        let frame = window.frameRect(forContentRect: probe)
+        return frame.height - probeH
+    }
+
+    static func continuousScrollContentHeightForLaunch(visibleFrameHeight: CGFloat, verticalChrome: CGFloat) -> CGFloat {
+        max(Constants.minWindowContentHeight, visibleFrameHeight - verticalChrome)
     }
 
     // MARK: - Phase 4: Resize Observer
@@ -181,6 +219,7 @@ class ImageWindowController: NSWindowController {
 
     private func ensureUsableWindowSize() {
         guard let window else { return }
+        guard !ViewerSettings.load().continuousScrollEnabled else { return }
         DispatchQueue.main.async {
             let size = window.contentView?.bounds.size ?? window.frame.size
             let minContentSize = self.effectiveMinimumContentSize()

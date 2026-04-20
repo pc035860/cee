@@ -69,4 +69,28 @@ final class ImageWindowControllerTests: XCTestCase {
         XCTAssertEqual(expanded.width, visibleFrame.width)
         XCTAssertEqual(expanded.height, visibleFrame.height)
     }
+
+    func testContinuousScrollContentHeightForLaunch_matchesVisibleFrameMinusChrome() {
+        let visibleFrameHeight: CGFloat = 900
+        let verticalChrome: CGFloat = 28
+
+        let contentH = ImageWindowController.continuousScrollContentHeightForLaunch(
+            visibleFrameHeight: visibleFrameHeight,
+            verticalChrome: verticalChrome
+        )
+
+        XCTAssertEqual(contentH, visibleFrameHeight - verticalChrome)
+    }
+
+    func testContinuousScrollContentHeightForLaunch_clampsToMinimumWhenVisibleAreaTooShort() {
+        let visibleFrameHeight: CGFloat = 320
+        let verticalChrome: CGFloat = 28
+
+        let contentH = ImageWindowController.continuousScrollContentHeightForLaunch(
+            visibleFrameHeight: visibleFrameHeight,
+            verticalChrome: verticalChrome
+        )
+
+        XCTAssertEqual(contentH, Constants.minWindowContentHeight)
+    }
 }
