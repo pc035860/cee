@@ -1254,15 +1254,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
             // CGPDFDocument pages are 1-based
             guard let page = doc.page(at: pageIndex + 1) else { continue }
             let cropBox = page.getBoxRect(.cropBox)
-            let rotation = page.rotationAngle
-
-            let pointSize: CGSize
-            if rotation == 90 || rotation == 270 {
-                pointSize = CGSize(width: cropBox.height, height: cropBox.width)
-            } else {
-                pointSize = cropBox.size
-            }
-            imageSizeCache[index] = pointSize
+            let rotation = Int(page.rotationAngle)
+            imageSizeCache[index] = PDFDisplayPointSize.size(cropBox: cropBox, rotation: rotation)
         }
     }
 

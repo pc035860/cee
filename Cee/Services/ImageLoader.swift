@@ -2,6 +2,15 @@ import AppKit
 import ImageIO
 import PDFKit
 
+enum PDFDisplayPointSize {
+    static func size(cropBox: CGRect, rotation: Int) -> CGSize {
+        if rotation == 90 || rotation == 270 {
+            return CGSize(width: cropBox.height, height: cropBox.width)
+        }
+        return cropBox.size
+    }
+}
+
 /// 方向性 prefetch：往翻頁方向多預載
 enum PrefetchDirection {
     case none
@@ -34,7 +43,7 @@ actor ImageLoader {
     private var prefetchTasks: [PDFCacheKey: Task<Void, Never>] = [:]
     private var imagePrefetchTasks: [URL: Task<Void, Never>] = [:]
 
-    /// PDF 頁面快取的 key（固定以 2x Retina 渲染，無需區分 scale）
+    /// PDF 頁面快取的 key（依頁面尺寸可能低於 2x，無需區分 scale）
     private struct PDFCacheKey: Hashable {
         let url: URL
         let pageIndex: Int
@@ -91,11 +100,26 @@ actor ImageLoader {
         return image
     }
 
-    /// 固定使用 2x Retina scale 渲染（幾乎所有 Mac 都是 Retina，非 Retina 顯示 2x 無害）
+    /// 目標 2x Retina；若 2x 會使像素長邊超過上限則降 scale
     private static let renderScale: CGFloat = 2.0
 
+    private func pdfPageDisplayPointSize(url: URL, pageIndex: Int) -> NSSize? {
+        let doc: PDFDocument
+        if let cached = pdfDocumentCache[url] {
+            doc = cached
+        } else {
+            guard let newDoc = PDFDocument(url: url) else { return nil }
+            pdfDocumentCache[url] = newDoc
+            doc = newDoc
+        }
+        guard let page = doc.page(at: pageIndex) else { return nil }
+        let b = page.bounds(for: .cropBox)
+        let sz = PDFDisplayPointSize.size(cropBox: b, rotation: page.rotation)
+        guard sz.width > 0, sz.height > 0 else { return nil }
+        return NSSize(width: sz.width, height: sz.height)
+    }
+
     private func renderPDFPage(url: URL, pageIndex: Int) -> NSImage? {
-        let backingScale = Self.renderScale
         // 早期取消檢查
         guard !Task.isCancelled else { return nil }
 
@@ -114,33 +138,36 @@ actor ImageLoader {
 
         guard let page = doc.page(at: pageIndex) else { return nil }
 
-        // 2. 取得頁面尺寸（考慮旋轉後的實際顯示尺寸）
         let pageBounds = page.bounds(for: .cropBox)
         let rotation = page.rotation
+        let pointSize = PDFDisplayPointSize.size(cropBox: pageBounds, rotation: rotation)
 
-        // 計算旋轉後的實際顯示尺寸（points）
-        let pointSize: CGSize
-        if rotation == 90 || rotation == 270 {
-            // 旋轉 90 或 270 度時，寬高互換
-            pointSize = CGSize(width: pageBounds.height, height: pageBounds.width)
+        let pointArea = pointSize.width * pointSize.height
+        guard pointArea > 0 else { return nil }
+
+        let longEdgePt = max(pointSize.width, pointSize.height)
+        let naturalLongEdgePx = longEdgePt * Self.renderScale
+        let maxLongPx = Constants.maxPDFRenderLongEdgePixels
+        let effectiveScale: CGFloat
+        if naturalLongEdgePx <= maxLongPx {
+            effectiveScale = Self.renderScale
         } else {
-            pointSize = pageBounds.size
+            effectiveScale = maxLongPx / longEdgePt
         }
 
-        // 3. 建立 NSBitmapImageRep 以支援 Retina 縮放
+        // 3. 建立 NSBitmapImageRep 以支援 Retina 縮放（必要時降解析度）
         let pixelSize = CGSize(
-            width: pointSize.width * backingScale,
-            height: pointSize.height * backingScale
+            width: pointSize.width * effectiveScale,
+            height: pointSize.height * effectiveScale
         )
 
-        // 像素上限保護：超過 1 億像素（≈400MB RGBA）時跳過，防止極大頁面 OOM
-        let totalPixels = pixelSize.width * pixelSize.height
-        guard totalPixels > 0, totalPixels <= 100_000_000 else { return nil }
+        let pixelsWide = max(1, Int(ceil(Double(pixelSize.width))))
+        let pixelsHigh = max(1, Int(ceil(Double(pixelSize.height))))
 
         guard let bitmapRep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
-            pixelsWide: Int(pixelSize.width),
-            pixelsHigh: Int(pixelSize.height),
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
             bitsPerSample: 8,
             samplesPerPixel: 4,
             hasAlpha: true,
@@ -162,7 +189,7 @@ actor ImageLoader {
         let cgCtx = ctx.cgContext
 
         // 6. 套用 scale 變換以配合 pixel 尺寸
-        cgCtx.scaleBy(x: backingScale, y: backingScale)
+        cgCtx.scaleBy(x: effectiveScale, y: effectiveScale)
 
         // 7. 填白色背景
         cgCtx.setFillColor(CGColor.white)
@@ -176,8 +203,7 @@ actor ImageLoader {
             cgCtx.translateBy(x: pointSize.width / 2, y: pointSize.height / 2)
             // 旋轉（rotation 是度數，需轉弧度；負號因為 CG 座標系 Y 軸向上）
             cgCtx.rotate(by: -CGFloat(rotation) * .pi / 180)
-            // 平移回去（基於原始 pageBounds）
-            cgCtx.translateBy(x: -pageBounds.width / 2, y: -pageBounds.height / 2)
+            cgCtx.translateBy(x: -pageBounds.midX, y: -pageBounds.midY)
         }
 
         // 9. 繪製 PDF 頁面
@@ -209,11 +235,18 @@ actor ImageLoader {
         return CGSize(width: w, height: h)
     }
 
+    /// 讀取項目顯示尺寸（不解碼點陣）：一般圖片用 metadata；PDF 用 cropBox 與 rotation（與 render 一致）
+    func getImageSize(for item: ImageItem) async -> NSSize? {
+        if let pageIndex = item.pdfPageIndex {
+            return pdfPageDisplayPointSize(url: item.url, pageIndex: pageIndex)
+        }
+        return await getImageSize(for: item.url)
+    }
+
     /// 讀取圖片尺寸（不解碼完整圖片）用於 continuous scroll 模式
     /// - Parameter url: 圖片 URL
     /// - Returns: 圖片尺寸，已處理 EXIF orientation 5-8 的交換
     func getImageSize(for url: URL) async -> NSSize? {
-        // PDF: 返回 nil（由其他邏輯處理）
         guard !Self.isPDFURL(url) else { return nil }
 
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),

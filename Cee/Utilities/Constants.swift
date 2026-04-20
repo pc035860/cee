@@ -12,6 +12,9 @@ enum Constants {
     )
     static let cacheRadius: Int = 2                     // 預載當前 ±2 張
     static let prefetchDirectionExtraCount: Int = 5     // 方向性 prefetch 額外預載數
+
+    /// PDF 頁面光柵化時，像素長邊上限（避免超大 crop 拖慢換頁／記憶體）
+    static let maxPDFRenderLongEdgePixels: CGFloat = 4000
     static let optionKeyJumpAmount: Int = 10            // Option+方向鍵一次跳躍張數
     static let fullResLoadDelayAfterNav: TimeInterval = 0.1  // 導航停止後延遲載入全解析度
     static let scrollEdgeThreshold: CGFloat = 2.0       // 捲動邊界容差 px

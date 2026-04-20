@@ -184,7 +184,7 @@ class ContinuousScrollContentView: NSView {
             let sizes = await withTaskGroup(of: (Int, NSSize).self) { group in
                 for (index, item) in capturedFolder.images.enumerated() {
                     group.addTask {
-                        if let size = await loader.getImageSize(for: item.url) {
+                        if let size = await loader.getImageSize(for: item) {
                             return (index, size)
                         } else {
                             // 無法取得尺寸時使用預設比例
