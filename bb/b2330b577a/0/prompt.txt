@@ -1,0 +1,97 @@
+我有一份 pdf 讀出來都是黑的: '/Volumes/MX500 4TB/others/dlsite/260420/【繁體中文版】棒球少女/RJ01563247.pdf'
+
+剛剛簡單調查發現是:
+```
+## 診斷結果
+
+嗯呢，零件超載了~
+
+**原因**：`Cee/Services/ImageLoader.swift:138` 的像素守衛把這份 PDF 整份擋掉了。
+
+| 頁   | cropBox (pt) | ×2 backing = 像素           | 結果            |
+| ---- | ------------ | --------------------------- | --------------- |
+| 0    | 8642 × 6071  | 17284 × 12142 ≈ **2.10 億** | 超過 1 億 → nil |
+| 1–34 | 4300 × 6071  | 8600 × 12142 ≈ **1.04 億**  | 超過 1 億 → nil |
+
+35 頁全部超過 `100_000_000` 像素上限，`renderPDFPage` 每頁都 `return nil`。`loadPDFPage` 沒東西回傳 → 顯示層拿不到 image → 看起來全黑。
+
+（這份 PDF 的 point size 其實是像素量級，通常漫畫單頁才 500×700 pt。做這份 PDF 的人直接把 8642×6071 的大圖塞進 mediaBox。）
+
+**修法選擇**（MVP 考量）：
+
+1. **動態降 scale**（推薦）~
+   當 `pointSize * 2` 超過上限時，改用 `scale = sqrt(100M / pointArea)`，而不是直接回 nil。這樣超大頁面還是會顯示，只是解析度被壓。
+2. 純放寬上限到 300M（≈1.2 GB RGBA）。簡單但遇到更瘋的檔案還會爆。
+3. 組合：降 scale 為主，仍無法滿足時才回 nil。
+
+要我改嗎？傾向方案 1，動幾行就好。
+```
+
+走方案 1 ，規劃一下
+
+---
+
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+---
+
+幫我打開 app 我來手動測試
+
+---
+
+我測試切換每頁都要等很久圖片才會更新，是因為圖片太大嗎
+
+---
+
+如果我們完全不限制圖片的大小，換頁面的速度會變快嗎？
+
+---
+
+那碰到這種超大 PDF 最務實的方法，是不是我應該先把 PDF 拆成圖片檔，然後再分別把圖片檔都跑完一輪 scale down，然後再來用看圖軟體看？
+
+---
+
+說現在的做法是頂滿 1 億像素的話，大概解析度是多少乘多少？
+
+---
+
+你可以試改一個方案，就是在這種情況下，長邊最大就抓 4000px
+
+---
+
+幫我打開 App
+
+---
+
+測試 OK
+
+---
+
+/review-loop gemini
+
+---
+
+/review-loop cursor
+
+---
+
+分析 CP 值與優先級，給出綜合評分
+
+---
+
+pdf + 連續捲動可能常用
+
+---
+
+你幫我決定吧  後續自動完成 review-loop
+
+---
+
+打開 app
+
+---
+
+我實測沒問題了
+continue review loop
