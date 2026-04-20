@@ -1,0 +1,31 @@
+如果打開 App 的時候已經處於「連續捲動模式」，我希望一開始的視窗大小直接設為：
+1. 寬度：850px
+2. 高度：與螢幕同高
+
+螢幕同高的效果，就類似於我們按下「對齊螢幕高度」選項後，把視窗拉滿螢幕高度的那種效果。
+
+整理一下，跟我討論下一步動作
+
+---
+
+1. 每次 createWindow 吧
+2. content
+3. A
+
+---
+
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+---
+
+打開 app
+
+---
+
+手動測試 OK
+
+---
+
+/review-loop codex
