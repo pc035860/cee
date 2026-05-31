@@ -22,6 +22,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private var postMagnifyCenteringTask: DispatchWorkItem?
     private var settingsSaveTask: DispatchWorkItem?
     private var isApplyingAutoFitFromWindowResize = false
+    private var manualZoomInheritsFitWindowResize = false
     private let resizeAfterZoomDelay: TimeInterval = 0.016  // ≈1 frame @60fps
     private var activeMagnifyAnchor: NSPoint?
     private var isZooming = false
@@ -330,6 +331,10 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     private func enterManualZoom() {
         let wasAutoFit = isAutoFitActive
         settings.isManualZoom = true
+        if wasAutoFit {
+            manualZoomInheritsFitWindowResize = true
+        }
+        settings.alwaysFitOnOpen = false
 
         if wasAutoFit {
             showManualZoomHintIfNeeded()
@@ -427,7 +432,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func shouldResizeWindowToMatchImage() -> Bool {
-        settings.resizeWindowAutomatically || settings.alwaysFitOnOpen
+        settings.resizeWindowAutomatically || settings.alwaysFitOnOpen || manualZoomInheritsFitWindowResize
     }
 
     // MARK: - Image Loading
@@ -1116,6 +1121,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
 
     @objc func fitOnScreen(_ sender: Any? = nil) {
         settings.isManualZoom = false
+        manualZoomInheritsFitWindowResize = false
 
         if settings.continuousScrollEnabled {
             setMagnificationCentered(1.0)
@@ -1160,6 +1166,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.alwaysFitOnOpen.toggle()
         if settings.alwaysFitOnOpen {
             settings.isManualZoom = false
+            manualZoomInheritsFitWindowResize = false
         }
         settings.save()
         if let imageSize = currentDocumentSize { applyFitting(for: imageSize) }
