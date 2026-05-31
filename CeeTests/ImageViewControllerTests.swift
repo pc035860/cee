@@ -150,4 +150,36 @@ final class ImageViewControllerTests: XCTestCase {
         controller.handleWindowDidResize()
         XCTAssertEqual(scrollView.magnification, initialMagnification, accuracy: 0.001)
     }
+
+    func testPinchZoomExitsAlwaysFitMode() throws {
+        try makeController()
+
+        controller.handleWindowDidResize()
+        scrollView.magnification = 1.5
+
+        controller.scrollViewMagnificationDidChange(scrollView, magnification: 1.5, gesturePhase: [])
+
+        XCTAssertTrue(controller.settings.isManualZoom)
+        XCTAssertFalse(controller.settings.alwaysFitOnOpen)
+    }
+
+    func testWindowResizeAfterPinchDoesNotAutoFitUntilAlwaysFitReenabled() throws {
+        try makeController()
+
+        controller.handleWindowDidResize()
+        scrollView.magnification = 1.5
+        controller.scrollViewMagnificationDidChange(scrollView, magnification: 1.5, gesturePhase: [])
+
+        controller.view.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.handleWindowDidResize()
+
+        XCTAssertEqual(scrollView.magnification, 1.5, accuracy: 0.001)
+
+        controller.toggleAlwaysFit()
+
+        XCTAssertFalse(controller.settings.isManualZoom)
+        XCTAssertTrue(controller.settings.alwaysFitOnOpen)
+        XCTAssertEqual(scrollView.magnification, 1.5, accuracy: 0.001)
+    }
 }

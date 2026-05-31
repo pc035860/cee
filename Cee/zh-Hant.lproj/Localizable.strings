@@ -95,4 +95,4 @@
 "status.windowAuto" = "WINDOW AUTO";
 
 /* Hint */
-"hint.manualZoomExitFit" = "已切換到手動縮放，按 ⌘0 回到 Fit";
+"hint.manualZoomExitFit" = "已切換到手動縮放，重新勾選 Fit 模式可恢復自動適配";
