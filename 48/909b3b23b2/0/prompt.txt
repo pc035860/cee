@@ -1,0 +1,46 @@
+<task-notification>
+<task-id>add54764d41a01fa4</task-id>
+<tool-use-id>toolu_01BkTrtCuoCqckUKUXd1MJSE</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/add54764d41a01fa4.output</output-file>
+<status>completed</status>
+<summary>Agent "收尾 review 遺留三小項" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Dimension B 回報零 blocking issues。所有驗證完畢。
+
+---
+
+## 回報
+
+### 改動摘要
+
+**任務 1 — `isManualZoom` decode 測試**
+- `/Users/pc035860/code/cee/CeeTests/ViewerSettingsTests.swift:101-113`
+- 新增 `testCodableRoundTrip_isManualZoom_resetToFalseOnDecode()`：encode `isManualZoom=true, alwaysFitOnOpen=false` 後 decode，assert `isManualZoom==false`（session 狀態不還原）及 `alwaysFitOnOpen==false`（正常 round-trip）
+
+**任務 2 — `handleWindowDidResize` guard 改用 `isAutoFitActive`**
+- `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:173-175`
+- 原本兩行 `guard settings.alwaysFitOnOpen, !settings.isManualZoom,` 合併為 `guard isAutoFitActive,`
+- `isAutoFitActive` 定義於同 class :46-48，語意完全等價
+
+**任務 3 — QuickGridView EXIF swap 邏輯合併**
+- `/Users/pc035860/code/cee/Cee/Views/QuickGridView.swift:1029-1039`
+- 刪除 `sampleMedianAspectRatio` 內的自製 `CGImageSourceCreateWithURL` + EXIF 5-8 swap，改呼叫 `ImageLoader.imageHeaderSize(at:)`（已含 EXIF swap 與 PDF nil 防護）
+
+---
+
+## Verification report
+
+**Dimension A — Runtime**
+- L1 (build): pass — `xcodebuild build` → `BUILD SUCCEEDED`
+- L2 (unit tests): pass — 295 tests, 0 failures；包含 `ViewerSettingsTests`（新測試在內）、`ImageViewControllerTests`（`testHandleWindowDidResize_*`、`testWindowResizeAfterPinch*` 全綠）
+- L3: N/A — 三項皆為單元測試新增、兩行 guard 重構、靜態方法替換，無需 UI 層端對端驗證；L2 已覆蓋所有行為路徑
+
+**Dimension B — Static review**
+- Reviewer: review-loop (Codex CLI, gpt-5.5, session `019f2be6-9515-7320-82e7-1edb2c2782a6`)
+- Verdict: 無 blocking issues
+- Findings: 無任何 blocking / suggestion / question
+
+**偏離事項**
+- 無</result>
+<usage><subagent_tokens>60981</subagent_tokens><tool_uses>26</tool_uses><duration_ms>268329</duration_ms></usage>
+</task-notification>
