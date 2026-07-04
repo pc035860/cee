@@ -1,0 +1,1106 @@
+我想把這個 cee app 做為我主力看圖軟體使用
+review 一下現在的 ux 邏輯，分析整理有什麼地方需要調整的
+
+作為主力看圖工具，在一般情況下，我的使用方式是在 Finder 裡面找到圖片，然後雙擊打開，這時會用 cee（這個 App）來開啟。
+
+我不確定作為一個主力看圖軟體，雙擊圖片後第一個正確的 UX 邏輯要怎麼描述，但我自己期望的是以 fit 的狀態打開，也就是說：
+
+1. 視窗（Window）要能貼合在圖片的外緣。
+2. 當圖片過大時，視窗則維持在適當大小，不要超出範圍。
+3. 基本上預設要顯示圖片原本的縮放尺寸（Size），但也會視情況需要做動態縮放。
+
+以我們目前這個 App 的各種設定來講，在這樣的情境下打開時，有哪些 Flag 是需要開啟或關閉，才能達到我預期的效果？
+
+附帶一提，我之前用的比較順手的看圖軟體是 Xee。
+
+/brief-with-html
+
+---
+
+<task-notification>
+<task-id>a8a6b422885fbb0a1</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a8a6b422885fbb0a1.output</output-file>
+<status>completed</status>
+<summary>Agent "盤點 ViewerSettings 全部設定" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>以下是 Cee 設定系統的完整調查結果。
+
+## 設定儲存架構
+
+- **設定 struct**: `ViewerSettings` (Codable) — `/Users/pc035860/code/cee/Cee/Models/ViewerSettings.swift:3`
+- **持久化**: `UserDefaults.standard`，單一 key `"CeeViewerSettings"` 儲存整個 struct 的 JSON blob — `ViewerSettings.swift:131` (`private static let key`), `save()` 於 `:140`, `load()` 於 `:133`
+- **向後相容**: `init(from decoder:)` 逐欄位 `try?`，找不到就用預設值 — `ViewerSettings.swift:97-128`
+- **子 struct**: `FittingOptions` — `/Users/pc035860/code/cee/Cee/Services/FittingCalculator.swift:3`
+
+## 完整設定清單
+
+### Zoom / Fitting
+
+| 名稱 | 型別 | 預設 | 選單 (快捷鍵) | 影響 |
+|---|---|---|---|---|
+| `magnification` | CGFloat | 1.0 | (無直接切換，由 Zoom In `⌘=` / Zoom Out `⌘-` / Fit `⌘0` / Actual `⌘1` 間接改變) | 當前縮放倍率；持久化以便下次開啟還原 |
+| `isManualZoom` | Bool | false | 同上 | false = Fit on Screen 模式；true = 手動縮放（影響開啟圖片時的 fit 邏輯與視窗自動 resize） |
+| `alwaysFitOnOpen` | Bool | true | View → **Always Fit on Open** (`⌘*`) — AppDelegate.swift:101 | **開啟圖片行為關鍵 flag**：true 時每次開新圖 / 視窗 resize 都重新 fit-to-screen；配合 `isManualZoom==false` 才會生效 |
+| `fittingOptions.shrinkHorizontally` | Bool | true | View → Fitting Options → **Shrink Horizontally** — AppDelegate.swift:107 | fit 計算時水平方向是否縮小過寬圖片 |
+| `fittingOptions.shrinkVertically` | Bool | true | View → Fitting Options → **Shrink Vertically** — AppDelegate.swift:108 | fit 計算時垂直方向是否縮小過高圖片 |
+| `fittingOptions.stretchHorizontally` | Bool | false | View → Fitting Options → **Stretch Horizontally** — AppDelegate.swift:109 | fit 時是否放大偏窄的圖片 |
+| `fittingOptions.stretchVertically` | Bool | false | View → Fitting Options → **Stretch Vertically** — AppDelegate.swift:110 | fit 時是否放大偏矮的圖片 |
+
+### Scaling Quality
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `scalingQuality` | enum `.low`/`.medium`/`.high` | `.medium` | View → Scaling Quality → **Low / Medium / High** — AppDelegate.swift:117-119 | GPU sampler 品質（縮放時的 minification filter） |
+| `showPixelsWhenZoomingIn` | Bool | true | View → Scaling Quality → **Show Pixels When Zooming In** (`⇧⌘P`) — AppDelegate.swift:122 | 放大 &gt; 1.0 時是否用 Nearest-Neighbor |
+
+### Arrow Key Navigation
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `arrowLeftRightNavigation` | Bool | true | Navigation → **Left/Right Arrows Navigate** — AppDelegate.swift:160 | 左右方向鍵是否切換圖片（否則捲動） |
+| `arrowUpDownNavigation` | Bool | false | Navigation → **Up/Down Arrows Navigate at Edges** — AppDelegate.swift:161 | 上下方向鍵在邊緣是否切換圖片 |
+
+### Fast Browse
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `thumbnailFallback` | Bool | false | View → **Low-Res Preview While Browsing** — AppDelegate.swift:129 | 快速瀏覽時是否用縮圖 fallback |
+
+### Scroll Sensitivity
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `trackpadSensitivity` | enum `.low`/`.medium`/`.high` | `.medium` | Navigation → Trackpad Sensitivity → **Low/Medium/High** — AppDelegate.swift:179-181 | 觸控板換頁閾值 (250/160/80 pt) |
+| `wheelSensitivity` | enum | `.medium` | Navigation → Wheel Sensitivity → **Low/Medium/High** — AppDelegate.swift:188-190 | 滑鼠滾輪換頁閾值 (40/20/10 pt) |
+
+### Window（含「開啟圖片時視窗行為」）
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `resizeWindowAutomatically` | Bool | false | View → **Resize Window Automatically** — AppDelegate.swift:131 | 縮放時自動調整視窗大小以貼合圖片 |
+| `floatOnTop` | Bool | false | View → **Float on Top** — AppDelegate.swift:136 | 視窗置頂 |
+| `reuseWindow` | Bool | true | Window → **Reuse Window** — AppDelegate.swift:218 (`toggleReuseWindow` on AppDelegate at :235) | **開啟圖片行為關鍵 flag**：true = 開新檔案在現有視窗；false = 每次開新視窗（多視窗模式） |
+| `lastWindowWidth` | CGFloat? | nil | (無直接切換，自動記憶) | 記憶上次視窗寬度，下次啟動還原；nil 時使用螢幕 80% |
+| `lastWindowHeight` | CGFloat? | nil | (無直接切換，自動記憶) | 同上，高度版本 |
+
+（View → **Fill Window Height** `⌥⌘F` 是一次性動作 AppDelegate.swift:132，不對應設定 flag）
+
+### Quick Grid
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `quickGridCellSize` | CGFloat | 160 | (無選單，由 Quick Grid 內滑桿/pinch/Cmd+scroll 調整) | Quick Grid 縮圖 cell 目標尺寸 |
+| `quickGridScrollAfterZoom` | Bool | true | Navigation → **Scroll to Selection After Zoom** — AppDelegate.swift:198 | Quick Grid 縮放後是否自動捲動使選中卡片置中 |
+
+（Navigation → **Quick Grid** `G` — AppDelegate.swift:197 是顯示切換，不是設定 flag）
+
+### UI
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `showStatusBar` | Bool | true | View → **Show Status Bar** (`⌘/`) — AppDelegate.swift:138 | 顯示底部狀態列 |
+| `hasShownManualZoomHint` | Bool | false | (內部旗標，無選單) | 手動縮放首次提示 HUD 是否已顯示過（一次性） |
+
+### Dual Page（開啟顯示模式）
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `dualPageEnabled` | Bool | false | Navigation → **Dual Page** (`⌘K`) — AppDelegate.swift:147 | **開啟顯示模式**：雙頁並排（漫畫模式） |
+| `firstPageIsCover` | Bool | false | Navigation → **First Page Is Cover** (`⇧⌘O`) — AppDelegate.swift:148 | 雙頁模式下第一頁單獨顯示（封面） |
+| `readingDirection` | enum `.leftToRight`/`.rightToLeft` | `.rightToLeft` | Navigation → **Reading LTR/RTL** (`⇧⌘K`) — AppDelegate.swift:151 | 雙頁排列方向（日漫預設 RTL） |
+| `duoPageRTLNavigation` | Bool | true | Navigation → **RTL Navigation (Dual Page)** — AppDelegate.swift:154 | 雙頁下左箭頭 = 下一頁 |
+| `singlePageRTLNavigation` | Bool | false | Navigation → **RTL Navigation (Single Page)** — AppDelegate.swift:155 | 單頁下左箭頭 = 下一頁 |
+
+### Navigation Behavior
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `scrollToBottomOnPrevious` | Bool | true | Navigation → **Scroll to Bottom on Previous** — AppDelegate.swift:162 | 上一頁時捲到底端（適合連續閱讀） |
+| `clickToTurnPage` | Bool | false | Navigation → **Click to Turn Page** — AppDelegate.swift:163 | 點擊左/右邊緣換頁 |
+
+### Continuous Scroll Mode（開啟顯示模式）
+
+| 名稱 | 型別 | 預設 | 選單 | 影響 |
+|---|---|---|---|---|
+| `continuousScrollEnabled` | Bool | false | Navigation → **Continuous Scroll** — AppDelegate.swift:164 | **開啟顯示模式**：webtoon 式垂直連續捲動 |
+| `continuousScrollGap` | CGFloat | 0 | Navigation → Image Gap → **None / Small / Medium / Large** (0/2/4/8pt) — AppDelegate.swift:169-172 | 連續捲動模式下圖片間距（decode 時 clamp `max(0, …)`） |
+
+## 「開啟圖片時顯示行為」相關 flag 特別彙整
+
+1. **`alwaysFitOnOpen`** (預設 true) — 每次開圖 / 視窗 resize 時是否重新 fit-to-screen；配合 `isManualZoom == false` 生效；於 pinch 時會被清掉並轉為 manual（`ViewerSettings.swift:10`）。
+2. **`reuseWindow`** (預設 true) — 決定新檔案開在既有視窗還是新視窗；影響多視窗架構 `ImageWindowController.windows` (`ViewerSettings.swift:53`)。
+3. **`resizeWindowAutomatically`** (預設 false) — 縮放時視窗自動 hug 圖片 (`ViewerSettings.swift:51`)。
+4. **`lastWindowWidth` / `lastWindowHeight`** (預設 nil) — 首開圖片時的視窗尺寸來源（nil 用螢幕 80%）(`ViewerSettings.swift:54-55`)。
+5. **`dualPageEnabled`** (預設 false) — 開啟時進雙頁排版 (`ViewerSettings.swift:66`)。
+6. **`continuousScrollEnabled`** (預設 false) — 開啟時進連續捲動模式；與 dualPage 互斥（`validateMenuItem` 會停用衝突項目）(`ViewerSettings.swift:89`)。
+7. **`isManualZoom`** (預設 false) — 上次結束是否停在手動縮放；直接影響 fit 邏輯是否觸發 (`ViewerSettings.swift:7`)。
+8. **`magnification`** (預設 1.0) — 上次的縮放倍率，`isManualZoom` 為 true 時會被套用 (`ViewerSettings.swift:6`)。</result>
+<usage><subagent_tokens>46025</subagent_tokens><tool_uses>5</tool_uses><duration_ms>70339</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aa08ef1167be4426b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/aa08ef1167be4426b.output</output-file>
+<status>completed</status>
+<summary>Agent "調查 Xee 開檔行為對照" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have enough. Compiling findings.
+
+## Xee (Xee³) 開啟圖片時的預設 UX 行為 — 調查結果
+
+以下是能從公開來源確認的事實，其他部分標記「查不到」。
+
+### 1. 視窗是否自動貼合圖片大小？
+- **有相關選項**：Preferences 中有 **"Resize window automatically"**（自動調整視窗大小）設定。啟用時，切換圖片會讓視窗跟著新圖片的長寬比重新調整。
+- 使用者回饋（Wakaba 論壇）明確描述 Xee「always resizes its window to the image's aspect ratio」。
+- **預設值查不到**（論壇貼文只提到「I have … resize window automatically … turned on」，無法確認是預設或使用者手動勾選）。
+
+### 2. 圖片超過螢幕的行為
+- 由 **"Fit on screen"** 與 **"Always fit opened images on screen"** 兩個相關偏好控制。
+- **"Always fit opened images on screen"** 的預期行為：讓開啟的圖片以 fit-to-screen 縮放顯示。
+- **已知限制/bug**（GitHub gco/xee issue #415）：這個選項在「從 Finder 開啟新檔」有效，但在 **browsing（用鍵盤翻頁）時不會重新套用**——新圖片會沿用前一張的縮放等級，而不是重新 fit。
+- Fitting options 可設為 **horizontally / vertically**（水平或垂直方向 fit）。
+- 另有 **"Shrink to fit"** 旗標：v3 的行為與 v2 略有差異（v2 可作為 toggle，v3 不再是簡單 toggle）。
+
+### 3. 預設縮放：actual size 還是 downscale to fit？
+- **查不到官方文件明確說明「open 時的預設」**。
+- 但從論壇與 issue 語境推斷：Xee 的設計預期是搭配 "Always fit opened images on screen" + "Resize window automatically" 使用，也就是**傾向 downscale to fit** 而非 actual size。
+- 另有 View → **Automatic Zoom** 子選單，內含「remember the zoom level」選項；"shrink to fit" 若開啟會覆蓋這個記憶行為。
+- Superuser 上有問題專門在問「怎麼從命令列讓 Xee 用原始尺寸打開」，解法是開啟後用 AppleScript 送 `Cmd+0`——**反面佐證預設不是 actual size**。
+
+### 4. 相關偏好設定名稱（確認存在的）
+- `Fit on screen`（動作/按鈕）
+- `Always fit opened images on screen`（Preferences 選項）
+- `Resize window automatically`（Preferences 選項）
+- `Shrink to fit`（旗標，行為在 v2/v3 間有變化）
+- `Fitting options`：`horizontally` / `vertically`
+- `Scaling quality`：`low` 等等
+- `Immediately switch to fullscreen mode`（開啟即進入全螢幕）
+- View → `Automatic Zoom` 子選單（含 remember zoom level）
+- View → `Always Open in Full Screen`
+
+### 查不到 / 沒有明確來源
+- 各選項的**出廠預設值**（on/off）——官方頁面 `theunarchiver.com/xee` 沒有偏好文件；只能從論壇貼文推測部分使用者組態。
+- 圖片超過螢幕時，是「視窗 clamp 到 screen 再縮圖」還是「視窗開全螢幕大小」的**精確幾何邏輯**——原始碼層級的行為官方沒有文件；`gco/xee` 是原始 repo 但沒公開的說明文件描述這段。
+- Xee 是否對「小於螢幕的圖片」也放大 fit——一位使用者明確**要求**「只縮不放」，暗示現行行為可能會放大，但沒有官方確認。
+
+### 已查詢來源
+- https://theunarchiver.com/xee （官方頁，內容偏行銷、無 preference 文件）
+- https://wakaba.c3.cx/sup/kareha.pl/1248284088/ （Xee 官方支援板 part 2）
+- https://wakaba.c3.cx/sup/kareha.pl/1132091963/ （Xee 官方支援板 part 1）
+- https://github.com/gco/xee/issues/415 （Always Fit Opened Images on Screen bug）
+- https://superuser.com/questions/403333/ （命令列以原始尺寸開啟）
+- https://forums.macrumors.com/threads/minimalistic-image-viewer.2433354/
+- https://github.com/CocoaBob/xee （fork）
+
+**結論**：Xee 的預設 UX 意圖是「開檔時 fit 到螢幕、視窗自動配合圖片長寬比」，但**官方偏好預設值沒有可引用的文件**，需靠實機測試確認。</result>
+<usage><subagent_tokens>48204</subagent_tokens><tool_uses>8</tool_uses><duration_ms>78950</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a6b41558241fdeb6f</task-id>
+<tool-use-id>toolu_01Joea9wFRceez6eup1Se9f2</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a6b41558241fdeb6f.output</output-file>
+<status>completed</status>
+<summary>Agent "調查開檔到首次顯示流程" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have enough context. Here's the flow.
+
+## 開檔到首次顯示流程
+
+### 1. 進程進入點
+- `/Users/pc035860/code/cee/Cee/App/main.swift:4-7` — 純程式化建立 `NSApplication`，設定 `AppDelegate`，呼叫 `app.run()`。無 `@main` / `@NSApplicationMain`。
+
+### 2. macOS 派送檔案給 App
+- `/Users/pc035860/code/cee/Cee/App/AppDelegate.swift:25-35` — `application(_:open urls:)` 接收 Finder 傳入的 URLs。
+  - 依「檔案所在資料夾路徑」去重（同資料夾多選只開一次視窗，保留第一個 URL）
+  - 對每個 URL 呼叫 `ImageWindowController.open(with: url)`
+- 額外進入點：
+  - `AppDelegate.applicationOpenUntitledFile` (line 44-47) → `ImageWindowController.openEmpty()`（沒帶檔案時）
+  - `AppDelegate.openFile` (line 51-58) → File &gt; Open 選單 → `NSOpenPanel` → `ImageWindowController.open(with:)`
+  - UI test fixture 路徑：`AppDelegate.applicationDidFinishLaunching` (line 17-20)
+
+### 3. `ImageWindowController.open(with:)` 決定「重用 / 新建視窗」
+- `/Users/pc035860/code/cee/Cee/Controllers/ImageWindowController.swift:36-50`
+- 讀 `ViewerSettings.reuseWindow`：
+  - **reuseWindow == true 且有 `current` 視窗**：不建新視窗；呼叫該視窗的 `ImageViewController.loadFolder(folder)`，更新標題，`makeKeyAndOrderFront`。
+  - **否則**：走 `createWindow(with: folder)`。
+- `current` 定義 (line 14-17)：優先 `NSApp.keyWindow?.windowController`，其次 `NSApp.mainWindow?.windowController`，都無則 `windows.last`。
+- `folder = ImageFolder(containing: url)` (line 37) 是「從單一 URL 解出所在資料夾＋images 陣列＋currentIndex」的建構點。
+
+### 4. `createWindow(with:)` — 首次顯示的視窗大小關鍵位置
+- `/Users/pc035860/code/cee/Cee/Controllers/ImageWindowController.swift:53-105`
+
+**視窗大小怎麼決定（重點）**：
+- **連續捲動模式** (line 56-60)：`windowSize = (Constants.continuousScrollNewWindowContentWidth=850, Constants.minWindowContentHeight=300)`。**「850pt initial width」就在此處**。之後 line 81-97 再算 vertical chrome 並用 `expandedHeightFrame` 把高度撐到 `screen.visibleFrame.height`（同時 clamp X）。
+- **一般模式** (line 62, 108-128)：`savedOrDefaultWindowSize()`
+  - 若 `ViewerSettings.lastWindowWidth/lastWindowHeight` 已存且 ≥ min → 用儲存值
+  - 否則 `defaultWindowSize()`：`NSScreen.main.visibleFrame` × `Constants.defaultWindowSizeRatio = 0.8`（無螢幕時 fallback `800 × 600`，來自 `Constants.defaultWindowWidth/Height`）
+- 視窗建立：`NSWindow(contentRect:...)`（line 66-71），style mask `[.titled, .closable, .resizable, .miniaturizable]`，設 `contentMinSize = Constants.minWindowContentSize (300×300)` (line 72-74)，`window.center()` (line 78)。
+- `contentViewController = ImageViewController(folder:)` (line 77) 掛上 VC。
+- `windows.append(controller)` (line 100) 註冊到 multi-instance 集合。
+- `showWindow(nil)` (line 101) → `ensureUsableWindowSize()` (line 102) 若 content size 小於 effective min 則 reset 為 `defaultWindowSize()` 並重新 center。
+- `setupWindowObservers()` (line 103) 監聽 resize / fullscreen / willClose 事件。
+
+**Constants 定值**：
+- `/Users/pc035860/code/cee/Cee/Utilities/Constants.swift:4-14`
+  - `defaultWindowWidth = 800`, `defaultWindowHeight = 600`, `defaultWindowSizeRatio = 0.8`
+  - `minWindowContentWidth = 300`, `minWindowContentHeight = 300`
+  - `continuousScrollNewWindowContentWidth = 850`
+
+### 5. `ImageViewController` 建立與 loadView
+- `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:74-77` — `init(folder:)` 只存 folder，不做載入。
+- `loadView` (line 81-118) 建立 `dualPageView` (`DualPageContentView`)、`scrollView` (`ImageScrollView`)、`statusBarView`，用 AutoLayout 拼成 container。`scrollView` 填滿整個 container，`statusBarView` 疊在底部。
+
+### 6. `viewDidAppear` — 首次載入圖片
+- `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:120-146`
+  - 呼叫 `applySettings()` (line 122)：套 scaling quality、scroll sensitivity、RTL、`floatOnTop`、status bar 等。
+  - 若 `folder == nil`：`showEmptyState(true)` 直接 return。
+  - **`settings.continuousScrollEnabled`**：`configureContinuousScrollView()`（本切面不深入）
+  - **一般模式**：
+    - `loadFolderDualPageSettings()` 讀該 folder 的 per-folder dual-page 設定
+    - 若 `dualPageEnabled`：`rebuildSpreadsAndReload()`
+    - 否則：`loadCurrentImage(initialScroll: .top)` (line 140)
+  - `view.window?.makeFirstResponder(scrollView)` + `initialFirstResponder = scrollView`
+
+### 7. 重用模式的載入路徑
+- `ImageViewController.loadFolder(_:)` (line 192-220)：取消 prefetch、清 empty state、reset `imageSizeCache`、依模式呼叫 `configureContinuousScrollView` / `rebuildSpreadsAndReload` / `loadCurrentImage(initialScroll: .top)`；grid 若在則刷新，否則把焦點還給 scrollView。
+
+### 8. 圖片載入路徑（一般模式）
+- `loadCurrentImage(initialScroll:)` (line 440-466)：空資料夾走 error placeholder；否則將 `.single` 或雙頁 spread 交給 `loadSpread(...)` (line 481-570)：
+  - Async 從 `loader` 拿 `NSImage`（PDF page / thumbnail / full-res）
+  - `contentView.image = ...`
+  - `dualPageView.configureSingle/Double(...)` 決定 documentView 尺寸
+  - **`applyFitting(for: dualPageView.compositeSize)`** (line 551) — 首次顯示的縮放關鍵入口
+  - `applyCenteringInsetsIfNeeded(...)`, `applyInitialScrollPosition(initialScroll)` (line 552-560) — `.top` 呼叫 `scrollView.scrollToTop()`, `.bottom` 延遲一幀 `scrollToBottom()`；(line 959-968) 定義
+  - `updateStatusBar()`, `loader.updateCache(...)`
+
+### 9. 初始 zoom 怎麼決定（重點）
+- `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:660-684` — `applyFitting(for:)`：
+  - 連續捲動模式直接 return
+  - 計算 `effectiveScrollViewport`（扣掉 statusBar 覆蓋高度）
+  - **`settings.alwaysFitOnOpen`** → `fittedMagnification(for:viewport:)` (line 159-171, 用 `FittingCalculator.calculate`) → `setMagnificationCentered(targetMagnification)` (line 671-674)
+  - `settings.isManualZoom` → `setMagnificationCentered(settings.magnification)`（用使用者儲存的縮放值）(line 675-676)
+  - 其他 → 沿用 `scrollView.magnification`（不變）(line 677-679)
+  - `updateScalingQuality()`, `applyCenteringInsetsIfNeeded(reason: "applyFitting")`
+  - `scheduleResizeToFitAfterZoom(magnification:)` (line 683) — 首次顯示後延遲把視窗縮成貼合圖片的大小
+- `setMagnificationCentered(_:)` (line 693-706)：clamp 到 `resolvedMinMagnification()...maxMagnification`，設 `isZooming` 抑制 slot 回收，呼叫 `scrollView.setMagnification(clamped, centeredAt: viewportCenterInDocumentCoordinates())`，然後 `applyCenteringInsetsIfNeeded`。
+
+### 10. 首次顯示後的視窗自動 resize（貼合圖片）
+- `scheduleResizeToFitAfterZoom` (line 1775-1787)：`shouldResizeWindowToMatchImage()`（line 435：`resizeWindowAutomatically || alwaysFitOnOpen || manualZoomInheritsFitWindowResize`）為 true 時，延遲 `resizeAfterZoomDelay` 後呼叫 `resizeWindowToFitZoomedImagePreservingCenter`。
+- `resizeWindowToFitZoomedImagePreservingCenter` (line 1789-...)：以 `imageSize × magnification + statusBarH` 為目標，呼叫 `ImageWindowController.resizeToFitImage(displayedSize, center: false)` (Controller line 264-322)。這個方法 clamp 到 `visibleFrame`、`effectiveMinimumContentSize`，用 `window.setFrame(...)` 完成。
+
+### 分支彙整
+
+| 情境 | reuseWindow | 走的路徑 |
+|---|---|---|
+| Finder Open With / 檔案 | true + 有現存視窗 | `ImageWindowController.open` → `vc.loadFolder(folder)` → 依模式載入 → `applyFitting` |
+| Finder Open With / 檔案 | false 或無現存視窗 | `createWindow(with: folder)` → 視窗大小規則（見 §4）→ `viewDidAppear` → 依模式載入 → `applyFitting` |
+| 無檔案啟動 | true + 有現存視窗 | `openEmpty()` → `makeKeyAndOrderFront` |
+| 無檔案啟動 | 否 | `createWindow(with: nil)` → `viewDidAppear` → `showEmptyState(true)` |
+| 連續捲動 | (任一) 新建視窗 | 850pt × 撐滿高度 (Controller line 56-97)；`applyFitting` 直接 return |
+
+### 關鍵定值一覽（最常被問到）
+- **首次 default width/height**：`800 × 600` fallback；一般情況為 `screen.visibleFrame × 0.8` — `Constants.swift:4-6`, `ImageWindowController.swift:119-128`
+- **連續捲動初始 content width = 850**：`Constants.swift:14`, `ImageWindowController.swift:57-60`
+- **contentMinSize = 300×300**：`Constants.swift:7-12`, `ImageWindowController.swift:72-73`
+- **初始 magnification（alwaysFitOnOpen 打開時）由 `FittingCalculator.calculate` 給出**，設定入口 `applyFitting(for:)` at `ImageViewController.swift:660-684`</result>
+<usage><subagent_tokens>69491</subagent_tokens><tool_uses>13</tool_uses><duration_ms>112706</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a50e8511aeaf1a8b5</task-id>
+<tool-use-id>toolu_01Qo1QdrHBx4V7uyKPTsVVvE</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a50e8511aeaf1a8b5.output</output-file>
+<status>completed</status>
+<summary>Agent "調查 fit/zoom/視窗貼合邏輯" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>以下是針對 Cee 專案 fit / zoom / window hugging 邏輯切面的調查結果。
+
+---
+
+## 1. `fitOnScreen` / `resizeToFitImage` / `actualSize` 實際行為
+
+### `fitOnScreen(_:)` — `Cee/Controllers/ImageViewController.swift:1122-1145`
+- 清除 manual state：`isManualZoom = false`、`manualZoomInheritsFitWindowResize = false`（`:1123-1124`）。
+- 呼叫 `fittedMagnification(for:)` 算出目標倍率並 `setMagnificationCentered`。
+- 最後 `scheduleResizeToFitAfterZoom(...)`（`:1144`）——**會**觸發視窗貼合圖片外緣。
+- 連續捲動模式強制回到 magnification 1.0，不做 window resize（`:1126-1134`）。
+
+### `actualSize(_:)` — `ImageViewController.swift:1147-1161`
+- 呼叫 `enterManualZoom()`（`:1153`），magnification 固定為 1.0。
+- 也呼叫 `scheduleResizeToFitAfterZoom`（`:1160`）；是否真正 resize 取決於 `shouldResizeWindowToMatchImage()`（見下）。
+- 連續捲動時直接轉呼叫 `fitOnScreen`。
+
+### `resizeToFitImage(_:center:)` — `Cee/Controllers/ImageWindowController.swift:264-322`
+Clamp 邏輯：
+1. **上限**：`requestedSize = min(size, screen.visibleFrame.size)`（`:270-273`）— 用 `screen.visibleFrame`（非 `frame`），會扣掉 menu bar / Dock。
+2. **下限**：`effectiveMinContent = min(effectiveMinimumContentSize(), visibleFrame.size)`，再 `targetSize = max(requestedSize, effectiveMinContent)`（`:274-282`）。因此小圖時視窗**不會**縮到比 min content 還小；圖片比 min 還小的話會留出空邊，圖片不會被拉大。
+3. `center: false` 保持原視窗中心（`:294-299`）；`center: true` 才置中到 `visibleFrame`。
+4. 最後用 `clampedWindowOrigin` 保證整個 frame 落在 `visibleFrame` 內（`:301-304`、`:344-354`）。
+
+### 何時觸發 window hug？— `shouldResizeWindowToMatchImage()`
+`ImageViewController.swift:434-436`
+```
+resizeWindowAutomatically || alwaysFitOnOpen || manualZoomInheritsFitWindowResize
+```
+`scheduleResizeToFitAfterZoom` 有 gate（`:1775-1787`），`resizeWindowToFitZoomedImagePreservingCenter` 用 `displayedSize = imageSize * magnification + statusBarH`（`:1803-1808`）當請求尺寸。全螢幕時直接 return。
+
+**圖片比視窗小時會放大還是維持 100%？** 見 `FittingCalculator` — 預設 `shrinkH/V = true`、`stretchH/V = false`（`Cee/Services/FittingCalculator.swift:3-8`）。小圖 → 完全不 stretch → `fitted.width / imageSize.width = 1.0`。即 **fitOnScreen 對小圖回傳 magnification 1.0（不放大）**，之後 `scheduleResizeToFitAfterZoom` 把**視窗縮小**貼合 100% 圖片。使用者若想放大小圖，須在 Fitting Options 選單開啟 Stretch。
+
+**圖片比螢幕大時**：`fittedMagnification` 依 `effectiveScrollViewport` 縮 → 視窗依 `imageSize * mag + statusBar` 縮，被 `visibleFrame` 上限 clamp（可能把視窗打成最大可用尺寸）。
+
+---
+
+## 2. `alwaysFitOnOpen` 開/關差異（開新圖）
+
+進入點：載入完成後呼叫 `applyFitting(for:)`（`ImageViewController.swift:551`、`:660-684`）。
+
+- `alwaysFitOnOpen == true`（預設值 true，`ViewerSettings.swift:10`）：
+  - `applyFitting` 走 `:671-674`，用 `fittedMagnification` 算 fit magnification 並套用。
+  - `scheduleResizeToFitAfterZoom(...)`（`:683`）在 `shouldResizeWindowToMatchImage()` 為 true 時 resize 視窗貼合。因為 `alwaysFitOnOpen` 本身即會讓 `shouldResizeWindowToMatchImage()` 回 true → **視窗會 hug 顯示後的圖**。
+  - 額外：`handleWindowDidResize()`（`:173-189`）會在使用者拖拉視窗時持續重算 fit magnification（只在非 manual、非連續捲動時）。
+
+- `alwaysFitOnOpen == false`：
+  - `applyFitting` 走 `:675-679`：`isManualZoom` 為 true → 套用 `settings.magnification`（持久化的手動倍率）；否則保留當前 `scrollView.magnification`。
+  - 是否 resize 視窗只看 `resizeWindowAutomatically`（預設 false，`ViewerSettings.swift:51`）或 inherit 旗標。多數情況**視窗維持原尺寸**，圖片以先前倍率呈現。
+
+### 關鍵回答
+
+**「alwaysFitOnOpen=true 時，小圖會被放大到填滿視窗嗎？還是視窗縮小貼合圖片維持 100%？」**
+
+→ **預設是視窗縮小貼合圖片、圖片維持 100%**。因為 `FittingOptions` 預設 `stretch = false`，`FittingCalculator` 對小於 viewport 的圖不會放大（`FittingCalculator.swift:22-23`、`:33-39`），`fittedMagnification` 回傳 1.0。接著 `scheduleResizeToFitAfterZoom` 將視窗尺寸設為 `imageSize × 1.0 + statusBarH`，並由 `resizeToFitImage` 在 `effectiveMinimumContentSize()`（下限 300×300，`Constants.swift:7-11`）與 `screen.visibleFrame`（上限）之間 clamp。若使用者手動打開 Stretch H/V，才會拉大填滿視窗。
+
+**「大圖開啟時視窗與 zoom 各是什麼？」**（`alwaysFitOnOpen=true`）
+
+→ zoom = `viewport.width/imageW` 與 `viewport.height/imageH` 兩者的較小值（`FittingCalculator.swift:42-48`）；視窗 = `imageSize × 該 mag + statusBar`，被 `screen.visibleFrame` clamp 到最多整個可用螢幕。若 clamp 生效，`resizeWindowToFitZoomedImagePreservingCenter` 之後會用 `refitMagnification` 再校正一次以吻合實際 viewport（`ImageViewController.swift:1813-1819`）。
+
+---
+
+## 3. 狀態轉換：`isAutoFitActive` / `ZoomStatusMode` / `enterManualZoom` / `manualZoomInheritsFitWindowResize`
+
+### `isAutoFitActive` — `ImageViewController.swift:46-48`
+`settings.alwaysFitOnOpen &amp;&amp; !settings.isManualZoom`。此為 CLAUDE.md 強調的唯一入口，勿內聯判斷。
+
+### `ZoomStatusMode` — `Cee/Views/StatusBarView.swift:3-7`
+```
+case fit
+case actual(windowAuto: Bool)
+case manual(percent: Int, windowAuto: Bool)
+```
+決策在 `zoomStatusMode(for:)`（`ImageViewController.swift:312-325`）：
+- `isAutoFitActive` → `.fit`（**注意：不管實際倍率是多少，只要處於 auto-fit 模式，狀態列都顯示 FIT**）。
+- 否則 zoom ≈ 1.0 → `.actual(windowAuto:)`。
+- 其他 → `.manual(percent:, windowAuto:)`。
+- `windowAuto = !continuousScrollEnabled &amp;&amp; shouldResizeWindowToMatchImage()`（`:314`）。
+
+### `enterManualZoom()` — `ImageViewController.swift:331-342`
+```
+let wasAutoFit = isAutoFitActive
+settings.isManualZoom = true
+if wasAutoFit { manualZoomInheritsFitWindowResize = true }
+settings.alwaysFitOnOpen = false
+if wasAutoFit { showManualZoomHintIfNeeded() }
+```
+語意：
+- **一定**關閉 `alwaysFitOnOpen`（讓選單勾勾同步）。
+- 若之前是 auto-fit（pinch/zoomIn/zoomOut/actualSize 從 fit 進入），設定 `manualZoomInheritsFitWindowResize = true`：保留 pinch 視窗貼合手感，讓視窗仍跟著手動倍率 resize；但 window drag resize 不再自動 re-fit 圖片。
+- 首次進入時透過 `PositionHUDView` 顯示 hint（僅一次，`hasShownManualZoomHint`）。
+
+### 清除 `manualZoomInheritsFitWindowResize` 的路徑
+- `fitOnScreen(_:)`：`:1124` 清為 false。
+- `toggleAlwaysFit(_:)` 打開 fit：`:1169`。
+- (追加確認) 亦包含 `applyFitting`/初始重置流程中 `settings.isManualZoom = false` 的地方（`:1387`、`:1505`）。
+
+### 主要進入 `enterManualZoom()` 的呼叫點
+- `zoomIn(_:)` `:1094`、`zoomOut(_:)` `:1108`。
+- `actualSize(_:)` `:1153`。
+- Pinch magnify 手勢處理（`:1918`）。
+
+---
+
+## 4. `effectiveMinimumContentSize()` 與最小尺寸 clamp
+
+### 定義 — `ImageWindowController.swift:233-260`
+```
+max(
+  Constants.minWindowContentWidth (=300),
+  window.contentMinSize,
+  contentView.fittingSize
+)
+// 高度同理，min = 300
+```
+`fittingSize` 主要來自 status bar 等 Auto Layout 內容；CLAUDE.md 提到隱藏 view 也會影響 `fittingSize`，故 StatusBarView 在 minimal 模式會 deactivate 水平約束以避免它污染下限（`Cee/Views/StatusBarView.swift` — 見 CLAUDE.md 記錄）。
+
+### 使用場景
+1. `ensureUsableWindowSize()`（`:220-231`）：視窗比 min 小 → 直接還原成 `defaultWindowSize` 並置中。
+2. `resizeToFitImage(...)` 下限（`:274-278`），但同時再 `min(...visibleFrame)` 讓 min 不會超過螢幕。
+3. `effectiveWindowResizeMinMagnification()` — `ImageViewController.swift:708-723`：
+   - 用 `minContent / imageSize` 反推 zoom 下限：`max(minMagW, minMagH, Constants.minMagnification)`。
+   - 僅在 `shouldResizeWindowToMatchImage()` 為 true、非連續捲動時生效；否則回 `Constants.minMagnification (=0.1)`。
+4. `effectiveMinMagnification()` — `ImageViewController.swift:726-728`：`max(scrollView.effectiveMinMagnification(), effectiveWindowResizeMinMagnification())`；為所有 clamp（`setMagnificationCentered`、`zoomOut`）共用的入口（`:702-703`、`:1110-1111`）。這符合 CLAUDE.md「resizeToFitImage clamps to effective minimum」的敘述。
+
+### 資料流總結
+```
+image + viewport
+ └─ FittingCalculator (shrink=on/stretch=off) → fittedMagnification
+     └─ applyFitting / fitOnScreen → setMagnificationCentered(clamp by effectiveMinMagnification)
+         └─ scheduleResizeToFitAfterZoom (gate: shouldResizeWindowToMatchImage)
+             └─ resizeWindowToFitZoomedImagePreservingCenter
+                 └─ ImageWindowController.resizeToFitImage
+                     · upper clamp: screen.visibleFrame
+                     · lower clamp: effectiveMinimumContentSize (min 300×300)
+                     · centering: keep window center (center:false)
+```
+
+---
+
+## 補充：與 `resizeWindowAutomatically` 的互動
+
+`toggleResizeAutomatically(_:)`（`ImageViewController.swift:1182-1191`）：切開時若 `shouldResizeWindowToMatchImage()` 為 true 就馬上 resize；切關就 cancel 排程。這代表使用者可**不用開 alwaysFitOnOpen 也能讓視窗跟著手動 zoom 貼合**——當且僅當這個獨立開關為 true。</result>
+<usage><subagent_tokens>63342</subagent_tokens><tool_uses>14</tool_uses><duration_ms>145762</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aae03825a1b660bf3</task-id>
+<tool-use-id>toolu_015FfsdTrDo4uCRj2P1Rykjz</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/aae03825a1b660bf3.output</output-file>
+<status>completed</status>
+<summary>Agent "驗證設定 flag 預設值" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>驗證完成。逐列比對第二節表格與程式碼（main @ 16e1f63）：
+
+## 預設值
+
+| 宣稱 | 結果 |
+|---|---|
+| `alwaysFitOnOpen` 預設 `true` | ✅ Confirmed @ `/Users/pc035860/code/cee/Cee/Models/ViewerSettings.swift:10` |
+| `fittingOptions.shrinkHorizontally/Vertically` 預設 `true/true` | ✅ Confirmed @ `/Users/pc035860/code/cee/Cee/Services/FittingCalculator.swift:4-5` |
+| `stretchHorizontally/Vertically` 預設 `false/false` | ✅ Confirmed @ `FittingCalculator.swift:6-7`（HTML 引用 `FittingCalculator.swift:3-8` 涵蓋整個 `FittingOptions` struct，正確） |
+| `continuousScrollEnabled` 預設 `false` | ✅ Confirmed @ `ViewerSettings.swift:89` |
+| `dualPageEnabled` 預設 `false` | ✅ Confirmed @ `ViewerSettings.swift:66` |
+| `reuseWindow` 預設 `true` | ✅ Confirmed @ `ViewerSettings.swift:53` |
+| `resizeWindowAutomatically` 預設 `false` | ✅ Confirmed @ `ViewerSettings.swift:51` |
+| `isManualZoom` 預設 `false`、`magnification` 預設 `1.0` | ✅ Confirmed @ `ViewerSettings.swift:6-7` |
+
+## 選單位置、行號、快捷鍵（AppDelegate.swift）
+
+| 宣稱 | 結果 |
+|---|---|
+| View → Always Fit on Open ⌘* @ :101 | ✅ Confirmed — line 101 `makeItem(...alwaysFit..., key: "*")`，`makeItem` 預設 modifier 為 ⌘（未另設 mask）→ ⌘* 正確 |
+| Fitting Options → Shrink H/V @ :107-108、Stretch H/V @ :109-110 | ✅ Confirmed（HTML 寫 107-108 與 109-110，與程式碼完全對應；submenu 掛在 View 選單下 @ :112） |
+| View → Resize Window Automatically @ :131 | ✅ Confirmed — line 131 `menu.view.resizeAuto` |
+| Navigation → Dual Page ⌘K @ :147 | ✅ Confirmed — line 147 `key: "k"` 預設 ⌘ modifier → ⌘K；位於 Navigation 選單 |
+| Navigation → Continuous Scroll @ :164 | ✅ Confirmed — line 164 `toggleContinuousScroll` |
+| Window → Reuse Window @ :218 | ✅ Confirmed — line 218 `toggleReuseWindow`，位於 Window 選單 |
+| `isManualZoom`/`magnification` 「無直接選單」 | ✅ Confirmed — AppDelegate 選單中無直接切換這兩個欄位的項目（⌘=/⌘-/⌘1 為 zoomIn/zoomOut/actualSize，屬間接寫入，與 HTML 描述一致） |
+
+## 持久化宣稱
+
+- `ViewerSettings.swift:6-7` 是否為 `magnification`/`isManualZoom` → ✅ Confirmed，正是這兩行。
+- 「整包持久化到 UserDefaults」→ ✅ Confirmed — 整個 struct 經 `JSONEncoder` 存入 UserDefaults key `"CeeViewerSettings"`（`ViewerSettings.swift:131-144` 的 `save()`/`load()`），且 `magnification`/`isManualZoom` 都在 Codable decode 清單內（:100-101），確實跨啟動保留。
+
+## 小結
+
+範圍內 10 項宣稱**全數確認，無 Discrepancy、無 Gap**。附帶一提（非錯誤）：⌘* 在實際鍵盤上通常需按 Shift+8 產生 `*`，但 keyEquivalent 宣告確為 `⌘*`，HTML 標示無誤。</result>
+<usage><subagent_tokens>54977</subagent_tokens><tool_uses>6</tool_uses><duration_ms>45741</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a43c314dfb8bf23bc</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a43c314dfb8bf23bc.output</output-file>
+<status>completed</status>
+<summary>Agent "驗證開檔流程引用" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 驗證報告：第三節「開檔到首次顯示的流程」+ 時序宣稱
+
+### ✅ Confirmed
+
+1. **步驟 1 — `application(_:open:)` 與去重** @ `/Users/pc035860/code/cee/Cee/App/AppDelegate.swift:25-35`。行號範圍完全正確：依 `url.deletingLastPathComponent().path` 去重（每個資料夾只留第一個 URL），逐一呼叫 `ImageWindowController.open(with:)`。
+
+2. **步驟 2 — reuseWindow 分支** @ `/Users/pc035860/code/cee/Cee/Controllers/ImageWindowController.swift:36-50`。行號正確：`settings.reuseWindow == true` 且有現存視窗（`current` 非 nil 且 cast 成功）→ `vc.loadFolder(folder)` + `makeKeyAndOrderFront`；否則 `createWindow(with: folder)`。
+
+3. **步驟 3 — 暫定尺寸邏輯**：
+   - `createWindow` @ `ImageWindowController.swift:53-105`、`savedOrDefaultWindowSize`/`defaultWindowSize` @ `108-128` — 行號範圍正確。
+   - `lastWindowWidth/Height` 優先（108-117，附 ≥300 驗證）✅
+   - 無儲存值 → `screen.visibleFrame × 0.8`（119-128，ratio 來自 `Constants.defaultWindowSizeRatio = 0.8`）✅
+   - 800×600 fallback（僅當 `NSScreen.main == nil`，120-122）✅
+   - `window.center()` @ line 78 ✅
+   - `Constants.swift:4-14` 定值：800 / 600 / 0.8 / 300×300 / `minWindowContentSize` / 850 全在 4-14 行 ✅
+   - 「此時還不知道圖多大」✅ — 建窗時只有 folder，圖片尚未 decode。
+
+4. **步驟 4 — `applyFitting`** @ `ImageViewController.swift:660-684`。三分支順序與 HTML 完全一致：`alwaysFitOnOpen` → fit 倍率（671-674）；`isManualZoom` → `settings.magnification`（675-676）；否則沿用 `scrollView.magnification`（677-678）。
+
+5. **步驟 5 — 延遲 resize** @ `ImageViewController.swift:1775-1787` + `ImageWindowController.swift:264-322`。行號正確。「延遲一拍」屬實（`resizeAfterZoomDelay = 0.016` ≈ 1 frame，`ImageViewController.swift:26`）。上限 `visibleFrame`（268-273）✅、`center: false` 時維持視窗中心（1795-1808 呼叫端 + 294-298）✅。
+
+6. **時序宣稱（callout）— 「視窗先以 80%/上次尺寸出現、圖載完才縮成貼合」成立**。`createWindow` 中 `showWindow(nil)`（line 101）同步執行；圖片載入在 `viewDidAppear`（120-146）→ `loadCurrentImage` → `loadSpread` 內的 **async `Task`**（491）完成後才 `applyFitting`（551）→ `scheduleResizeToFitAfterZoom` 再延遲 0.016s 才 `resizeToFitImage`。視窗確實先以暫定尺寸可見，decode 完才跳成貼合尺寸。
+
+### ⚠️ Discrepancy
+
+1. **「下限 300×300」→ 實際下限是動態的 `effectiveMinimumContentSize()`** @ `ImageWindowController.swift:274-282`。它取 `max(Constants 300×300, window.contentMinSize, layout fittingSize)` — 至少 300×300，但狀態列等 layout 需求可能把下限抬得更高。HTML 說法是簡化（非錯誤，但不精確）。
+
+2. **HTML 路徑寫法不一**：步驟 3、5 的 `ImageWindowController.swift` 沒帶 `Cee/Controllers/` 前綴（步驟 1、2 有帶完整路徑）。內容正確，僅格式不一致。
+
+### 🆕 Gap
+
+1. **連續捲動模式走完全不同的建窗路徑** @ `ImageWindowController.swift:56-63, 81-97`：`continuousScrollEnabled` 時新窗用固定 850pt 寬（`continuousScrollNewWindowContentWidth`）+ 全螢幕可見高度，**不會**用 `lastWindowWidth` 或 80% 邏輯。HTML 步驟 3 完全沒提（雖然可能被歸為範圍外，但它就在被引用的 53-105 行內）。
+
+2. **步驟 5 的 resize 有 gating**：`scheduleResizeToFitAfterZoom` 由 `shouldResizeWindowToMatchImage()` 把關（`ImageViewController.swift:434-436` = `resizeWindowAutomatically || alwaysFitOnOpen || manualZoomInheritsFitWindowResize`），且 fullscreen 時跳過。HTML 把「視窗貼合」寫成無條件發生；若三個 flag 皆 off，callout 描述的「跳動」根本不會出現（只是預設 `alwaysFitOnOpen=true` 所以預設情境下宣稱成立）。
+
+3. **`ensureUsableWindowSize()`** @ `ImageWindowController.swift:102, 220` — showWindow 後還有一步視窗尺寸保底修正，流程圖未提（次要）。
+
+**結論**：五個步驟的引用行號全部準確，時序宣稱成立（在預設設定下）。主要缺漏是連續捲動模式的建窗分支與 resize gating 條件。</result>
+<usage><subagent_tokens>64726</subagent_tokens><tool_uses>14</tool_uses><duration_ms>83480</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>adfc605e9f850ea24</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/adfc605e9f850ea24.output</output-file>
+<status>completed</status>
+<summary>Agent "驗證視窗貼合幾何" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>驗證完成。逐項回報：
+
+## 第一節 row 1（視窗貼合圖片外緣）
+- ✅ Confirmed — `shouldResizeWindowToMatchImage()` 確為 `settings.resizeWindowAutomatically || settings.alwaysFitOnOpen || manualZoomInheritsFitWindowResize` @ `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:434-436`。`alwaysFitOnOpen = true` 時回 true 成立。
+- ✅ Confirmed — `scheduleResizeToFitAfterZoom` @ `ImageViewController.swift:1775-1787`：gate = `shouldResizeWindowToMatchImage()` + window 存在 + 非全螢幕；延遲 `resizeAfterZoomDelay = 0.016`（`ImageViewController.swift:26`，≈1 frame @60fps），HTML「延遲一拍」的說法吻合。
+- ✅ Confirmed（一個微小精度註記）— `displayedSize` @ `ImageViewController.swift:1803-1806`：`width = imageSize.width × mag`、`height = imageSize.height × mag + statusBarH`。HTML 寫「imageSize × magnification + statusBarH」，statusBarH 實際只加在高度，非兩軸；作為概述可接受，不算錯。
+- 註記：HTML 把 `:1775-1787` 同時當成「呼叫 `resizeWindowToFitZoomedImagePreservingCenter`」的出處，實際該函式本體在 `:1789-1825`，1775-1787 只是排程處。引用範圍略窄但指向正確。
+
+## 第一節 row 2（大圖 clamp）
+- ✅ Confirmed — `resizeToFitImage` @ `/Users/pc035860/code/cee/Cee/Controllers/ImageWindowController.swift:264-322`：上限 `screen.visibleFrame`（:268-273）、下限 `effectiveMinimumContentSize()`（:274-282；`Constants.minWindowContentWidth/Height = 300` @ `Cee/Utilities/Constants.swift:7-8`，取 `max(300, contentMinSize, fittingSize)` @ :244-260，故「至少 300×300」正確）、`clampedWindowOrigin` 保證 frame 在 `visibleFrame` 內（:301-304, :344-354）。
+- ✅ Confirmed — 下限先 `min(effectiveMin, visibleFrame)` 再套用（:275-282），與宣稱一致。
+
+## 第五節 Cee panel（line 308）
+- ⚠️ Discrepancy（輕微）：「下限 300×300」→ 實際下限是 `effectiveMinimumContentSize()` = `max(300, window.contentMinSize, contentView.fittingSize)`，可能大於 300（例如 status bar fittingSize 撐寬）@ `ImageWindowController.swift:233-260`。第一節 row 2 寫「至少 300×300」是準的；第五節與第六節步驟註（line 250）省略成固定 300×300，屬簡化而非錯誤，但兩處說法不一致。
+
+## 第六節 P3 兩列
+- ✅ Confirmed — 「`resizeToFitImage(center: false)` 維持視窗中心」：else 分支以 `currentCenter`（原 window.frame 中點）定位 @ `ImageWindowController.swift:283, 294-299`；呼叫端確實傳 `center: false` @ `ImageViewController.swift:1807-1808`。
+- ✅ Confirmed — 「比 300×300 小的圖視窗不會縮更小、圖片周圍留空邊」：`targetSize = max(requestedSize, effectiveMinContent)` @ :279-282 保證不縮小於下限；resize 後 `recenterViewport` + `applyCenteringInsetsIfNeeded`（`ImageViewController.swift:1823-1824`）把小圖置中於較大 viewport，留白推論成立。
+
+## 全螢幕 return 是否寫進文件
+- 🆕 Gap — `scheduleResizeToFitAfterZoom`（`ImageViewController.swift:1778`）、`resizeWindowToFitZoomedImagePreservingCenter`（:1792）、`resizeToFitImage`（`ImageWindowController.swift:267`）三處都有 `!window.styleMask.contains(.fullScreen)` guard 直接 return；HTML 全文未提及（grep「fullscreen/全螢幕」無命中相關段落）。重要性評估：**低**。這是正確的防禦行為（全螢幕下本就不該 resize window），對文件主題（開檔 UX、視窗貼合幾何）影響有限；唯一相關情境是「全螢幕中 pinch 後退出全螢幕，視窗尺寸不會反映縮放」這類邊角行為。建議在 P3 表加一句註記即可，非必要修正。</result>
+<usage><subagent_tokens>47668</subagent_tokens><tool_uses>11</tool_uses><duration_ms>83748</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a77cfda9259fccdca</task-id>
+<tool-use-id>toolu_01KkhtZBrs26sSemi4o1w2ug</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a77cfda9259fccdca.output</output-file>
+<status>completed</status>
+<summary>Agent "驗證 fit/zoom 狀態機" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>驗證完成，逐項回報：
+
+**第一節第 3 列（FittingCalculator 預設值）**
+- ✅ Confirmed — `/Users/pc035860/code/cee/Cee/Services/FittingCalculator.swift:3-8`：`shrinkH/V = true`、`stretchH/V = false`。小圖（不需 shrink 也不 stretch）四個分支皆不觸發，回傳原尺寸 → `fittedMagnification`（ImageViewController.swift:159-171）算出 `fitted.width / imageSize.width = 1.0`。大圖取 `min(scaleX, scaleY)`（FittingCalculator.swift:42-48）也屬實。
+
+**第四節（狀態機陷阱）**
+- ✅ Confirmed — `enterManualZoom()` @ `/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:331-342`：337 行確實**無條件** `settings.alwaysFitOnOpen = false`；`wasAutoFit` 時於 335 行設 `manualZoomInheritsFitWindowResize = true`。
+- ✅ Confirmed — `fitOnScreen` @ ImageViewController.swift:1122-1145：1123 清 `isManualZoom`、1124 清 inherit flag，整個函式**沒有**任何 `alwaysFitOnOpen` 寫入。
+- ✅ Confirmed — `applyFitting` @ ImageViewController.swift:660-684：三分支完全如 HTML 所述 — 671-674 `alwaysFitOnOpen` → fit 倍率；675-676 `isManualZoom` → `settings.magnification`；677-679 else → `scrollView.magnification`（沿用當前倍率）。
+- ✅ Confirmed — 半殘態推論成立：翻頁 `loadSpread` → `applyFitting(for: dualPageView.compositeSize)` @ :551 落入第三分支（沿用上一張的 fit 倍率，不重算）；視窗 hug 由 `scheduleResizeToFitAfterZoom` :1775-1787 guard `shouldResizeWindowToMatchImage()` @ :434-436（`resizeWindowAutomatically || alwaysFitOnOpen || manualZoomInheritsFitWindowResize`）— ⌘0 後三者皆 false（`resizeWindowAutomatically` 預設 false），視窗確實不再 hug。
+- ✅ Confirmed — 「持久化、重開 app 不恢復」：`enterManualZoom()` 本身不 save，但四個呼叫點都緊接持久化（zoomIn :1098 / zoomOut :1113 / actualSize :1156 `settings.save()`；magnify handler :1920 `scheduleDebouncedSettingsSave()`）。`ViewerSettings` 整包 Codable 存 UserDefaults key `CeeViewerSettings`，`alwaysFitOnOpen` 有 encode/decode（`/Users/pc035860/code/cee/Cee/Models/ViewerSettings.swift:10, 102`），`load()` 會還原 false 值。
+
+**enterManualZoom 呼叫點涵蓋度**
+- ✅ Confirmed — 恰好 4 個呼叫點：`zoomIn`（⌘=）:1094、`zoomOut`（⌘-）:1108、`actualSize`（⌘1）:1153、pinch magnify handler :1918。與 HTML 宣稱的 pinch / ⌘= / ⌘- / ⌘1 完全一致，無遺漏。
+
+**第六節 P1/P2**
+- ✅ Confirmed — P1「拆開偏好與狀態」引用行號 :331-342, 1122-1145 正確。
+- ✅ Confirmed — P1「消除半殘態」第三分支 :677-679 正確；且「P1 第一項做了此分支幾乎不可達」邏輯成立（isManualZoom/alwaysFitOnOpen 若恢復二元互斥，else 只剩暫態）。
+- ✅ Confirmed — P2「重開 app 殘留手動縮放」：`magnification` / `isManualZoom` 確實在 ViewerSettings.swift:6-7 且隨整包持久化。
+
+**微小補充（非錯誤，🆕 Gap 級 nuance）**
+- 🆕 連續捲動模式下 ⌘1（`actualSize` :1149-1151）會 redirect 到 `fitOnScreen`，**不會**進 manual zoom — HTML 的狀態圖只描述單頁模式，未標註此例外（但第二節已聲明 continuousScroll 走不同路徑，影響甚微）。
+- 🆕 `fitOnScreen` 除了清兩個 flag 外還會重套 fit 倍率並 save（:1136-1142）— HTML 說「只清」是聚焦 flag 層面，行為描述無誤，但嚴格說函式做的事不只清 flag。
+
+無任何 ⚠️ Discrepancy — 範圍內所有宣稱與行號引用均與 codebase（main @ 16e1f63）相符。</result>
+<usage><subagent_tokens>62024</subagent_tokens><tool_uses>17</tool_uses><duration_ms>102277</duration_ms></usage>
+</task-notification>
+
+---
+
+好可以討論了
+
+---
+
+同資料夾保留吧  看漫畫要重捏是無法接受的
+
+---
+
+幫我直接 build 一版擺進 app/ 取代原本的款
+
+---
+
+幫我直接 build 一版擺進 Applications 取代原本的款
+
+---
+
+現在是一個蠻奇怪的狀態，我發現如果要對齊 XEE 看圖 App 的行為，我們的 Fit 選項要勾選「縮小至垂直視窗」跟「縮小至水平視窗」之類的選項。
+
+但勾選之後，可能是因為我們 App 在一開啟的時候（如果你用它來打開圖片），會設定一個預設的寬高，導致即便我們想要顯示圖片原本的 Size，它也會先被壓到這個預設尺寸。這變成我有沒有勾選那兩個選項，結果會差蠻多的，它沒有尊重原本圖片的大小，而是被我們預設開啟 App 時的視窗 Size 給限制住了。
+
+這是 P2 要解決的問題嗎？
+
+---
+
+/fable-orchestrator 治本
+
+---
+
+<task-notification>
+<task-id>a6a6c374b66d5f9ad</task-id>
+<tool-use-id>toolu_013STpG67tdw72TEY6SwyRLP</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a6a6c374b66d5f9ad.output</output-file>
+<status>completed</status>
+<summary>Agent "recon 實作細節五項" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>以下是五項查詢結果，按題號回報。
+
+---
+
+## 1. 不 decode 只讀圖片 header 尺寸的現有 utility
+
+**有三個實作，但各有侷限：**
+
+**`ImageLoader.readImageDimensions(at:)`** — `/Users/pc035860/code/cee/Cee/Services/ImageLoader.swift:228`
+```swift
+private static func readImageDimensions(at url: URL) -&gt; CGSize?
+```
+同步、輸入 URL 回傳 `CGSize?`，但 **`private static`**，且**不做 EXIF orientation 5-8 交換**（直接回傳 raw w/h）。
+
+**`ImageLoader.getImageSize(for url: URL)`** — `ImageLoader.swift:249`
+```swift
+func getImageSize(for url: URL) async -&gt; NSSize?
+```
+**有 EXIF 5-8 交換**（line 264–265），但是 `async` instance method，無法同步呼叫。PDF 直接回傳 nil（由 `getImageSize(for item:)` 在 line 239 分派到 PDF path）。
+
+**`QuickGridView.sampleMedianAspectRatio(from:)`** — `/Users/pc035860/code/cee/Cee/Views/QuickGridView.swift:1019`
+```swift
+private func sampleMedianAspectRatio(from items: [ImageItem]) -&gt; CGFloat
+```
+同步、有 EXIF 5-8 swap（line 1038），但 `private`、輸入是 `[ImageItem]`、回傳是 median h/w ratio，不是 `NSSize`。
+
+**結論**：目前**沒有**可直接呼叫、輸入 URL 回傳 `NSSize` 且已處理 EXIF 5-8 的同步公開函數。最接近可抄的完整實作是 `getImageSize(for url: URL)`（line 249-268）；同步版本邏輯可從 `readImageDimensions` + `sampleMedianAspectRatio` 的 EXIF 片段拼出。
+
+---
+
+## 2. `effectiveStatusBarHeight` 與 `effectiveScrollViewport` 完整定義
+
+`/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:34-44`
+
+```swift
+/// StatusBar 佔用的實際高度（隱藏時為 0）
+private var effectiveStatusBarHeight: CGFloat {
+    settings.showStatusBar ? Constants.statusBarHeight : 0
+}
+
+/// ScrollView bounds 扣除 statusBar overlay 後的有效 viewport
+private var effectiveScrollViewport: NSSize {
+    NSSize(
+        width: scrollView.bounds.width,
+        height: scrollView.bounds.height - effectiveStatusBarHeight
+    )
+}
+```
+
+兩者皆為 `private`，純 computed property。`effectiveScrollViewport` 直接從 `scrollView.bounds`（含 contentInsets 之外的 clip view 實際大小）減去 status bar overlay 高度。
+
+---
+
+## 3. ImageWindowController frame↔content 換算現行做法
+
+**`createWindow(with:)`** — `ImageWindowController.swift:66-96`
+
+`NSWindow(contentRect:styleMask:backing:defer:)` 的 `contentRect` 直接傳入 content size（`windowSize.width × windowSize.height`），x/y 為 0：
+```swift
+let window = NSWindow(
+    contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
+    ...
+)
+```
+chrome 換算使用 `window.frameRect(forContentRect:)` 兩處：
+- line 74：`window.minSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: minContentSize)).size`
+- line 89（continuous scroll 分支）：`let outer = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))`
+
+**`expandedHeightFrame(from:within:)`** — `ImageWindowController.swift:332-342`
+
+接收的 `frame` 與 `visibleFrame` 都是**外框（frame）座標**，直接做幾何計算，無 chrome 轉換：
+```swift
+static func expandedHeightFrame(from frame: NSRect, within visibleFrame: NSRect) -&gt; NSRect {
+    let width = min(frame.width, visibleFrame.width)
+    let maxX = max(visibleFrame.maxX - width, visibleFrame.minX)
+    let originX = min(max(frame.minX, visibleFrame.minX), maxX)
+    return NSRect(x: originX, y: visibleFrame.minY, width: width, height: visibleFrame.height)
+}
+```
+
+**`resizeToFitImage(_:center:)`** — `ImageWindowController.swift:264-322`
+
+輸入為 content size，先 clamp 到 `visibleFrame.size`，再 clamp 到 `effectiveMinimumContentSize()`，最後用 `window.frameRect(forContentRect:)` 轉換成 frame size，再做 origin 計算並 clamp 在 visibleFrame 內：
+```swift
+let targetFrameSize = window.frameRect(
+    forContentRect: NSRect(origin: .zero, size: targetSize)
+).size
+```
+
+title bar chrome 始終由 `window.frameRect(forContentRect:)` 隱式處理，**沒有任何 hard-code chrome 常數**。
+
+---
+
+## 4. `savedOrDefaultWindowSize()` 與 `createWindow(with:)` 完整內容
+
+`/Users/pc035860/code/cee/Cee/Controllers/ImageWindowController.swift:53-128`
+
+**`createWindow(with:)`** continuous scroll 分支結構（line 56-63, 81-97）：
+
+```swift
+private static func createWindow(with folder: ImageFolder?) {
+    let settings = ViewerSettings.load()
+    let windowSize: NSSize
+    if settings.continuousScrollEnabled {
+        windowSize = NSSize(
+            width: Constants.continuousScrollNewWindowContentWidth,
+            height: Constants.minWindowContentHeight
+        )
+    } else {
+        windowSize = savedOrDefaultWindowSize()
+    }
+    // ... NSWindow 建立 ...
+    if settings.continuousScrollEnabled, let screen = NSScreen.main {
+        let visibleFrame = screen.visibleFrame
+        let chrome = verticalChromeHeight(for: window, contentWidth: Constants.continuousScrollNewWindowContentWidth)
+        let contentH = Self.continuousScrollContentHeightForLaunch(
+            visibleFrameHeight: visibleFrame.height,
+            verticalChrome: chrome
+        )
+        let contentSize = NSSize(width: Constants.continuousScrollNewWindowContentWidth, height: contentH)
+        let outer = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
+        let candidateFrame = NSRect(origin: window.frame.origin, size: outer.size)
+        let targetFrame = expandedHeightFrame(from: candidateFrame, within: visibleFrame)
+        // minSize 可能被縮小以配合 targetFrame
+        window.setFrame(targetFrame, display: true, animate: false)
+    }
+    // ...
+}
+```
+
+**`savedOrDefaultWindowSize()`** — line 108-117：
+
+```swift
+private static func savedOrDefaultWindowSize() -&gt; NSSize {
+    let settings = ViewerSettings.load()
+    if let w = settings.lastWindowWidth,
+       let h = settings.lastWindowHeight,
+       w &gt;= Constants.minWindowContentWidth,
+       h &gt;= Constants.minWindowContentHeight {
+        return NSSize(width: w, height: h)
+    }
+    return defaultWindowSize()
+}
+```
+
+`defaultWindowSize()` — line 119-128，取 `screen.visibleFrame × defaultWindowSizeRatio`。
+
+**Continuous scroll 分支特點**：初始 `windowSize` 直接使用 `Constants.continuousScrollNewWindowContentWidth × Constants.minWindowContentHeight`（硬設 content size），之後在 `if continuousScrollEnabled` block 裡再用 `continuousScrollContentHeightForLaunch` 算出填滿螢幕高度的 content height，透過 `frameRect(forContentRect:)` + `expandedHeightFrame` 換算後 `setFrame`。單頁模式完全走 `savedOrDefaultWindowSize()` → 沒有類似的 pre-size 計算 block。
+
+---
+
+## 5. ImageFolder 當前圖片 API 與 dual page 設定優先順序
+
+**ImageFolder 當前圖片 API** — `/Users/pc035860/code/cee/Cee/Models/ImageFolder.swift`
+
+```
+images: [ImageItem]       // line 8, private(set)
+currentIndex: Int          // line 9, var (可寫)
+currentImage: ImageItem?   // line 179, computed = images[safe: currentIndex]
+hasNext: Bool              // line 180
+hasPrevious: Bool          // line 181
+```
+
+**Dual page 設定誰先誰後**
+
+`settings.dualPageEnabled` 是 `ViewerSettings` 的 member（`ViewerSettings.swift:66`，預設 `false`）。
+
+`loadFolderDualPageSettings()` — `ImageViewController.swift:645-656`：從 UserDefaults key `"dualPage.settings.\(folder.folderURL.path)"` 讀取 per-folder JSON，並直接**覆寫** `settings.dualPageEnabled`（以及 `firstPageIsCover`、`readingDirection`、`duoPageRTLNavigation`）。
+
+呼叫時機：
+- `viewDidAppear` line 136：初次載入時，在 `viewController(folder:)` init 之後、首次 `loadCurrentImage` 之前
+- `loadFolder(_:)` line 202：視窗復用換資料夾時，在 init 之後立即呼叫
+
+**建窗當下（`createWindow(with:)`）讀不到 per-folder 設定**：`createWindow` 只呼叫 `ViewerSettings.load()`，此時 `dualPageEnabled` 是全域儲存值（預設 false）。per-folder 覆寫發生在 ViewController 層的 `viewDidAppear` 或 `loadFolder`，**晚於** window/controller 建立。建窗時只能拿到全域 `settings.dualPageEnabled`。</result>
+<usage><subagent_tokens>37163</subagent_tokens><tool_uses>24</tool_uses><duration_ms>110570</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a411527e414b318c9</task-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a411527e414b318c9.output</output-file>
+<status>completed</status>
+<summary>Agent "實作開圖 fit 治本修正" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>已請 agent 繼續完成驗證並提交最終報告，等待其回覆。</result>
+<usage><subagent_tokens>37618</subagent_tokens><tool_uses>3</tool_uses><duration_ms>1055265</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a411527e414b318c9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a411527e414b318c9.output</output-file>
+<status>completed</status>
+<summary>Agent "實作開圖 fit 治本修正" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Subagent 已於背景恢復執行，正在完成 E2E 重跑與驗證流程；其完成通知會自動送達，屆時我會立即整理並提交符合 brief 格式的最終報告（改動檔案 file:line、測試結果、Dimension A L1/L2/L3 與 Dimension B、偏離事項）。目前不介入其工作目錄以免與其衝突。</result>
+<usage><subagent_tokens>41203</subagent_tokens><tool_uses>4</tool_uses><duration_ms>1092099</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a411527e414b318c9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a411527e414b318c9.output</output-file>
+<status>completed</status>
+<summary>Agent "實作開圖 fit 治本修正" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result># 最終報告：開圖 fit 分母錯誤 + 首開視窗跳動治本修正
+
+## 改動檔案（file:line 摘要）
+
+| 檔案 | 摘要 |
+|---|---|
+| `Cee/Services/ImageLoader.swift:228-240` | 新增公開同步 `static func imageHeaderSize(at:) -&gt; NSSize?`（EXIF 5-8 寬高交換、PDF 回 nil）。原 `readImageDimensions` 刪除；`getImageSize(for:)`（:253）改為委派，消除重複邏輯 |
+| `Cee/Controllers/ImageViewController.swift:658-667` | 新增 `openFitViewport()`：auto-fit + 視窗 hug + 非全螢幕時以 `window.contentRect(forFrameRect: screen.visibleFrame)` 當 fit 分母，否則 fallback `effectiveScrollViewport`；`applyFitting`（:672）改用之。`handleWindowDidResize` 未動 |
+| `Cee/Controllers/ImageWindowController.swift:97-116` | `createWindow` 單頁 pre-size 分支（gate：非 continuousScroll、`!settings.dualPageEnabled`、fit/resize 設定開、header 可讀、有 screen；任一不成立走原邏輯）；`:165-178` 新增 pure static `presizedContentSize`；`clampedWindowOrigin` 改 static（:383）供 createWindow 重用 |
+| `CeeTests/ImageLoaderTests.swift` | +4 tests | 
+| `CeeTests/ImageWindowControllerTests.swift` | +3 tests |
+
+## 測試案例（全部由我親自重跑，全綠，** TEST SUCCEEDED **）
+
+- `testImageHeaderSize_returnsCorrectDimensions` ✅
+- `testImageHeaderSize_nonexistentURL_returnsNil` ✅
+- `testImageHeaderSize_pdfURL_returnsNil` ✅
+- `testImageHeaderSize_exifOrientation6_swapsDimensions`（400×200 + orientation 6 → 200×400）✅
+- `testPresizedContentSize_smallImage_returnsImageSizePlusStatusBar`（500×424 精確值）✅
+- `testPresizedContentSize_largeImage_fitsInViewportWithStatusBar`（1464×1000 精確值）✅
+- `testPresizedContentSize_tinyImage_clampsToMinContent`（clamp ≥300）✅
+- 既有測試無變紅（含 windowless 的 ImageViewControllerTests fit 測試——`openFitViewport` 正確 fallback）
+
+## 驗證區塊
+
+**Dimension A — Runtime**
+- **L1（build）：pass** — `xcodebuild build` BUILD SUCCEEDED（本 context 親跑）
+- **L2（unit）：pass** — `xcodebuild test -only-testing:CeeTests` 全套件通過（本 context 親跑兩次確認）
+- **L3（E2E）：pass（warn 註記）** — `./scripts/test-e2e.sh` 全套件 309/310 pass；唯一 fail `testZoomShortcuts_KeepImageVisible` 隔離重跑 pass（15.3s）。加上實作 agent 的兩次 full run（各掛不同單一 test、隔離重跑皆過、無 crash report），三次觀察一致指向全套件負載下的 AX/XPC 環境 flake，非本修改造成。macOS GUI「首開無跳動」的視覺效果建議人眼開一次最終確認
+
+**Dimension B — Static review**
+- Reviewer：review-loop（Codex gpt-5.5）共兩個 session — 實作 agent 的 019f2bb0-cb04（2 輪，針對 fit 修正）+ 我補跑的 019f2bba-fe89（針對工作區平行改動與交互作用）
+- Verdict：**no blocking issues**（兩個 session 皆是）
+- 非阻斷 findings（未修，屬平行任務範圍或測試強化建議）：
+  - `ImageViewController.swift:173` guard 建議改用 `isAutoFitActive` computed property
+  - `ViewerSettings.swift:101` 建議補 decode 測試鎖住 `isManualZoom` 不還原的保證
+  - `ImageViewControllerTests.swift:179` 建議強化 `fitOnScreen()` 為掛 window 的 fixture
+  - Question（UX 語意，留給使用者決定）：`alwaysFitOnOpen == false` 時按 ⌘0 是 one-shot fit（現行為）還是重新啟用 Always Fit？
+
+## 偏離事項
+
+1. **simplify 階段的額外去重複**：刪 `readImageDimensions` 死包裝、`getImageSize` 委派新函數、`clampedWindowOrigin` 改 static——行為不變。
+2. **未採納的審查建議**：`openFitViewport` guard 保留 brief 明定的 `shouldResizeWindowToMatchImage()`（雖被 `isAutoFitActive` 邏輯蘊含，防未來定義漂移）；QuickGridView 第三份 EXIF 邏輯未合併（超出範圍）。
+3. **工作區含平行任務的未提交改動**（manual zoom 與 `alwaysFitOnOpen` 解耦：`enterManualZoom` 不再清 `alwaysFitOnOpen`、`isManualZoom` session-scoped、`applyFitting` 順序調整、localization、CLAUDE.md）——非本任務所為，未觸碰；我補跑的 Codex review 已涵蓋其交互作用，無 blocking。
+4. **未 commit**（brief 未要求）。</result>
+<usage><subagent_tokens>94801</subagent_tokens><tool_uses>24</tool_uses><duration_ms>1506562</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a86975a23f6ad0cab</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a86975a23f6ad0cab.output</output-file>
+<status>completed</status>
+<summary>Agent "重建 Release 並更新 Applications" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>**步驟 4：✅ 簽章驗證成功**
+
+---
+
+## 部署完成
+
+| 步驟 | 結果 |
+|------|------|
+| 1. Release 構建 | ✅ BUILD SUCCEEDED |
+| 2. 刪除舊版 | ✅ 已移至垃圾桶 |
+| 3. 複製新應用 | ✅ 已複製至 /Applications/Cee.app |
+| 4. 驗證簽章 | ✅ 簽章有效 |
+
+**應用位置：** `/Applications/Cee.app`  
+**時間戳：** 2026年7月4日 13:31  
+**狀態：** 就緒，未啟動</result>
+<usage><subagent_tokens>26927</subagent_tokens><tool_uses>6</tool_uses><duration_ms>53466</duration_ms></usage>
+</task-notification>
+
+---
+
+剛剛 subagent 是不是有什麼問題
+
+---
+
+我測試怎麼感覺都沒有變
+
+---
+
+我測試怎麼感覺都沒有變
+選項有需要怎麼設定嗎
+
+---
+
+<task-notification>
+<task-id>a90610d1f7d3e6bc0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a90610d1f7d3e6bc0.output</output-file>
+<status>completed</status>
+<summary>Agent "診斷 Cee 進程與設定值" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 診斷報告
+
+### 1. 進程狀態
+**Cee 正在執行中**
+- **PID**: 77631
+- **啟動時間**: 2026年7月4日 14:22:59
+- **Binary 修改時間**: 2026年7月4日 14:10:12
+- **判斷**: ✅ 運行的是最新 build（啟動時間晚於 binary ~12 分鐘，表示最近啟動的版本）
+
+### 2. Bundle ID
+`com.local.cee`
+
+### 3. 完整設定 JSON
+
+```json
+{
+  "quickGridScrollAfterZoom": true,
+  "showStatusBar": true,
+  "continuousScrollGap": 0,
+  "scalingQuality": "medium",
+  "isManualZoom": true,
+  "singlePageRTLNavigation": false,
+  "resizeWindowAutomatically": false,
+  "readingDirection": "rightToLeft",
+  "floatOnTop": false,
+  "magnification": 0.7314476141050541,
+  "trackpadSensitivity": "medium",
+  "arrowLeftRightNavigation": true,
+  "wheelSensitivity": "medium",
+  "thumbnailFallback": false,
+  "duoPageRTLNavigation": true,
+  "reuseWindow": true,
+  "lastWindowWidth": 300,
+  "hasShownManualZoomHint": true,
+  "continuousScrollEnabled": false,
+  "scrollToBottomOnPrevious": true,
+  "arrowUpDownNavigation": false,
+  "quickGridCellSize": 160,
+  "dualPageEnabled": false,
+  "fittingOptions": {
+    "stretchHorizontally": false,
+    "shrinkVertically": true,
+    "shrinkHorizontally": false,
+    "stretchVertically": false
+  },
+  "firstPageIsCover": false,
+  "clickToTurnPage": false,
+  "alwaysFitOnOpen": true,
+  "lastWindowHeight": 333,
+  "showPixelsWhenZoomingIn": true
+}
+```
+
+### 4. 重點欄位檢查
+| 欄位 | 值 |
+|------|-----|
+| `alwaysFitOnOpen` | `true` |
+| `fittingOptions.stretchHorizontally` | `false` |
+| `fittingOptions.shrinkVertically` | `true` |
+| `fittingOptions.shrinkHorizontally` | `false` |
+| `fittingOptions.stretchVertically` | `false` |
+| `resizeWindowAutomatically` | `false` |
+| `continuousScrollEnabled` | `false` |
+| `dualPageEnabled` | `false` |
+| `reuseWindow` | `true` |</result>
+<usage><subagent_tokens>36695</subagent_tokens><tool_uses>14</tool_uses><duration_ms>80639</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a5cf00d55f3f84048</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/b8a926b7-4ef5-48d5-abe2-73445b7d90c7/tasks/a5cf00d55f3f84048.output</output-file>
+<status>completed</status>
+<summary>Agent "驗證安裝版 binary 含修正" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 驗證結果
+
+### 1. MD5 Hash 比對
+✅ **完全一致**
+```
+安裝版:              abeba4e381274f06defc9343edd4fa7a
+DerivedData Release: abeba4e381274f06defc9343edd4fa7a
+```
+
+### 2. 時間戳
+```
+安裝版:              Jul  4 14:10:12 2026
+DerivedData Release: Jul  4 14:10:12 2026
+DerivedData Debug:   Jul  4 14:07:59 2026
+```
+
+### 3. 安裝版新函數檢查
+- `nm -gU | grep -ci imageheadersize`: **0** (無 symbol)
+- `strings | grep -c imageHeaderSize`: **0** (無字串)
+
+### 4. DerivedData Release 版新函數檢查
+- `nm -gU | grep -ci imageheadersize`: **0** (無 symbol)
+- `strings | grep -c imageHeaderSize`: **0** (無字串)
+
+### 5. Git 工作區改動
+```
+M CLAUDE.md
+ M Cee/Controllers/ImageViewController.swift
+ M Cee/Controllers/ImageWindowController.swift
+ M Cee/Models/ViewerSettings.swift
+ M Cee/Services/ImageLoader.swift
+ M Cee/en.lproj/Localizable.strings
+ M Cee/zh-Hant/Localizable.strings
+ M CeeTests/ImageLoaderTests.swift
+ M CeeTests/ImageViewControllerTests.swift
+ M CeeTests/ImageWindowControllerTests.swift
+```
+
+**重點**：新函數 `imageHeaderSize` 在編譯後的 binary 中完全不可見（可能被內聯或死碼刪除）。治本改動確實存在工作區。</result>
+<usage><subagent_tokens>27023</subagent_tokens><tool_uses>7</tool_uses><duration_ms>28942</duration_ms></usage>
+</task-notification>
+
+---
+
+改設定之後測試 ok
