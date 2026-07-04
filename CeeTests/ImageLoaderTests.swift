@@ -1,4 +1,6 @@
 @testable import Cee
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 
 final class ImageLoaderTests: XCTestCase {
@@ -158,6 +160,56 @@ final class ImageLoaderTests: XCTestCase {
         let second = await loader.loadThumbnail(at: url, maxSize: 240, priority: .utility)
 
         XCTAssertNotNil(second, "Different priority should still hit same cache key")
+        #endif
+    }
+
+    func testImageHeaderSize_returnsCorrectDimensions() throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createPNG")
+        #else
+        let url = try createPNG(width: 320, height: 240)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let size = ImageLoader.imageHeaderSize(at: url)
+
+        XCTAssertNotNil(size)
+        XCTAssertEqual(size!.width, 320, accuracy: 1)
+        XCTAssertEqual(size!.height, 240, accuracy: 1)
+        #endif
+    }
+
+    func testImageHeaderSize_nonexistentURL_returnsNil() {
+        let url = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).png")
+        XCTAssertNil(ImageLoader.imageHeaderSize(at: url))
+    }
+
+    func testImageHeaderSize_pdfURL_returnsNil() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
+        try minimalPNG().write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        XCTAssertNil(ImageLoader.imageHeaderSize(at: url))
+    }
+
+    func testImageHeaderSize_exifOrientation6_swapsDimensions() throws {
+        #if !canImport(AppKit)
+        throw XCTSkip("AppKit required for createJPEG")
+        #else
+        let source = try createJPEG(width: 400, height: 200)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let rotated = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+        defer { try? FileManager.default.removeItem(at: rotated) }
+
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(source as CFURL, nil))
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithURL(rotated as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
+        )
+        CGImageDestinationAddImageFromSource(destination, imageSource, 0, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        let size = try XCTUnwrap(ImageLoader.imageHeaderSize(at: rotated))
+        XCTAssertEqual(size.width, 200, accuracy: 1)
+        XCTAssertEqual(size.height, 400, accuracy: 1)
         #endif
     }
 

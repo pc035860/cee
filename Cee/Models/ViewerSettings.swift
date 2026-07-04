@@ -4,7 +4,7 @@ struct ViewerSettings: Codable {
 
     // MARK: - Zoom
     var magnification: CGFloat = 1.0
-    var isManualZoom: Bool = false      // false = Fit on Screen mode
+    var isManualZoom: Bool = false      // runtime state：不從磁碟還原，啟動一律回 Fit 模式
 
     // MARK: - Fitting
     var alwaysFitOnOpen: Bool = true
@@ -98,7 +98,7 @@ struct ViewerSettings: Codable {
         let d = ViewerSettings()  // defaults
         let c = try decoder.container(keyedBy: CodingKeys.self)
         magnification = (try? c.decode(CGFloat.self, forKey: .magnification)) ?? d.magnification
-        isManualZoom = (try? c.decode(Bool.self, forKey: .isManualZoom)) ?? d.isManualZoom
+        // isManualZoom 刻意不解碼：手動縮放是 session 狀態，跨啟動必須回到 Fit
         alwaysFitOnOpen = (try? c.decode(Bool.self, forKey: .alwaysFitOnOpen)) ?? d.alwaysFitOnOpen
         fittingOptions = (try? c.decode(FittingOptions.self, forKey: .fittingOptions)) ?? d.fittingOptions
         scalingQuality = (try? c.decode(ScalingQuality.self, forKey: .scalingQuality)) ?? d.scalingQuality

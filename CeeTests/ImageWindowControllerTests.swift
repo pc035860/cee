@@ -93,4 +93,43 @@ final class ImageWindowControllerTests: XCTestCase {
 
         XCTAssertEqual(contentH, Constants.minWindowContentHeight)
     }
+
+    func testPresizedContentSize_smallImage_returnsImageSizePlusStatusBar() {
+        let result = ImageWindowController.presizedContentSize(
+            imageSize: NSSize(width: 500, height: 400),
+            maxContent: NSSize(width: 1600, height: 1000),
+            statusBarHeight: 24,
+            minContent: NSSize(width: 300, height: 300),
+            options: FittingOptions()
+        )
+
+        XCTAssertEqual(result.width, 500, accuracy: 0.5)
+        XCTAssertEqual(result.height, 424, accuracy: 0.5)
+    }
+
+    func testPresizedContentSize_largeImage_fitsInViewportWithStatusBar() {
+        let result = ImageWindowController.presizedContentSize(
+            imageSize: NSSize(width: 3000, height: 2000),
+            maxContent: NSSize(width: 1600, height: 1000),
+            statusBarHeight: 24,
+            minContent: NSSize(width: 300, height: 300),
+            options: FittingOptions()
+        )
+
+        XCTAssertEqual(result.width, 1464, accuracy: 0.5)
+        XCTAssertEqual(result.height, 1000, accuracy: 0.5)
+    }
+
+    func testPresizedContentSize_tinyImage_clampsToMinContent() {
+        let result = ImageWindowController.presizedContentSize(
+            imageSize: NSSize(width: 100, height: 80),
+            maxContent: NSSize(width: 1600, height: 1000),
+            statusBarHeight: 24,
+            minContent: NSSize(width: 300, height: 300),
+            options: FittingOptions()
+        )
+
+        XCTAssertGreaterThanOrEqual(result.width, 300)
+        XCTAssertGreaterThanOrEqual(result.height, 300)
+    }
 }

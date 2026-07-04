@@ -224,15 +224,19 @@ actor ImageLoader {
         url.pathExtension.caseInsensitiveCompare("pdf") == .orderedSame
     }
 
-    /// 僅讀 metadata 取得尺寸（不解碼，portrait fit-to-width 時避免 thumbnail→fullRes 跳動）
-    private static func readImageDimensions(at url: URL) -> CGSize? {
+    /// 僅讀 metadata 取得尺寸，含 EXIF orientation 5-8 交換。PDF 回 nil。
+    static func imageHeaderSize(at url: URL) -> NSSize? {
         guard !isPDFURL(url) else { return nil }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary? else { return nil }
-        let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
-        let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { return nil }
+        let w = (props[kCGImagePropertyPixelWidth as String] as? CGFloat) ?? 0
+        let h = (props[kCGImagePropertyPixelHeight as String] as? CGFloat) ?? 0
         guard w > 0, h > 0 else { return nil }
-        return CGSize(width: w, height: h)
+        let orientation = (props[kCGImagePropertyOrientation as String] as? Int) ?? 1
+        if orientation >= 5 && orientation <= 8 {
+            return NSSize(width: h, height: w)
+        }
+        return NSSize(width: w, height: h)
     }
 
     /// 讀取項目顯示尺寸（不解碼點陣）：一般圖片用 metadata；PDF 用 cropBox 與 rotation（與 render 一致）
@@ -247,24 +251,7 @@ actor ImageLoader {
     /// - Parameter url: 圖片 URL
     /// - Returns: 圖片尺寸，已處理 EXIF orientation 5-8 的交換
     func getImageSize(for url: URL) async -> NSSize? {
-        guard !Self.isPDFURL(url) else { return nil }
-
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else {
-            return nil
-        }
-
-        let w = (props[kCGImagePropertyPixelWidth as String] as? CGFloat) ?? 0
-        let h = (props[kCGImagePropertyPixelHeight as String] as? CGFloat) ?? 0
-        guard w > 0, h > 0 else { return nil }
-
-        // 處理 EXIF orientation 5-8（90/270 度旋轉)
-        // 這些 orientation 的 pixel dimensions 需要交換
-        let orientation = (props[kCGImagePropertyOrientation as String] as? Int) ?? 1
-        if orientation >= 5 && orientation <= 8 {
-            return NSSize(width: h, height: w)
-        }
-        return NSSize(width: w, height: h)
+        Self.imageHeaderSize(at: url)
     }
 
     /// 使用 CGImageSourceCreateThumbnailAtIndex 快速解碼縮圖，同時讀取 full-res 尺寸

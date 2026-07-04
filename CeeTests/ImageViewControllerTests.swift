@@ -151,7 +151,7 @@ final class ImageViewControllerTests: XCTestCase {
         XCTAssertEqual(scrollView.magnification, initialMagnification, accuracy: 0.001)
     }
 
-    func testPinchZoomExitsAlwaysFitMode() throws {
+    func testPinchZoomEntersManualZoomWithoutClearingAlwaysFit() throws {
         try makeController()
 
         controller.handleWindowDidResize()
@@ -160,10 +160,10 @@ final class ImageViewControllerTests: XCTestCase {
         controller.scrollViewMagnificationDidChange(scrollView, magnification: 1.5, gesturePhase: [])
 
         XCTAssertTrue(controller.settings.isManualZoom)
-        XCTAssertFalse(controller.settings.alwaysFitOnOpen)
+        XCTAssertTrue(controller.settings.alwaysFitOnOpen)
     }
 
-    func testWindowResizeAfterPinchDoesNotAutoFitUntilAlwaysFitReenabled() throws {
+    func testWindowResizeAfterPinchDoesNotAutoFitUntilFitOnScreen() throws {
         try makeController()
 
         controller.handleWindowDidResize()
@@ -176,10 +176,22 @@ final class ImageViewControllerTests: XCTestCase {
 
         XCTAssertEqual(scrollView.magnification, 1.5, accuracy: 0.001)
 
-        controller.toggleAlwaysFit()
+        controller.fitOnScreen()
 
         XCTAssertFalse(controller.settings.isManualZoom)
         XCTAssertTrue(controller.settings.alwaysFitOnOpen)
         XCTAssertEqual(scrollView.magnification, 1.5, accuracy: 0.001)
+    }
+
+    func testLoadFolderResetsManualZoom() throws {
+        try makeController()
+
+        controller.scrollViewMagnificationDidChange(scrollView, magnification: 1.5, gesturePhase: [])
+        XCTAssertTrue(controller.settings.isManualZoom)
+
+        let imageURL = try createPNG(width: 100, height: 100)
+        controller.loadFolder(ImageFolder(containing: imageURL))
+
+        XCTAssertFalse(controller.settings.isManualZoom)
     }
 }

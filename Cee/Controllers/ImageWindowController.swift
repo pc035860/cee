@@ -94,6 +94,30 @@ class ImageWindowController: NSWindowController {
                 window.minSize = NSSize(width: savedMinSize.width, height: targetFrame.height)
             }
             window.setFrame(targetFrame, display: true, animate: false)
+        } else if !settings.dualPageEnabled,
+                  settings.alwaysFitOnOpen || settings.resizeWindowAutomatically,
+                  let imageURL = folder?.currentImage?.url,
+                  let imageSize = ImageLoader.imageHeaderSize(at: imageURL),
+                  let screen = window.screen ?? NSScreen.main {
+            let visibleFrame = screen.visibleFrame
+            let maxContent = window.contentRect(forFrameRect: visibleFrame).size
+            let statusH = settings.showStatusBar ? Constants.statusBarHeight : 0
+            let content = Self.presizedContentSize(
+                imageSize: imageSize,
+                maxContent: maxContent,
+                statusBarHeight: statusH,
+                minContent: Constants.minWindowContentSize,
+                options: settings.fittingOptions
+            )
+            let outerSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: content)).size
+            var targetFrame = NSRect(
+                x: visibleFrame.midX - outerSize.width / 2,
+                y: visibleFrame.midY - outerSize.height / 2,
+                width: outerSize.width,
+                height: outerSize.height
+            )
+            targetFrame.origin = clampedWindowOrigin(for: targetFrame, within: visibleFrame)
+            window.setFrame(targetFrame, display: true, animate: false)
         }
 
         let controller = ImageWindowController(window: window)
@@ -136,6 +160,21 @@ class ImageWindowController: NSWindowController {
 
     static func continuousScrollContentHeightForLaunch(visibleFrameHeight: CGFloat, verticalChrome: CGFloat) -> CGFloat {
         max(Constants.minWindowContentHeight, visibleFrameHeight - verticalChrome)
+    }
+
+    static func presizedContentSize(
+        imageSize: NSSize,
+        maxContent: NSSize,
+        statusBarHeight: CGFloat,
+        minContent: NSSize,
+        options: FittingOptions
+    ) -> NSSize {
+        let viewport = NSSize(width: maxContent.width, height: maxContent.height - statusBarHeight)
+        let fitted = FittingCalculator.calculate(imageSize: imageSize, viewportSize: viewport, options: options)
+        return NSSize(
+            width: max(min(fitted.width, maxContent.width), minContent.width),
+            height: max(min(fitted.height + statusBarHeight, maxContent.height), minContent.height)
+        )
     }
 
     // MARK: - Phase 4: Resize Observer
@@ -298,7 +337,7 @@ class ImageWindowController: NSWindowController {
             )
         }
 
-        targetFrame.origin = clampedWindowOrigin(
+        targetFrame.origin = Self.clampedWindowOrigin(
             for: targetFrame,
             within: visibleFrame
         )
@@ -341,7 +380,7 @@ class ImageWindowController: NSWindowController {
         )
     }
 
-    private func clampedWindowOrigin(for frame: NSRect, within visibleFrame: NSRect) -> NSPoint {
+    private static func clampedWindowOrigin(for frame: NSRect, within visibleFrame: NSRect) -> NSPoint {
         let minX = visibleFrame.minX
         let minY = visibleFrame.minY
         let maxX = max(visibleFrame.maxX - frame.width, minX)

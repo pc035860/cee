@@ -196,6 +196,8 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         dismissPositionHUD()  // Phase 3: clear HUD on folder change
         let wasGridVisible = quickGridView != nil
         self.folder = newFolder
+        settings.isManualZoom = false
+        manualZoomInheritsFitWindowResize = false
         imageSizeCache.removeAll()
         loadFolderDualPageSettings()
 
@@ -333,10 +335,6 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         settings.isManualZoom = true
         if wasAutoFit {
             manualZoomInheritsFitWindowResize = true
-        }
-        settings.alwaysFitOnOpen = false
-
-        if wasAutoFit {
             showManualZoomHintIfNeeded()
         }
     }
@@ -657,23 +655,33 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
         scrollView.isRTLNavigation = effectiveRTLNavigation
     }
 
+    private func openFitViewport() -> NSSize {
+        guard isAutoFitActive, shouldResizeWindowToMatchImage(),
+              let window = view.window,
+              !window.styleMask.contains(.fullScreen),
+              let screen = window.screen ?? NSScreen.main else {
+            return effectiveScrollViewport
+        }
+        let maxContent = window.contentRect(forFrameRect: screen.visibleFrame).size
+        return NSSize(width: maxContent.width, height: maxContent.height - effectiveStatusBarHeight)
+    }
+
     private func applyFitting(for imageSize: NSSize) {
         guard !settings.continuousScrollEnabled else { return }
         guard imageSize.width > 0, imageSize.height > 0 else { return }
-        // documentView frame is now set by DualPageContentView.configureSingle/configureDouble
-        // 計算有效 viewport：scrollView 現在填滿 container，需扣除覆蓋的 statusBar 高度
-        let viewport = effectiveScrollViewport
+        let viewport = openFitViewport()
         guard viewport.width > 0, viewport.height > 0 else {
             setMagnificationCentered(1.0)
             return
         }
 
-        if settings.alwaysFitOnOpen {
+        if settings.isManualZoom {
+            // 手動縮放在同資料夾內跨頁保留（漫畫閱讀），優先於 alwaysFitOnOpen
+            setMagnificationCentered(settings.magnification)
+        } else if settings.alwaysFitOnOpen {
             if let targetMagnification = fittedMagnification(for: imageSize, viewport: viewport) {
                 setMagnificationCentered(targetMagnification)
             }
-        } else if settings.isManualZoom {
-            setMagnificationCentered(settings.magnification)
         } else {
             setMagnificationCentered(scrollView.magnification)
         }
