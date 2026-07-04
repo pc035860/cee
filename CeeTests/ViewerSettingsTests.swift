@@ -98,6 +98,20 @@ final class ViewerSettingsTests: XCTestCase {
         XCTAssertTrue(decoded.continuousScrollEnabled)
     }
 
+    // MARK: - isManualZoom Session State
+
+    func testCodableRoundTrip_isManualZoom_resetToFalseOnDecode() throws {
+        var settings = ViewerSettings()
+        settings.isManualZoom = true
+        settings.alwaysFitOnOpen = false  // change from default to verify round-trip
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(ViewerSettings.self, from: data)
+
+        XCTAssertFalse(decoded.isManualZoom, "isManualZoom must not be restored from disk — session state resets to false on launch")
+        XCTAssertFalse(decoded.alwaysFitOnOpen, "alwaysFitOnOpen should round-trip normally")
+    }
+
     func testDefaultHasShownManualZoomHint_isFalse() {
         let settings = ViewerSettings()
         XCTAssertFalse(settings.hasShownManualZoomHint)

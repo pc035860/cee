@@ -1027,16 +1027,9 @@ final class QuickGridView: NSView, NSCollectionViewDataSource, NSCollectionViewD
         ratios.reserveCapacity(sampleItems.count)
 
         for item in sampleItems {
-            guard let source = CGImageSourceCreateWithURL(item.url as CFURL, nil),
-                  let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
-                  let pw = props[kCGImagePropertyPixelWidth as String] as? CGFloat,
-                  let ph = props[kCGImagePropertyPixelHeight as String] as? CGFloat,
-                  pw > 0, ph > 0 else { continue }
-
-            // EXIF orientation 5-8 means the image is rotated 90°/270° — swap dimensions.
-            let orientation = (props[kCGImagePropertyOrientation as String] as? NSNumber)?.intValue ?? 1
-            let (w, h) = (orientation >= 5 && orientation <= 8) ? (ph, pw) : (pw, ph)
-            ratios.append(h / w)
+            guard let size = ImageLoader.imageHeaderSize(at: item.url),
+                  size.width > 0 else { continue }
+            ratios.append(size.height / size.width)
         }
 
         guard !ratios.isEmpty else { return Constants.quickGridCellAspectRatio }

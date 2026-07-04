@@ -171,8 +171,7 @@ class ImageViewController: NSViewController, NSMenuItemValidation {
     }
 
     func handleWindowDidResize() {
-        guard settings.alwaysFitOnOpen,
-              !settings.isManualZoom,
+        guard isAutoFitActive,
               !settings.continuousScrollEnabled,
               !isApplyingAutoFitFromWindowResize,
               let imageSize = currentDocumentSize,
