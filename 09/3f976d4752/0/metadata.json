@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "093f976d4752",
+  "session_id": "bf6645fe-da65-4710-b745-d5955ea729e3",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-08T05:56:43.452827Z",
+  "branch": "feat/nested-folder-join",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore",
+    "project.yml",
+    "scripts/release.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "2b25e776a179",
+  "token_usage": {
+    "input_tokens": 202,
+    "cache_creation_tokens": 185378,
+    "cache_read_tokens": 14082575,
+    "output_tokens": 58832,
+    "api_call_count": 92
+  },
+  "session_metrics": {
+    "turn_count": 23
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-08T05:56:42.892777Z",
+    "agent_lines": 49,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 49,
+    "agent_percentage": 100
+  }
+}
