@@ -1,6 +1,6 @@
 name: Cee
 options:
-  bundleIdPrefix: com.local
+  bundleIdPrefix: com.pc035860
   deploymentTarget:
     macOS: "14.0"
 settings:
@@ -18,11 +18,19 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: Cee/App/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.local.cee
+        PRODUCT_BUNDLE_IDENTIFIER: com.pc035860.cee
         PRODUCT_NAME: Cee
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: YES
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          DEVELOPMENT_TEAM: BHBGBZ3NZP
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          ENABLE_HARDENED_RUNTIME: YES
+          OTHER_CODE_SIGN_FLAGS: "--timestamp"
 
   CeeTests:
     type: bundle.unit-test
@@ -33,7 +41,7 @@ targets:
       - target: Cee
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.local.CeeTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.pc035860.CeeTests
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: YES
         CODE_SIGNING_REQUIRED: NO
@@ -52,7 +60,7 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: CeeUITests/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.local.CeeUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.pc035860.CeeUITests
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_REQUIRED: NO
         AD_HOC_CODE_SIGNING_ALLOWED: YES
