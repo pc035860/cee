@@ -1,0 +1,583 @@
+我想加入一個功能是能自動 join 巢狀資料夾的所有圖片
+你先研究一下看好不好做
+整理一下，跟我討論下一步動作
+
+---
+
+我想加入一個功能是能自動 join 巢狀資料夾的所有圖片
+你先研究一下看好不好做
+整理一下，跟我討論下一步動作
+
+/explore
+
+---
+
+<task-notification>
+<task-id>a44b55d24669f50f0</task-id>
+<tool-use-id>toolu_01FyGwGk8f4cyasS2G3sfvYq</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/a44b55d24669f50f0.output</output-file>
+<status>completed</status>
+<summary>Agent "搜尋記憶庫" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>這個專案的記憶大致有三條可用線索，都集中在 `ImageFolder` 的 subfolder 自動探索（BFS，最多 2 層）與 `init(folderURL:)`，但沒有記錄遞迴掃描、排序規則的專門條目。
+
+- **subfolder 探索**：頂層沒有圖片時，`init(folderURL:)` 以 BFS 往下找，最多 2 層，並把 `folderURL` 改指向第一個含圖片的子資料夾。`folderURL` 因此從 `let` 改成 `private(set) var`。相關靜態方法有 `findFirstSubfolderWithImages(in:maxDepth:)`、`sortedSubdirectories(of:using:)`、`folderContainsSupportedImages(_:using:)`。
+- **已知效能問題（2026-03-03 review）**：BFS 同一目錄會被讀兩次；`scanFolder` 的 `.contentTypeKey` 也被重複取值。
+- **`ImageFolder(folderURL:)` 的由來**：拖放資料夾時，`appendingPathComponent(".")` 配合 `deletingLastPathComponent()` 會掃到父目錄（黑畫面）。改用專用 initializer 修正。
+- **loadFolder / 單例**：`image_loading_flow` 記錄的 `ImageWindowController.shared` 單例已過時，目前專案規範為 `windows` 陣列（多視窗支援）。引用時請以 CLAUDE.md 與程式碼為準。
+
+Referenced entities: cee:drag_drop_phase2, cee:image_loading_flow, cee:drag_drop_onboarding, cee:url_comparison_gotcha, cee:project_root
+
+Search modes used:
+- semantic: "How the Cee image viewer discovers images in nested subfolders, sorts them, and loads a folder"
+- keywords: "ImageFolder subfolder recursive scan sort loadFolder"
+- hybrid: "ImageFolder" (includeObservations 已開，但搜尋結果不回傳 observation 內容)
+- open_nodes: cee:image_loading_flow, cee:drag_drop_phase2, cee:drag_drop_onboarding（搜尋結果只有實體名稱，為取得內容而展開）</result>
+<usage><subagent_tokens>49591</subagent_tokens><tool_uses>4</tool_uses><duration_ms>27291</duration_ms></usage>
+</task-notification>
+
+---
+
+舉例來說就像是我給 '/Volumes/X10 Pro/others/fanbox/うー☆月'
+那要能列出其下所有圖片
+
+---
+
+<task-notification>
+<task-id>a0fab512617be96b8</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/a0fab512617be96b8.output</output-file>
+<status>completed</status>
+<summary>Agent "探索 ImageFolder 掃描邏輯" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 結論摘要
+
+Cee 目前沒有遞迴合併的機制。`init(folderURL:)` 只在頂層沒有圖片時，用 BFS 找「第一個」含圖片的子資料夾（最多 2 層），然後只掃描那一個資料夾。要改成「所有子資料夾圖片合併成平面清單」，主要要動 `ImageFolder`，並檢查 `folderURL` 相關的同資料夾判斷。`ImageItem` 和 `currentIndex` 本身是平面陣列模型，可以直接沿用。
+
+## 1. ImageFolder 結構與探索邏輯
+
+檔案：`/Users/pc035860/code/cee/Cee/Models/ImageFolder.swift`
+
+- 類別定義：`class ImageFolder`（:6）。欄位：`private(set) folderURL`（:7）、`private(set) images: [ImageItem]`（:8）、`var currentIndex`（:9）。
+- 支援格式：`supportedTypes`（:11-13），包含 jpeg/png/tiff/heic/heif/gif/webP/bmp/pdf。`isSupported(url:)` 在 :16-19。
+- `init(containing fileURL:)`（:21-42）：
+  - `folderURL` 取 `deletingLastPathComponent()`（:22）。
+  - 只掃描父資料夾（:23），**不做子資料夾搜尋**。
+  - 用 `resolvingSymlinksInPath().path` 比對找出 index（:26-27）。PDF 會用 `getLastViewedPage` 還原頁碼（:30-34）。找不到則為 0（:40）。
+- `init(folderURL:)`（:48-61）：
+  - 先 `scanFolder()`（:50）。
+  - 只有 `images.isEmpty` 時（:53），才呼叫 `findFirstSubfolderWithImages(in: folderURL, maxDepth: 2)`（:54）。找到後把 `folderURL` 換成該子資料夾並重新掃描（:55-56）。
+  - `currentIndex = 0`（:60）。
+- `scanFolder()`（:63-90）：
+  - `contentsOfDirectory`，`.skipsHiddenFiles`（:65-69）。只看該層，不遞迴。
+  - 用 `contentTypeKey` 過濾（:72-77）。
+  - 排序（:78）：`localizedStandardCompare` 比較 **`lastPathComponent`（只比檔名，不比路徑）**。
+  - PDF 展開成每頁一個 `ImageItem`（:81-89），頁數來自 `pdfPageCount`（:157-167，MDItem → CGPDFDocument）。
+- BFS `findFirstSubfolderWithImages`（:99-126）：
+  - 以 `rootURL` 的直接子資料夾作為 depth 1 放入佇列（:104-107）。
+  - `while` 佇列取出（:109-110），用 `scanFolderContents` 檢查是否有圖片（:112-115）。有就回傳該 URL（:114）。
+  - 沒有且 `depth &lt; maxDepth` 才把子資料夾以 depth+1 入列（:118-122）。
+  - 因此 maxDepth=2 會檢查 depth 1 與 depth 2，depth 3 不會被加入。
+  - **回傳的是「第一個」命中的資料夾，不會合併多個。**
+- `scanFolderContents`（:130-154）：
+  - 單次 `contentsOfDirectory`，取 `isDirectory`、`isPackage`、`contentType`（:131-135）。
+  - 排除 package（:144）。發現支援圖片時短路回傳 `(true, [])`（:146-148）。
+  - 子資料夾同樣用 `localizedStandardCompare` 排序（:152）。
+- 測試：`/Users/pc035860/code/cee/CeeTests/ImageFolderSubfolderSearchTests.swift`（depth1/2/3 於 :63-91，BFS 順序於 :109-141，隱藏資料夾於 :144）。`ImageFolderNavigationTests.swift` 的 `testInitContaining_*`（:43-75）。
+
+## 2. 排序與 ImageItem
+
+- 排序：檔名 `localizedStandardCompare`（natural sort 風格，:78、:152）。**只比 `lastPathComponent`**，不比完整路徑。若平面合併，直接用同一個 key 排序，不同子資料夾的同名檔案會交錯。需要自行決定排序鍵，例如改用相對路徑。
+- `/Users/pc035860/code/cee/Cee/Models/ImageItem.swift`：
+  - `struct ImageItem: Equatable, Sendable`（:3）。
+  - 欄位：`let url: URL`（:4）、`let pdfPageIndex: Int?`（:5）。
+  - `isPDF`（:12）、`fileName`（:14-17，PDF 會加上「— Page N」）。
+  - Identity：**沒有 `Identifiable` / `Hashable`**。`Equatable` 是合成的，以 `url` + `pdfPageIndex` 比較。即使是 PDF，同一個 `url` 的每一頁仍可用 `pdfPageIndex` 區分。
+  - `Sendable` 合格，因此可以安全地在 loader 等地方傳遞。
+  - `Collection[safe:]`（:22-25）。
+
+## 3. currentIndex 與 index 的使用
+
+全部都是陣列索引，沒有依 identity 查找的設計。只有以下幾處依賴「同一資料夾」或 `folderURL`：
+
+- `ImageViewController.swift`
+  - `loadFolder`（:191-222）：整個替換 `folder`，grid 重新 configure（:215）。
+  - `goToFirstImage` / `goToLastImage`（:1020-1043）：直接設定 `folder.currentIndex`。
+  - 連續捲動 `handleContinuousScrollImageChanged`（:1484-1485）：用 index 同步 `folder.currentIndex`。
+  - QuickGrid 選取 `didSelectItemAt`（:2269-2272）：`folder.currentIndex = index`。
+  - **拖放同資料夾最佳化 `handleDrop`（:2058-2090）**：
+    - `targetFolderURL = url.deletingLastPathComponent()`（:2066）。
+    - 比對 `currentFolder.folderURL == targetFolderURL`（:2068-2069）。
+    - 再用 `images.firstIndex(where: { $0.url == url })`（:2070 附近）。
+    - **這裡依賴 `folderURL` 等於檔案的父目錄。** 若改成平面合併，子資料夾的檔案會因 `folderURL` 不同而不命中，之後會落到 `loadFolderAndSetTitle` 重建 ImageFolder，行為會改變。
+  - `imageFolderFromDrop`（:2035-2043）：資料夾走 `init(folderURL:)`，檔案走 `init(containing:)`。
+- `ImageWindowController.swift`
+  - `open(with:)`（:36-50）：`ImageFolder(containing: url)`（:37）。
+  - `updateTitle`（:531-553）：`"\(folder.currentIndex + 1)/\(folder.images.count)"`（:546）。標題只顯示 `item.url.lastPathComponent`（約 :548）。若合併子資料夾，同名檔案會難以分辨，可能需要顯示相對路徑。
+- `AppDelegate.swift:26-35`：`application(_:open:)` 依 `deletingLastPathComponent().path` 去重，每個資料夾只開一次。合併後若要以資料夾為單位，這裡的語意也會受影響。
+- `ImageFolder` 內部：
+  - `goNext` / `goPrevious`（:184-201）以 `images.count` 夾住。
+  - Spread 相關（:206-261）使用 `SpreadManager`，全部以 index 運作，平面清單可直接沿用。
+- `QuickGridView.swift:1260-1280`：`configure(items:currentIndex:)` 用 `IndexPath(item: currentIndex)`。
+- `ContinuousScrollContentView.swift:152-190`：`capturedFolder.images.enumerated()`，以 index 為鍵。
+- `ImageLoader.swift`：
+  - 快取以 URL 為鍵：`cache: [URL: NSImage]`（:23）、`thumbnailCache` 以 `(url, maxSize)`（:31-35）、`pdfCache` 以 `(url, pageIndex)`（:37、:47）。
+  - `updateCache(currentIndex:items:)`（:354-368）以 index 範圍計算需要的 URL。
+  - 合併子資料夾後 URL 仍唯一，這套快取可直接沿用。
+
+## 4. 檔案系統監看與 refresh
+
+- **沒有任何檔案監看**。搜尋 `FSEvent`、`kqueue`、`NSFilePresenter`、`NSFileCoordinator` 都沒有結果。
+- 唯一的 `DispatchSource` 是記憶體壓力：`Cee/Utilities/MemoryPressureMonitor.swift:13-17`，與檔案無關。
+- 沒有 refresh / reload 掃描的邏輯。`ImageFolder` 只在建立時掃描一次。要重新掃描，必須重新開啟（`ImageWindowController.open` → `loadFolder`，或 drag-drop）。
+- `NotificationCenter` 只用在視窗與捲動相關事件（`ImageWindowController.swift:184-197`、`ImageScrollView.swift:158-166`、`QuickGridView.swift:826-832`），不是檔案變動。
+
+## 5. 檔案操作的影響
+
+- **刪除、移到垃圾桶、重新命名、搬移、複製：程式碼中沒有任何實作**。搜尋 `trashItem`、`removeItem`、`moveItem`、`copyItem`、`moveToTrash` 都沒有結果。
+- **在 Finder 中顯示**：`ImageViewController.swift:1639-1643`，`NSWorkspace.shared.activateFileViewerSelecting([item.url])`。只讀取，不改變 `ImageFolder`。目標由 `resolvedTarget()`（:1647）決定，選單項目在 :2215、:1773。
+- **複製圖片**：約 `ImageViewController.swift:1620-1633`，寫入 `item.url as NSURL` 與 `NSImage`。只讀取。
+- **外部刪除或改名後**：`images` 不會更新，仍保留舊的 URL。之後載入時會失敗，但我沒有追蹤錯誤路徑（例如 `ErrorPlaceholderView` 的觸發條件），這部分**未驗證**。
+- 外部新增子資料夾或檔案：不會反映，直到重新開啟。
+
+## 改動時的注意點（事實層面）
+
+- `init(folderURL:)` 目前只在頂層無圖片時才搜尋子資料夾（:53）。若要「永遠合併」，需要改這個條件，並注意 `folderURL` 不再是單一資料夾。
+- `scanFolderContents` 的短路（:146-148）只用於判斷是否有圖片。若要遞迴收集，需要另寫收集版本，因為它不會回傳圖片清單。
+- `handleDrop` 的同資料夾判斷（:2066-2070）與 `AppDelegate` 的去重（:29）都假設 `folderURL` 等於父目錄。
+- PDF 的 `init(containing:)` 會用 `images.filter` 計算頁數（:32），合併後要確認同一 URL 的頁面仍然連續。
+
+沒有修改任何檔案。</result>
+<usage><subagent_tokens>50715</subagent_tokens><tool_uses>9</tool_uses><duration_ms>47943</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a4c11534062bdd624</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/a4c11534062bdd624.output</output-file>
+<status>completed</status>
+<summary>Agent "探索 loadFolder 與開檔流程" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>以下為唯讀探索結果（commit `ce7d487`）。標註「推論」的項目未實際執行驗證。
+
+## 1. 開檔流程（Finder open / 拖放 / File&gt;Open → createWindow / loadFolder）
+
+**入口 A：Finder open、File&gt;Open**
+- Finder open：`AppDelegate.application(_:open:)` `Cee/App/AppDelegate.swift:25-35`，逐個呼叫 `ImageWindowController.open(with:)`。
+- File&gt;Open：`AppDelegate.openFile` `AppDelegate.swift:51-58`，`NSOpenPanel` 設 `canChooseDirectories = false`，只接受單一檔案，然後呼叫 `open(with:)`。
+- 選單項目 `menu.file.open`（⌘O）掛在 `AppDelegate.swift:80-82`。
+
+**入口 B：拖放到視窗或空白狀態**
+- 拖放最終進入 `ImageViewController.handleDrop` `Cee/Controllers/ImageViewController.swift:2056-2088`。來源有 `scrollViewDidReceiveDrop`（2052）與 `emptyStateViewDidReceiveDrop`（2256）。
+- 資料夾：直接走 `loadFolderAndSetTitle(imageFolderFromDrop)`（2060-2062）。
+- 檔案：若父資料夾與目前 `folder.folderURL` 相同且找得到該檔，只切換 `currentIndex`，不重掃（2065-2084）；否則同樣走 `imageFolderFromDrop`（2087）。
+- `imageFolderFromDrop` `ImageViewController.swift:2035-2043` 依 `URLFilter.isDirectory` 分支：資料夾用 `ImageFolder(folderURL:)`，檔案用 `ImageFolder(containing:)`。
+
+**`ImageWindowController.open(with:)` 的分流** `Cee/Controllers/ImageWindowController.swift:36-50`
+- 一律呼叫 `ImageFolder(containing: url)`，沒有資料夾判斷。
+- 若 `settings.reuseWindow` 為真且存在 `current` 視窗，呼叫 `vc.loadFolder(folder)`、`updateTitle`、`makeKeyAndOrderFront`。
+- 否則呼叫 `createWindow(with: folder)`。
+- `openEmpty()` `:22-33` 在復用時只把既有視窗帶到前景，不載入。
+
+**`createWindow(with:)`** `ImageWindowController.swift:53-129`
+- 讀取 `ViewerSettings.load()`，建立 `ImageViewController(folder:)`，建立 `NSWindow`，設定 `contentViewController`。
+- 之後依設定決定尺寸（見第 5 點），最後 `showWindow`、`ensureUsableWindowSize`（`:259`）、`setupWindowObservers`、`updateTitle`。
+
+**`ImageViewController.loadFolder`** `ImageViewController.swift:191-221`
+- 重置 `isManualZoom`、清 `imageSizeCache`，呼叫 `loadFolderDualPageSettings()`（`:201`），再依 continuousScroll / dualPage / 單頁選擇載入方式。
+- 首次建立視窗時，folder 由 `init(folder:)` 注入（`:74-77`），實際載入發生在 `viewDidAppear`（`:120-146`）。`viewDidAppear` 也會呼叫 `loadFolderDualPageSettings()`（`:136`）。
+
+**兩條建立 ImageFolder 的路徑** `Cee/Models/ImageFolder.swift`
+- 單一檔案 `init(containing:)` `:21-42`：`folderURL = fileURL.deletingLastPathComponent()`，掃描父資料夾，再用 `resolvingSymlinksInPath().path` 找到該檔的 index。PDF 會讀取上次頁碼（`:30-34`）。**不會遞迴，也不會搜尋子資料夾。**
+- 資料夾 `init(folderURL:)` `:48-61`：`folderURL` 即參數本身，掃描頂層。若頂層無圖，呼叫 `findFirstSubfolderWithImages(in:maxDepth: 2)`（`:53-58`），以 BFS 找第一個含圖的子資料夾，並**改寫 `self.folderURL` 為找到的子資料夾**。這是目前唯一的「向下搜尋」邏輯，且只在頂層為空時觸發，只取一個子資料夾，不會合併。
+- 共用 `scanFolder()` `:63-90`：只掃頂層（`.skipsHiddenFiles`），依 UTType 過濾，PDF 展開為每頁一個 `ImageItem`。
+
+**Info.plist**：`Cee/App/Info.plist` 的 `CFBundleDocumentTypes` 只宣告影像 UTI（jpeg/png/tiff/heic/heif/gif/webp/bmp），沒有 `public.folder`。推論：Finder「開啟方式」與 Dock 拖資料夾到 app 圖示，系統不一定會把資料夾送進 `application(_:open:)`，目前實際主要是視窗內拖放。
+
+## 2. ViewerSettings 與 per-folder 覆寫
+
+**結構** `Cee/Models/ViewerSettings.swift`
+- `struct ViewerSettings: Codable` `:3`。欄位都有預設值。
+- 與本功能相關的欄位：`dualPageEnabled`（`:66`，預設 false）、`firstPageIsCover`（`:67`）、`readingDirection`（`:75`，預設 `.rightToLeft`）、`duoPageRTLNavigation`（`:77`）、`singlePageRTLNavigation`（`:79`）、`continuousScrollEnabled`（`:89`）、`continuousScrollGap`（`:91`）、`reuseWindow`（`:53`，預設 true）、`lastWindowWidth/Height`（`:54-55`，nil）、`resizeWindowAutomatically`（`:51`）、`alwaysFitOnOpen`（`:10`，預設 true）、`showStatusBar`（`:62`）、`clickToTurnPage`（`:85`）。
+- `isManualZoom`（`:7`）刻意不解碼（`:101`），屬 session 狀態。
+
+**Codable 解碼** `:95-128`
+- 自訂 `init(from:)`，每個欄位都用 `(try? c.decode(...)) ?? d.xxx`，`d = ViewerSettings()` 作為預設來源。也就是缺欄位或型別錯誤時退回預設值，舊資料相容。
+- 例外：`lastWindowWidth/Height` 直接 `try?` 不帶預設（`:113-114`）；`continuousScrollGap` 用 `max(0, ...)`（`:127`）。
+- 注意：`ViewerSettings` 沒有 `dualPage` 的 per-folder 欄位，這些是 ViewerSettings 的全域欄位。
+
+**持久化**
+- 全域設定：`UserDefaults.standard`，key 為 `"CeeViewerSettings"`（`:131`），`load()` `:133-138`、`save()` `:140-144`，皆為 JSON。
+- `reuseWindow` 切換：`AppDelegate.toggleReuseWindow` `AppDelegate.swift:235-239`。
+
+**Per-folder dual-page 覆寫**（資料夾路徑作為 key）
+- 結構 `FolderDualPageSettings` `ImageViewController.swift:606-628`，欄位為 `dualPageEnabled`、`firstPageIsCover`、`readingDirection`、`duoPageRTLNavigation`。其中 `duoPageRTLNavigation` 缺欄位時預設 true（`:626`）。
+- **key**：`"dualPage.settings.\(folder.folderURL.path)"`，寫入於 `saveFolderDualPageSettings` `:630-642`（key 在 `:632`），讀取於 `loadFolderDualPageSettings` `:644-655`（key 在 `:646`）。
+- 因此 key 來自 `ImageFolder.folderURL`，**不是檔案路徑**。若 `folderURL` 被 BFS 改寫為子資料夾，key 會變成子資料夾路徑。
+- 寫入點：`toggleDualPage` `:1217-1224`、`togglePageOffset` `:1227-1235`、`toggleReadingDirection` `:1353-1358`、`toggleDuoPageRTLNavigation` `:1362-1367`。`toggleSinglePageRTLNavigation` 不寫入 per-folder。
+- 讀取點：`viewDidAppear` `:136`、`loadFolder` `:201`。讀到就直接覆寫全域 `settings` 的四個欄位（`:650-653`）。
+- PDF 頁碼另有 key：`"pdf.lastPage.\(url.path)"`，見 `ImageFolder.swift:171` 與 `ImageViewController.swift:600-601`，以檔案路徑為 key。
+
+## 3. 選單建構與 toggle 寫法
+
+**選單建構** 全部在 `AppDelegate.setupMenuBar()` `AppDelegate.swift:62-223`
+- `makeItem(title, action, key)` `:227-231`：`item.target = nil`，經 responder chain 分派到 first responder（通常是 `ImageViewController`）。
+- Navigation 選單 `:140-198`：Reading mode 組 `:146-155`（`toggleDualPage` 在 `:147`，`k` 鍵）；Navigation settings 組 `:159-164`（`toggleClickToTurnPage` `:163`，`toggleContinuousScroll` `:164`）；子選單 `:166-192`；Quick Grid 組 `:196-198`。
+- View 選單 `:89-138`，`toggleStatusBar` 在 `:138`。
+- Go 選單 `:200-208`，只有上下張與首末張，沒有 toggle。
+- Window 選單 `:210-220`：`reuseWindow` 項目在 `:218-220`，target 設為 `self`（AppDelegate），**這是唯一 target 指向 AppDelegate 的 toggle**，其餘都是 nil。
+
+**toggle 方法寫法**
+- ImageViewController 版本（大部分）：`@objc func toggleX(_ sender: Any? = nil)`，內容為 `settings.x.toggle()` → `settings.save()` → 必要時更新 UI。例：`toggleClickToTurnPage` `ImageViewController.swift:1380-1383`、`toggleContinuousScroll` `:1386-`、`toggleDualPage` `:1217-1226`。
+- AppDelegate 版本：`@objc func toggleReuseWindow(_ sender: Any?)` `AppDelegate.swift:235-239`，只做 load → toggle → save，沒有 UI 更新。
+
+**validateMenuItem 寫法**
+- AppDelegate 版本 `AppDelegate.swift:243-250`：`guard menuItem.action == #selector(toggleReuseWindow(_:)) else { return true }`，然後 `menuItem.state = settings.reuseWindow ? .on : .off`，回傳 true。`AppDelegate` 宣告 `NSMenuItemValidation`（`:4`）。
+- ImageViewController 版本 `ImageViewController.swift:1658-` 以 `switch menuItem.action` 集中處理，例如 `toggleClickToTurnPage` 設 `.state` 並回傳 `!isContinuous`（`:1747-1749` 附近），`toggleDualPage` 回傳 `!isContinuous`（`:1735-1738`），`toggleStatusBar` 會改 `menuItem.title`（`:1712-1716`）。我未讀到該 switch 的結尾（約 1760 行之後）。
+- 新增 toggle 的一般步驟：(a) `ViewerSettings` 加欄位、加 `init(from:)` 解碼；(b) `AppDelegate.setupMenuBar` 加 `makeItem`；(c) 在 `ImageViewController` 加 `@objc toggleX`；(d) 在 `ImageViewController.validateMenuItem` 的 switch 加 case；(e) 兩個 xcstrings / `Localizable.strings`（`en.lproj`、`zh-Hant.lproj`）加字串，例如 `menu.window.reuseWindow` `zh-Hant.lproj/Localizable.strings:77`。
+
+## 4. 多視窗去重與遞迴的影響
+
+**去重位置**：`AppDelegate.application(_:open:)` `AppDelegate.swift:26-31`
+- 去重鍵是 `url.deletingLastPathComponent().path`，也就是**父資料夾路徑**，並保留每個父資料夾的第一個 URL。
+- 這個去重只發生在一次 open 事件的 URL 陣列內，不會查詢既有視窗。
+- 去重後逐個呼叫 `ImageWindowController.open(with:)`。在復用模式下，每次呼叫都會 `loadFolder` 覆寫同一個視窗，所以最終顯示的是最後一個 folder。
+- `ImageWindowController` 本身沒有「依 folder path 找既有視窗」的邏輯。`current` 只取 key/main/最後一個視窗（`ImageWindowController.swift:14-17`）。
+
+**對遞迴的影響（推論，需驗證）**
+- 去重鍵是父路徑，與子資料夾深度無關。若使用者一次開 `/a/b/` 與 `/a/c/` 兩個資料夾，兩者父路徑皆為 `/a`，第二個會被丟掉。這是既有的 bug 疑慮：`deletingLastPathComponent` 對資料夾 URL 語意錯誤。目前 Info.plist 未宣告資料夾型別，所以觸發條件較窄。
+- 若新功能讓同一棵樹底下的多個檔案被展開，各檔的父路徑不同（`/root/x/a.jpg`、`/root/y/b.jpg`），去重不會合併它們，會連續呼叫 `open(with:)`。在復用模式下最後一次會覆寫前面的結果。
+- `ImageFolder.init(containing:)` 沒有遞迴，`init(folderURL:)` 只有頂層掃描加 BFS 找第一個子資料夾，因此目前沒有「收集全部巢狀圖片」的路徑。
+
+## 5. createWindow 的預先尺寸流程是否依賴 folder 內容
+
+`ImageWindowController.createWindow` `:53-129`，有三段尺寸邏輯：
+1. **連續捲動模式** `:56-60`：固定寬度 `Constants.continuousScrollNewWindowContentWidth`，高度為 `minWindowContentHeight`，**不依賴 folder**。之後 `:81-96` 用螢幕 `visibleFrame` 展開高度，也不依賴 folder。
+2. **一般模式** `:62`：`savedOrDefaultWindowSize()`（`:132-141`，取 `lastWindowWidth/Height` 或螢幕 80%），不依賴 folder。
+3. **預先依圖片縮放** `:97-121`：條件為 `!settings.dualPageEnabled`、`(alwaysFitOnOpen || resizeWindowAutomatically)`，且 `folder?.currentImage?.url` 存在，並能讀到 `ImageLoader.imageHeaderSize(at:)`（`ImageLoader.swift:228`）。
+   - **依賴 folder**：只取 `folder.currentImage`，也就是 `images[currentIndex]` 的第一張（`ImageFolder.swift:179`）。`folder` 為 nil 或無圖時跳過，視窗維持預設尺寸。
+   - 計算由 `presizedContentSize`（`:165-178`）完成，依 `FittingCalculator` 與狀態列高度換算。
+   - 讀的是 `ViewerSettings.load()` 的**全域** `dualPageEnabled`，而非 per-folder 覆寫。原因是 per-folder 覆寫要到 `viewDidAppear`（`ImageViewController.swift:136`）才套用，晚於 `createWindow`。推論：若某資料夾 per-folder 設為雙頁，而全域為單頁，預先尺寸仍會依單頁計算。
+4. **之後的修正**：`ensureUsableWindowSize` `:259-270` 只在 `async` 中檢查視窗是否小於最小尺寸，不讀 folder。
+
+`ImageViewController.openFitViewport` `ImageViewController.swift:657-666` 也會在載入時用螢幕尺寸重算 fit，與上述預先尺寸是獨立的第二條路徑。
+
+## 其他值得注意的事實
+- 既有測試：`CeeTests/ImageFolderSubfolderSearchTests.swift` 覆蓋 `findFirstSubfolderWithImages`（`:165`、`:175`）；`CeeTests/ImageWindowControllerTests.swift` 與 `ImageViewControllerTests.swift:193` 也會呼叫 `loadFolder`。
+- `specs/brainstorm/brainstorm-fast-image-browse.md` 與 `specs/handover/handover-2026-11-08-1214-bf6645fe-main.auto.md` 含「遞迴／巢狀／join」相關字樣，但我未讀取內容，未確認其設計意圖。
+- `CLAUDE.md:149` 說明 multi-file open 以資料夾路徑去重，與上面程式碼一致。</result>
+<usage><subagent_tokens>71404</subagent_tokens><tool_uses>15</tool_uses><duration_ms>76286</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a37e91e20b2fa6e3d</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/a37e91e20b2fa6e3d.output</output-file>
+<status>completed</status>
+<summary>Agent "探索顯示層對 folder 的依賴" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>以下為唯讀探索結果。所有路徑都是絕對路徑，行號以目前工作樹為準。
+
+## 1. Quick Grid（QuickGridView）
+
+**清單來源**
+- 開啟時：`/Users/pc035860/code/cee/Cee/Controllers/ImageViewController.swift:1339` 呼叫 `grid.configure(items: folder.images, currentIndex: folder.currentIndex, loader: loader)`，來源是 `ImageFolder.images`。
+- `QuickGridView` 只保存 `private var items: [ImageItem]`（`/Users/pc035860/code/cee/Cee/Views/QuickGridView.swift:331`），`configure(items:)` 在 `:1260-1275` 直接 `reloadData()`。
+- 沒有資料夾概念，也沒有假設同資料夾。`ImageItem`（`/Users/pc035860/code/cee/Cee/Models/ImageItem.swift:3-17`）只有 `url` 與 `pdfPageIndex`。
+- 格子選取回呼：`ImageViewController.swift:2268-2285` 直接設 `folder.currentIndex = index`，合併清單時仍然成立。
+
+**檔名與縮圖顯示**
+- 檔名：`QuickGridCell.swift:70` 使用 `item.fileName`，`ImageItem.swift:14-17` 為 `url.lastPathComponent`（PDF 加 "— Page N"）。
+- 格子沒有 `toolTip`，也沒有第二行路徑。同名檔案在不同子資料夾中會顯示完全相同的文字，無法區分。
+- 縮圖載入在 `QuickGridView.swift:1412-1460`，呼叫 `loader.loadThumbnail(at: item.url, maxSize:)`。
+
+**Cache key 與 generationID**
+- 格子層快取以 **index（Int）為 key**：`gridThumbnails: [Int: NSImage]`（`QuickGridView.swift:369`）、`gridThumbnailSizes`（`:371`）、`thumbnailTasks: [Int: Task]`（`:379`）。
+- `generationID` 是 folder 變更計數器，不是 URL（`QuickGridView.swift:402`）。`clearCache()` 在 `:1380-1383` 遞增它，並清空格子快取。
+- stale write 防護在 `:667-674`（prefetch）與 `:1439-1446`（loadThumbnail）。
+- `configure()` 本身不會遞增 generationID，也不清 `gridThumbnails`。
+- `ImageViewController.swift:215-216`（loadFolder 路徑）會先 `clearCache()` 再 `configure()`，這條路徑安全。
+- 但同資料夾路徑 `ImageViewController.swift:2079` 只呼叫 `configure()`，沒有 `clearCache()`。若合併後清單在既有 grid 實例中被換掉，會沿用以 index 為 key 的舊縮圖，造成錯位。
+- ImageLoader 層的 thumbnail cache 才是以 URL 為 key（見第 4 節）。
+
+**其他假設與效能**
+- 縮圖快取上限以 index 距離淘汰：`QuickGridView.swift:691-701`。
+- 中斷範圍計算使用 `items.count`（`:599`、`:652`、`:899`），都是 O(1) 或 O(range)。
+- `sampleMedianAspectRatio`（`:1019-1036`）只取前 50 張非 PDF 的 header，並且在主執行緒同步讀取。合併後仍只代表清單前段。
+- `isCurrentImage` 以 index 比對（`:1480-1481`）。
+
+## 2. Continuous Scroll 與 Dual Page
+
+**清單與 index 取得**
+- Continuous 入口：`ImageViewController.swift:1425` `configureContinuousScrollView()`，把 `targetIndex = folder.currentIndex` 交給 `onPreloadComplete`。
+- `ContinuousScrollContentView.swift:152-213` 的 `configure(with:)` 捕獲 `folder.images`，並在 `:184-201` 建立 TaskGroup。
+- **效能風險：一次為所有項目建立 child task**，每個 task 呼叫 `loader.getImageSize(for:)`（`/Users/pc035860/code/cee/Cee/Services/ImageLoader.swift:243-255`）。這是 actor 方法，因此所有 header 讀取會在 ImageLoader actor 上序列化，底層是同步的 `imageHeaderSize`（`ImageLoader.swift:228-240`）。
+- 在所有 header 讀完前，佈局不會開始（`ContinuousScrollContentView.swift:203-211`）。N 很大時首次顯示會被延遲。
+- 無法取得尺寸時使用預設比例（`:187-191`）。
+
+**yOffsets 與佈局**
+- `recalculateLayout()`（`ContinuousScrollContentView.swift:222-250`）每次都重建整個 `scaledHeights`（`:232`）與 `yOffsets`（`:236-242`），是 O(N)。
+- 觸發來源是 `containerWidth` didSet（`:25-27`）與 `imageSpacing` didSet（`:30-32`），經 `relayoutSlots()`（`:35-74`）。視窗縮放時每一步都會觸發 O(N) 重算。
+- `recalculateLayout` 內有 `NSLog`（`:247`），在縮放熱路徑中會產生日誌。
+- 二分搜尋的 `calculateCurrentIndex`（`:552-574`）與 `calculateVisibleRange`（`:302-316`）已是 O(log N)，沒有問題。
+- `manageSlotViews` 的 `isSlotActive` 是對 `activeSlots` 的線性搜尋（`:327-329`），但 active 數量很小。
+
+**Prefetch 與 ImageLoader**
+- `triggerPrefetch`（`ContinuousScrollContentView.swift:420-451`）把整個 `folder.images` 傳給 `loader.updateCache`（`ImageLoader.swift:354-412`）。Array 是 CoW，不會複製，但 `updateCache` 會每次過濾整個 cache dictionary。
+- `:446` 傳入的是 `visibleRange.lowerBound`，不是真正的 currentIndex。
+
+**Status bar 讀取**
+- `ImageViewController.swift:266-283` 以 `continuousScrollContentView?.imageSizes[safe:]` 取得尺寸。`imageSizes` 宣告在 `ContinuousScrollContentView.swift:16`。
+
+**Dual Page（loadSpread 與 imageSizeCache）**
+- `loadSpread` 在 `ImageViewController.swift:478-` 使用 `folder.currentSpread`，spreads 是預先算好的陣列。
+- `imageSizeCache: [Int: CGSize]` 宣告在 `ImageViewController.swift:50`，以 index 為 key。
+  - 只在 `resolveLayoutSize`（`:586-591`）中，當頁面被實際顯示時才寫入。
+  - `loadFolder` 會清空（`:200`）。
+  - 重建 spreads 時傳給 `SpreadManager.buildSpreads` 的 provider 讀取這個 cache（`:1241-1245`）。
+- **結果**：`SpreadManager.isWidePage`（`/Users/pc035860/code/cee/Cee/Models/SpreadManager.swift`）對未知尺寸視為 portrait（`nil` 回傳 false）。spreads 只在 `rebuildSpreadsAndReload`（`:1238-1248`）時重算，因此未被顯示過的非 PDF 寬頁會被當成直頁配對。
+- `rebuildSpreadsAndReload` 在 `:207`（loadFolder）、`:138`、`:1223`（toggleDualPage）、`:1234`（togglePageOffset）呼叫。
+- `prepopulatePDFPageSizes()`（`:1250-1274`）每次重建都會遍歷**全部 N 個項目**，並為每個 PDF 開 `CGPDFDocument`（`:1253-1273`），是 O(N) 同步工作。
+- `SpreadManager.buildSpreads`（`SpreadManager.swift:17-45`）只看相鄰 index 配對，**沒有資料夾邊界檢查**。合併多資料夾後，最後一張 A 資料夾圖片與第一張 B 資料夾圖片可能被配成同一個 spread。
+- `spreadIndex`（`SpreadManager.swift` 的 `firstIndex` 線性搜尋）與 `syncSpreadIndex`（`ImageFolder.swift:259-261`）在 dual 模式下每次 `goNext`/`goPrevious` 都會執行，對數千張仍可接受。
+
+**ImageFolder 掃描的效能風險（合併前就存在，遞迴後會放大）**
+- `ImageFolder.swift:27` 的 `images.firstIndex(where: { $0.url.resolvingSymlinksInPath().path == filePath })`，每個元素都做一次 `resolvingSymlinksInPath()`，是 O(N) 次檔案系統呼叫。
+- `:32` 再次對整個 `images` 做 filter。
+- `:81-89` 對每個 PDF 呼叫 `pdfPageCount`（`:157-167`，MDItem 或 CGPDFDocument 開檔），遞迴後數量會成倍增加。
+- `findFirstSubfolderWithImages`（`:99-126`）使用 `queue.removeFirst()`，是 O(n²) 的小問題。
+
+## 3. 視窗標題、狀態列、PositionHUD
+
+- **視窗標題**：`/Users/pc035860/code/cee/Cee/Controllers/ImageWindowController.swift:531-552`。
+  - 狀態列隱藏時，標題是 `item.url.lastPathComponent (i/N)`（`:547`）。
+  - 狀態列顯示時，標題只有檔名（`:549`）。
+  - subtitle 只有 PDF 頁碼（`:551`）。
+  - **只顯示檔名，沒有資料夾或相對路徑**。
+- **StatusBarView**：`/Users/pc035860/code/cee/Cee/Views/StatusBarView.swift:237-241` 只顯示 `"i / total"` 與 `"W × H"`，沒有檔名。雙頁時 `indexOverride` 為頁碼（`ImageViewController.swift:288-296`）。
+- **PositionHUDView**：`/Users/pc035860/code/cee/Cee/Views/PositionHUDView.swift:61-63` 只顯示 `"cur / total"`，或 `:69` 的訊息文字。沒有檔名。
+- **無障礙標籤**：`/Users/pc035860/code/cee/Cee/Views/ImageContentView.swift:31-32` 使用 `imageFileName`，由 `ImageViewController.swift:501`、`:523`、`:542` 設定為 `item.fileName`。只有檔名。
+- **結論**：合併多資料夾後，標題（`ImageWindowController.swift:547`、`:549`）、格子文字（`QuickGridCell.swift:70`）與無障礙標籤都需要相對路徑或 tooltip 才能區分同名檔。狀態列與 HUD 只有 index，不受影響。
+
+## 4. ImageLoader cache key
+
+檔案：`/Users/pc035860/code/cee/Cee/Services/ImageLoader.swift`
+
+| Cache | 宣告 | key |
+|---|---|---|
+| `cache` | `:23` | `URL`（`loadImage` `:79-89`） |
+| `thumbnailCache` | `:31-35`、`:58` | `ThumbnailCacheKey(url, maxSize)` |
+| `displayCache` | `:441-446`、`:450-462` | `DisplayCacheKey(url, 量化後的 maxWidth)` |
+| `pdfCache` | `:37`、`:47-50`、`:94` | `PDFCacheKey(url, pageIndex)` |
+| `pdfDocumentCache` | `:38` | `URL` |
+| `prefetchTasks` / `imagePrefetchTasks` | `:42-43` | `PDFCacheKey` / `URL` |
+
+- **同名檔不同資料夾不會衝突**：URL 包含完整路徑，不同資料夾的同名檔會得到不同 key。
+- 要注意的是 URL 的表示形式。如果同一檔案透過不同路徑表示（例如 `/var` 與 `/private/var`，或符號連結，見 `ImageFolder.swift:26` 的註解），會造成 **cache miss，不是衝突**。
+- 淘汰邏輯在 `updateCache`（`ImageLoader.swift:354-412`），以 index 範圍建立 `activeImageURLs`，再用 URL 過濾（`:385-389`）。合併清單不需要改動。
+- `clearThumbnailCache`（`:416-418`）與 `cancelAllPrefetchTasks`（`:420-427`）會清空整個 thumbnail cache。
+- `getImageSize` / `imageHeaderSize` 沒有快取，每次都會讀檔。
+
+## 5. 現有測試
+
+**直接使用 ImageFolder 的測試檔**
+- `/Users/pc035860/code/cee/CeeTests/ImageFolderNavigationTests.swift`（271 行，19 個 test）：使用 `ImageFolder(containing:)`。
+- `/Users/pc035860/code/cee/CeeTests/ImageFolderSubfolderSearchTests.swift`（179 行，10 個 test）：針對 `ImageFolder(folderURL:)` 的子資料夾搜尋（depth ≤ 2、BFS 最近優先、同深度字母序、隱藏資料夾略過）。
+  - 這些測試鎖定了目前的語意：頂層有圖片時 `folderURL` 不變（`:45-53`），頂層為空時才向下找（`:63-107`）。**若改為遞迴合併，這些測試需要重寫**。
+- `/Users/pc035860/code/cee/CeeTests/ImageFolderSupportedTypesTests.swift`（93 行）：只測副檔名判斷，沒有暫存目錄。
+- `/Users/pc035860/code/cee/CeeTests/ContinuousScrollContentViewTests.swift`：`:25-34`、`:48-61`、`:87-98` 使用 `ImageFolder(folderURL:)`。
+- `/Users/pc035860/code/cee/CeeTests/ImageViewControllerTests.swift:193` 使用 `ImageFolder(containing:)`。
+- `/Users/pc035860/code/cee/CeeTests/URLFilterTests.swift:70-93` 使用 `ImageFolder.isSupported` 並建立暫存目錄。
+
+**測試風格**
+- 使用 XCTest，`final class ...: XCTestCase`。
+- `setUp` 建立暫存目錄，`tearDown` 用 `try? removeItem` 清除。範例見 `ImageFolderNavigationTests.swift:6-20` 與 `ImageFolderSubfolderSearchTests.swift:6-20`。
+  - 路徑為 `FileManager.default.temporaryDirectory.appendingPathComponent("CeeTests-&lt;name&gt;-\(UUID().uuidString)").resolvingSymlinksInPath()`。
+  - `resolvingSymlinksInPath()` 用於避免 `/var` 與 `/private/var` 不一致的問題。
+  - 建立目錄時使用 `try!`。
+- 路徑比較用 `assertEqualPaths`，比較 `standardizedFileURL.path`（`ImageFolderSubfolderSearchTests.swift:31-37`）。
+- 私有 helper：`writePNG`（`:39-41`）與 `makeFolder`（`ImageFolderNavigationTests.swift:28-37`）。
+- `ContinuousScrollContentViewTests` 使用未命名的 UUID 暫存目錄，搭配 `defer { removeItem }`（`:25-26`）。
+- `QuickGridViewTests.swift:29-38` 使用 `CeeTests-Grid-` 前綴，並標註 `@MainActor`。
+- `QuickGridGenerationIDTests.swift` 不需要暫存目錄，直接使用 `clearCache()` 與 `_testWriteThumbnailIfCurrentGeneration`。
+
+**TestHelpers**
+- `/Users/pc035860/code/cee/CeeTests/TestHelpers.swift`：
+  - `minimalPNG()`（`:9-23`）回傳 67 bytes 的 1x1 PNG。
+  - `createJPEG(width:height:)`（`:64-68`）與 `createPNG(width:height:)`（`:71-75`）位於 `#if canImport(AppKit)` 內，回傳寫在系統暫存目錄的檔案 URL，**需要呼叫端自行刪除**，註解有寫但沒有強制。
+
+**test-only accessor 慣例**
+- 以 `_test` 前綴暴露私有狀態，例如 `QuickGridView.swift:383-417`、`ContinuousScrollContentView.swift:528-545`、`ImageLoader.swift:513-517`。
+
+**CeeUITests**
+- `/Users/pc035860/code/cee/CeeUITests/CeeUITests.swift` 沒有直接引用 `ImageFolder`（grep 無結果）。
+- 有 `CeeUITests/Fixtures/` 目錄，`CeeUITests.swift:13` 註解說明 fixture 會被扁平複製到 bundle 根目錄。
+- Helpers 在 `CeeUITests/Helpers/ScrollHelpers.swift` 與 `WaitExtensions.swift`。
+
+## 摘要：合併遞迴後需要關注的位置
+
+1. **ImageFolder**：`init(folderURL:)` 目前只在頂層為空時向下找（`ImageFolder.swift:48-58`），既有測試也鎖定這個語意。`scanFolder`（`:63-90`）是非遞迴的，每個 PDF 都會開檔。`ImageFolder.swift:27-32` 的 O(N) `resolvingSymlinksInPath` 會放大。
+2. **Dual page 配對**：`SpreadManager.buildSpreads` 沒有資料夾邊界檢查，跨資料夾配對需要決定規則。`imageSizeCache` 是 index-keyed，目前只在 `loadFolder` 時清空（`ImageViewController.swift:200`）。
+3. **Continuous scroll**：`ContinuousScrollContentView.swift:184-201` 會為所有項目建立 child task 讀 header，N 很大時首次顯示延遲。`recalculateLayout`（`:222-250`）在縮放時是 O(N)。
+4. **Quick Grid**：`configure()` 不清 index-keyed 的 `gridThumbnails`（`QuickGridView.swift:369`）。同資料夾更新路徑（`ImageViewController.swift:2079`）沒有呼叫 `clearCache()`，合併清單若在此路徑更新，會錯位。
+5. **顯示**：標題（`ImageWindowController.swift:547`、`:549`）、格子（`QuickGridCell.swift:70`）與無障礙標籤只有檔名，需要相對路徑。StatusBarView 與 PositionHUDView 只有 index，不需要改。
+6. **ImageLoader**：所有 cache 都以 URL 為 key，同名檔不衝突，不需要修改。
+7. **每個 folderURL 的使用點**（`ImageViewController.swift:632`、`:646` 的 dualPage per-folder 設定，`:2067` 的同資料夾判斷）會受合併語意影響。</result>
+<usage><subagent_tokens>113527</subagent_tokens><tool_uses>35</tool_uses><duration_ms>145023</duration_ms></usage>
+</task-notification>
+
+---
+
+1. A
+2. 加
+3. 不要
+4. OK
+
+完成後走 /verify-code-change 收尾
+
+---
+
+<task-notification>
+<task-id>bta2octde</task-id>
+<tool-use-id>toolu_01HRFuS7ro7KonC41V8UY9kt</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/bta2octde.output</output-file>
+<status>completed</status>
+<summary>Background command "以 Codex 審查未提交的 diff（第 1 輪）" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b6g0re0n2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/b6g0re0n2.output</output-file>
+<status>completed</status>
+<summary>Background command "Codex confirm-only 輪（resume 同一 session）" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a2da87419ec680e5b</task-id>
+<tool-use-id>toolu_01AeQwthdtmCCNSeUu1nPULh</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/a2da87419ec680e5b.output</output-file>
+<status>completed</status>
+<summary>Agent "L3 實機驗證巢狀資料夾合併" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verification: 資料夾頂層無圖時遞迴合併巢狀子資料夾圖片
+
+**Verdict:** PASS
+
+驗證過程中發生一個事故，是我造成的：我的測試 instance 覆寫了使用者的 Cee 偏好設定，已從 Time Machine snapshot 還原（見 ⚠️）。
+
+**Claim:** 頂層無圖時，把所有巢狀子資料夾的圖合成一個平面清單（深度不限、depth-first、natural sort）。頂層有圖則不合併。視窗標題顯示相對路徑。單檔開啟行為不變。diff 與描述一致，我沒看到不符的地方。
+
+**Method:** 沒有 `.claude/skills`，所以冷啟動。流程是 `xcodegen generate` 加 Debug build，結果 BUILD SUCCEEDED。目前這個環境沒有 Accessibility 和 Screen Recording 權限，`osascript`、`screencapture` 和 CGWindow 標題都無法使用。所以我用 `lldb -p &lt;PID&gt;` 附加到我自己啟動的 Cee process，讀 `[NSApp windows]` 的 `title`，並用 `sendAction:goToNextImage:` 等選單 action 翻頁。**沒有截圖。** 標題字串是唯一的證據。
+
+### Steps
+
+1. ✅ **開根資料夾。** fixture `t1` 的根目錄無圖，底下有 `b/1.png`、`a/2.png`、`a/10.png`、`a/sub/3.png`，另有 `.hidden/h.png` 和空資料夾 `empty/`。用 `open -n -a … t1` 開啟（走 `application(_:open:)`）。
+   - 初始標題 `a/2.png (1/4)`，總數 4，第一張是 `a/2.png`。
+   - 連續 next 依序得到 `a/10.png (2/4)`、`a/sub/3.png (3/4)`、`b/1.png (4/4)`，再按 next 停在 `b/1.png (4/4)`。順序與預期一致，`.hidden` 沒有被包含。
+2. ✅ **頂層有圖。** `t2` 有 `photo.png` 和 `sub/x.png`。標題是 `photo.png (1/1)`，next 不會移動，只有頂層圖。
+3. ✅ **回歸，開單一圖片檔。** 開 `t1/a/2.png`，標題是 `2.png (1/2)`，next 得到 `10.png (2/2)`。只掃父資料夾，沒有合併 `sub/3.png`，標題維持純檔名。開 `t2/photo.png` 得到 `photo.png (1/1)`。
+4. ✅ **深度測試。** `t6` 有 4 層巢狀，內容是 `l1/top.png`、`l1/l2/a/aa.png`、`l1/l2/l3/mid.png`、`l1/l2/l3/l4/deep.png`、`zz/last.png`。
+   - 順序是 `l1/top (1/5)`、`l1/l2/a/aa (2/5)`、`l1/l2/l3/mid (3/5)`、`l1/l2/l3/l4/deep (4/5)`、`zz/last (5/5)`。
+   - 這符合 depth-first，每個資料夾自己的圖先、再其子資料夾。
+5. 🔍 **同名檔、迴圈 symlink、symlink 資料夾。** `t4` 有 `p/same.png`、`q/same.png`、`p/loop` 指回 `t4`、`z/qlink` 指向 `q`。
+   - 結果是 `p/same.png (1/2)`、`q/same.png (2/2)`，不卡死也不重複。
+   - 同名檔靠相對路徑區分，symlink 資料夾沒有被跟進。
+6. 🔍 **Symlink 資料夾當開啟目標。** 開 `t1link`（指向 `t1`）：`a/2.png (1/4)`，goToLast 得到 `b/1.png (4/4)`。`isDirectory` 先解析 symlink 的邏輯有效。
+7. 🔍 **空的巢狀資料夾。** `t5empty/e1/e2` 沒有任何圖。process 沒有 crash，視窗標題是 `Cee`（空狀態），goToLast 無反應。
+8. ✅ **真實資料夾 `/Volumes/X10 Pro/others/fanbox/うー☆月`，唯讀。** 標題 `水着シロコとえっち/a-0水着シロコ足上げ.jpg (1/172)`，goToLast 得到 `ヒナちゃんと青空えっち/13水着ヒナと青空えっち裸.jpg (172/172)`。
+   - 總數是 **172，不是 344**。
+   - 磁碟上的 344 個 jpg 其實是 172 張圖，加上 172 個 AppleDouble 的 `._*.jpg`。我用 `find` 確認，排除 dot 檔後剛好 172。Cee 用 `skipsHiddenFiles`，行為正確，344 是計數方式造成的差異。
+   - 頂層無圖，共 15 個子資料夾。
+
+### Findings
+
+- ⚠️ **我弄壞了使用者的偏好設定，已還原。** 本次 Debug build 的 bundle id 是 `com.local.cee`，和使用者平常的 Cee 共用偏好 domain。我用 `-CeeViewerSettings x` 啟動 instance 後，app 存檔時覆寫了使用者的 `CeeViewerSettings`，原本是 `dualPageEnabled=true`、`showStatusBar=false`、視窗 721x1017。
+  - 之後有一次用 `CFFIXED_USER_HOME` 隔離失敗（沒有被遵守），視窗寬度又被改成 640。
+  - 我從今天 02:16 的 Time Machine local snapshot 取回該 key，用 `defaults write` 還原，並確認其他 key 都沒變。現在 `dualPageEnabled=True`、`showStatusBar=False`、視窗 721x1017。
+  - 原值已無法取得，所以只能還原到 02:16 的狀態。窗口大小、magnification 等可能和我動手前有些微差異。其餘驗證改用複製出來的 `CeeV.app`，bundle id 為 `com.local.ceeverify`，已 ad-hoc 簽署並加上 `get-task-allow`，不會再碰使用者的偏好。
+- ⚠️ **一次沒重現的異常。** `t4`（2 張圖）的某一輪出現 `p → q → p → q`，next 在最後一張後又回到 `p`。
+  - 之後在原版和隔離版共重跑 5 次，都停在 `q/same.png`。
+  - `goNext` 的程式碼用 `min` 夾住，沒有 wrap。我只能說沒重現，原因不明，懷疑和 lldb 注入 action 或其他 instance 的干擾有關。
+- 另一次類似的非確定現象：一次啟動後初始標題是 `a/10.png`，而不是 `a/2.png`。當時用的是被覆寫過的偏好，之後沒再出現。
+- 資料夾排序用 `localizedStandardCompare`。在這台機器的 locale 下，漢字資料夾（水着…）排在假名資料夾（ヒナ…）前面，所以真實資料夾的第一張是 `水着シロコ…` 而不是 `アリス…`。這符合 Finder 風格，不算錯，僅供參考。
+- 未測的部分：File&gt;Open 對話框（`canChooseDirectories`）和 Finder 的 `public.folder` Info.plist 行為（Open With 選單）都需要 GUI 輸入，我沒有權限。Dedupe 邏輯只做了部分確認：一次開 `t2 t2/photo.png t1` 最後只剩 `t1` 一個視窗，但 reuseWindow 預設也會有同樣結果，所以不能單獨證明 dedupe。
+- `rm -r` 被環境的 hook 擋住，所以 `/tmp/ceever.Jof5jm`（fixture）、`/tmp/ceecopy.6jLDfH`（複製的 app）和 `/tmp/ceehome` 留在 `/tmp`，需要手動刪。我啟動的 Cee process 都已用 `kill &lt;PID&gt;` 結束。</result>
+<usage><subagent_tokens>107297</subagent_tokens><tool_uses>63</tool_uses><duration_ms>1311799</duration_ms></usage>
+</task-notification>
+
+---
+
+build 一個 prod 版我用看看
+
+---
+
+另外我現在已經有申請 apple developer 了，是不是可以簽 app 了
+
+---
+
+我剛測了那版用 open 選 folder 是 OK
+不過 finder 對資料夾並沒有 open with (也沒看到其它 app 有, 根本沒這個 sub menu)
+
+---
+
+做 service 吧
+
+然後 developer 這個我預期是在 github 發布 app，不走 app store
+
+---
+
+[Image #2]
+
+---
+
+[Image #3] [Image #4] [Image #5]
+
+---
+
+[Image #6]
+
+---
+
+1. ok 了
+2. bundle id 改一下
+
+---
+
+<task-notification>
+<task-id>biysz78ok</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/biysz78ok.output</output-file>
+<status>completed</status>
+<summary>Background command "執行 release 腳本：建置、簽署、公證、打包" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+apple 回覆要等多久
+
+---
+
+<task-notification>
+<task-id>boebceq01</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-pc035860-code-cee/bf6645fe-da65-4710-b745-d5955ea729e3/tasks/boebceq01.output</output-file>
+<status>completed</status>
+<summary>Background command "修正後重跑 release 腳本" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+本機是裝 release版了嗎
+
+---
+
+好
