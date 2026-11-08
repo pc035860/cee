@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
+        NSApp.servicesProvider = self
 
         #if DEBUG
         if TestMode.isUITesting {
@@ -26,12 +27,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // 對同一資料夾的多個檔案去重：每個資料夾只開一次，保留該資料夾的第一個 URL
         var seen = Set<String>()
         let deduplicated = urls.filter { url in
-            let folder = url.deletingLastPathComponent().path
+            let folder = URLFilter.isDirectory(url) ? url.path : url.deletingLastPathComponent().path
             return seen.insert(folder).inserted
         }
         for url in deduplicated {
             ImageWindowController.open(with: url)
         }
+    }
+
+    /// Finder Services entry ("Open in Cee"), declared via NSServices in Info.plist.
+    @MainActor @objc func openFolderService(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        application(NSApp, open: URLFilter.extractImageURLs(from: pboard))
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -52,7 +58,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = ImageFolder.supportedTypes.map { $0 }
         panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         ImageWindowController.open(with: url)
     }

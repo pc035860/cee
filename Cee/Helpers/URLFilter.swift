@@ -14,11 +14,11 @@ struct URLFilter {
         urls.filter { isSupported($0) }
     }
 
-    /// Check if a URL is a directory.
+    /// Check if a URL is a directory (symbolic links are resolved first).
     /// - Parameter url: URL to check
     /// - Returns: true if the URL points to a directory
     static func isDirectory(_ url: URL) -> Bool {
-        guard let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey]),
+        guard let resourceValues = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey]),
               let isDirectory = resourceValues.isDirectory else { return false }
         return isDirectory
     }

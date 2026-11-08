@@ -34,7 +34,7 @@ class ImageWindowController: NSWindowController {
 
     /// Open URL (called from Finder or file open dialog)
     static func open(with url: URL) {
-        let folder = ImageFolder(containing: url)
+        let folder = URLFilter.isDirectory(url) ? ImageFolder(folderURL: url) : ImageFolder(containing: url)
         let settings = ViewerSettings.load()
 
         // 復用模式：重用現有視窗
@@ -542,11 +542,12 @@ class ImageWindowController: NSWindowController {
         // StatusBar 可見時索引在 bar 顯示，標題列不重複
         let showIndex = (contentViewController as? ImageViewController)
             .map { !$0.settings.showStatusBar } ?? true
+        let name = folder.relativePath(of: item)
         if showIndex {
             let position = "\(folder.currentIndex + 1)/\(folder.images.count)"
-            window?.title = "\(item.url.lastPathComponent) (\(position))"
+            window?.title = "\(name) (\(position))"
         } else {
-            window?.title = item.url.lastPathComponent
+            window?.title = name
         }
         window?.subtitle = item.pdfPageIndex.map { String(localized: "window.pdfPage \($0 + 1)") } ?? ""
     }

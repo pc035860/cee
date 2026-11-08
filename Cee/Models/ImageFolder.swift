@@ -20,7 +20,7 @@ class ImageFolder {
 
     init(containing fileURL: URL) {
         self.folderURL = fileURL.deletingLastPathComponent()
-        self.images = scanFolder()
+        self.images = Self.scanDirectory(folderURL)
 
         // 找到對應的 ImageItem (use .path — URL == can fail between constructed URLs and contentsOfDirectory)
         let filePath = fileURL.resolvingSymlinksInPath().path
@@ -43,27 +43,31 @@ class ImageFolder {
 
     /// Initialize from a folder URL directly (for drag-drop folder support).
     /// Scans the folder and starts at the first image.
-    /// If the folder contains no images, searches up to 2 levels of subdirectories
-    /// for the first subfolder that does contain images.
+    /// If the folder contains no images, joins the images of all nested subfolders into one flat list
+    /// (depth-first, subfolders in natural order). `folderURL` stays the given root.
     init(folderURL: URL) {
         self.folderURL = folderURL
-        self.images = scanFolder()
-
-        // Top-level empty: search subdirectories for the first folder with images
-        if images.isEmpty {
-            if let found = Self.findFirstSubfolderWithImages(in: folderURL, maxDepth: 2) {
-                self.folderURL = found
-                self.images = scanFolder()
-            }
+        var items = Self.scanDirectory(folderURL)
+        if items.isEmpty {
+            items = Self.scanNestedSubfolders(of: folderURL)
         }
-
+        self.images = items
         self.currentIndex = 0
     }
 
-    private func scanFolder() -> [ImageItem] {
+    /// Path of an item relative to `folderURL`, falling back to the file name outside the root.
+    func relativePath(of item: ImageItem) -> String {
+        let rootPath = folderURL.resolvingSymlinksInPath().path
+        let itemPath = item.url.resolvingSymlinksInPath().path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        guard itemPath.hasPrefix(prefix) else { return item.url.lastPathComponent }
+        return String(itemPath.dropFirst(prefix.count))
+    }
+
+    private static func scanDirectory(_ url: URL) -> [ImageItem] {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
-            at: folderURL,
+            at: url,
             includingPropertiesForKeys: [.contentTypeKey],
             options: .skipsHiddenFiles
         ) else { return [] }
@@ -89,68 +93,29 @@ class ImageFolder {
         }
     }
 
-    // MARK: - Subfolder Discovery
+    // MARK: - Nested Subfolder Join
 
-    /// BFS search for the first subdirectory that contains supported images.
-    /// - Parameters:
-    ///   - rootURL: The folder to start searching from (its direct children are depth 1).
-    ///   - maxDepth: Maximum depth to search (e.g. 2 means grandchildren at most).
-    /// - Returns: The URL of the first subfolder containing images, or nil.
-    static func findFirstSubfolderWithImages(in rootURL: URL, maxDepth: Int) -> URL? {
-        let fm = FileManager.default
-        var queue: [(url: URL, depth: Int)] = []
-
-        // Seed queue with immediate subdirectories (depth 1)
-        let (_, rootSubdirs) = scanFolderContents(rootURL, using: fm)
-        for child in rootSubdirs {
-            queue.append((child, 1))
+    /// Depth-first join: each subfolder's own images first, then its subfolders, all in natural order.
+    /// Symlinked directories and packages are not followed.
+    private static func scanNestedSubfolders(of rootURL: URL) -> [ImageItem] {
+        subdirectories(of: rootURL).flatMap { dir in
+            scanDirectory(dir) + scanNestedSubfolders(of: dir)
         }
-
-        while !queue.isEmpty {
-            let (currentURL, depth) = queue.removeFirst()
-
-            let (hasImages, subdirs) = scanFolderContents(currentURL, using: fm)
-            if hasImages {
-                return currentURL
-            }
-
-            // Enqueue deeper subdirectories if within depth limit
-            if depth < maxDepth {
-                for child in subdirs {
-                    queue.append((child, depth + 1))
-                }
-            }
-        }
-
-        return nil
     }
 
-    /// Single-pass scan: checks for supported images AND collects sorted subdirectories.
-    /// Reads directory contents once with all needed resource keys to avoid redundant I/O.
-    private static func scanFolderContents(_ url: URL, using fm: FileManager) -> (hasImages: Bool, subdirs: [URL]) {
-        guard let contents = try? fm.contentsOfDirectory(
+    private static func subdirectories(of url: URL) -> [URL] {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .contentTypeKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
             options: .skipsHiddenFiles
-        ) else { return (false, []) }
+        ) else { return [] }
 
-        var subdirs: [URL] = []
-
-        for child in contents {
-            guard let values = try? child.resourceValues(
-                forKeys: [.isDirectoryKey, .isPackageKey, .contentTypeKey]
-            ) else { continue }
-
-            if values.isDirectory == true && values.isPackage != true {
-                subdirs.append(child)
-            } else if let type = values.contentType,
-                      supportedTypes.contains(where: { type.conforms(to: $0) }) {
-                return (true, [])  // Short-circuit: caller ignores subdirs when hasImages
+        return contents
+            .filter { child in
+                guard let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else { return false }
+                return values.isDirectory == true && values.isPackage != true
             }
-        }
-
-        subdirs.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        return (false, subdirs)
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
     /// 輕量取 PDF 頁數：Spotlight 元資料 → CGPDFDocument → 0

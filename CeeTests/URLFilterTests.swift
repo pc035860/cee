@@ -114,6 +114,16 @@ final class URLFilterTests: XCTestCase {
         XCTAssertFalse(URLFilter.isDirectory(file))
     }
 
+    func testIsDirectory_symlinkToDir_true() {
+        setUpTempDir()
+        defer { tearDownTempDir() }
+        let real = tempDir.appendingPathComponent("real", isDirectory: true)
+        try! FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = tempDir.appendingPathComponent("link")
+        try! FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        XCTAssertTrue(URLFilter.isDirectory(link))
+    }
+
     func testIsDirectory_nonexistent_false() {
         let fake = URL(fileURLWithPath: "/tmp/CeeTests-nonexistent-\(UUID().uuidString)")
         XCTAssertFalse(URLFilter.isDirectory(fake))

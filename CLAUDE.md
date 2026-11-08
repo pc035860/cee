@@ -105,7 +105,7 @@ Debug: `CEE_DEBUG_CENTERING=1` env var or `--debug-centering` flag.
 
 - **`folder` is optional** (~17 guard-let sites). Empty state: `EmptyStateView` overlay with drag support.
 - **Folder drops** — Use `ImageFolder(folderURL:)` (not `appendingPathComponent(".")` — breaks `deletingLastPathComponent()`).
-- **Subfolder discovery** — `init(folderURL:)` auto-searches up to 2 levels (BFS) when top-level has no images.
+- **Nested subfolder join** — `init(folderURL:)` joins all nested subfolders' images (unlimited depth, depth-first, natural-sorted per folder) into one flat list when the top level has no images. `folderURL` stays the given root; symlinked dirs and packages are not followed. Titles show `relativePath(of:)`. `URLFilter.isDirectory` resolves symlinks. Opening a single file still scans only its parent folder.
 
 ## Fast Browse
 

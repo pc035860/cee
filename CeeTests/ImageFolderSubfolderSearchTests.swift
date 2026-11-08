@@ -40,140 +40,122 @@ final class ImageFolderSubfolderSearchTests: XCTestCase {
         try! minimalPNG().write(to: dir.appendingPathComponent(name))
     }
 
+    private func relativePaths(_ folder: ImageFolder) -> [String] {
+        folder.images.map { folder.relativePath(of: $0) }
+    }
+
     // MARK: - Tests
 
-    func testFolderWithTopLevelImages_noSubfolderSearch() {
-        // Images at top level → folderURL stays the same
+    func testFolderWithTopLevelImages_doesNotJoinSubfolders() {
+        // tempDir/
+        //   photo.png
+        //   subA/
+        //     other.png   ← ignored: top level already has images
         writePNG(in: tempDir, name: "photo.png")
+        writePNG(in: createSubdir("subA"), name: "other.png")
 
         let folder = ImageFolder(folderURL: tempDir)
 
         assertEqualPaths(folder.folderURL, tempDir)
-        XCTAssertFalse(folder.images.isEmpty)
+        XCTAssertEqual(relativePaths(folder), ["photo.png"])
     }
 
     func testEmptyFolder_remainsEmpty() {
-        // Completely empty folder → no crash, images empty
         let folder = ImageFolder(folderURL: tempDir)
 
         assertEqualPaths(folder.folderURL, tempDir)
         XCTAssertTrue(folder.images.isEmpty)
     }
 
-    func testSubfolderDepth1_findsImages() {
+    func testEmptyTopLevel_joinsAllSubfolders() {
         // tempDir/
-        //   subA/
-        //     photo.png
-        let subA = createSubdir("subA")
-        writePNG(in: subA)
+        //   subA/ a.png
+        //   subB/ b.png
+        writePNG(in: createSubdir("subA"), name: "a.png")
+        writePNG(in: createSubdir("subB"), name: "b.png")
 
         let folder = ImageFolder(folderURL: tempDir)
 
-        assertEqualPaths(folder.folderURL, subA, "Should redirect to subfolder with images")
-        XCTAssertFalse(folder.images.isEmpty)
+        assertEqualPaths(folder.folderURL, tempDir, "folderURL stays the given root")
+        XCTAssertEqual(relativePaths(folder), ["subA/a.png", "subB/b.png"])
+        XCTAssertEqual(folder.currentIndex, 0)
     }
 
-    func testSubfolderDepth2_findsImages() {
-        // tempDir/
-        //   level1/
-        //     level2/
-        //       photo.png
-        let level1 = createSubdir("level1")
-        let level2 = createSubdir("level1/level2")
-        writePNG(in: level2)
+    func testDeepNesting_noDepthLimit() {
+        // tempDir/a/b/c/d/photo.png
+        writePNG(in: createSubdir("a/b/c/d"), name: "photo.png")
 
         let folder = ImageFolder(folderURL: tempDir)
 
-        assertEqualPaths(folder.folderURL, level2, "Should find images at depth 2")
-        XCTAssertFalse(folder.images.isEmpty)
+        XCTAssertEqual(relativePaths(folder), ["a/b/c/d/photo.png"])
     }
 
-    func testSubfolderDepth3_tooDeep() {
+    func testOrder_depthFirst_naturalSort() {
         // tempDir/
-        //   a/
-        //     b/
-        //       c/
-        //         photo.png  ← depth 3, beyond maxDepth=2
-        _ = createSubdir("a")
-        _ = createSubdir("a/b")
-        let c = createSubdir("a/b/c")
-        writePNG(in: c)
+        //   b/ 1.png
+        //   a/ 2.png, 10.png
+        //     sub/ 3.png
+        writePNG(in: createSubdir("b"), name: "1.png")
+        let a = createSubdir("a")
+        writePNG(in: a, name: "10.png")
+        writePNG(in: a, name: "2.png")
+        writePNG(in: createSubdir("a/sub"), name: "3.png")
 
         let folder = ImageFolder(folderURL: tempDir)
 
-        // Should NOT find it — too deep
-        assertEqualPaths(folder.folderURL, tempDir)
-        XCTAssertTrue(folder.images.isEmpty)
+        XCTAssertEqual(
+            relativePaths(folder),
+            ["a/2.png", "a/10.png", "a/sub/3.png", "b/1.png"]
+        )
     }
 
-    func testBFS_findsClosestSubfolder() {
-        // tempDir/
-        //   alpha/
-        //     deep/
-        //       photo.png       ← depth 2
-        //   beta/
-        //     photo.png         ← depth 1 (closer!)
-        _ = createSubdir("alpha/deep")
-        writePNG(in: tempDir.appendingPathComponent("alpha/deep"))
-        let beta = createSubdir("beta")
-        writePNG(in: beta)
+    func testSubfolderOrder_naturalSortNotLexicographic() {
+        writePNG(in: createSubdir("10"), name: "x.png")
+        writePNG(in: createSubdir("2"), name: "x.png")
 
         let folder = ImageFolder(folderURL: tempDir)
 
-        // BFS should find beta (depth 1) before alpha/deep (depth 2)
-        assertEqualPaths(folder.folderURL, beta)
+        XCTAssertEqual(relativePaths(folder), ["2/x.png", "10/x.png"])
     }
 
-    func testBFS_alphabeticalOrderWithinSameDepth() {
-        // tempDir/
-        //   zebra/
-        //     photo.png
-        //   alpha/
-        //     photo.png
-        let zebra = createSubdir("zebra")
-        writePNG(in: zebra)
-        let alpha = createSubdir("alpha")
-        writePNG(in: alpha)
+    func testSymlinkedSubfolder_notFollowed() {
+        let real = createSubdir("real")
+        writePNG(in: real, name: "a.png")
+        try! FileManager.default.createSymbolicLink(
+            at: tempDir.appendingPathComponent("loop"),
+            withDestinationURL: tempDir
+        )
 
         let folder = ImageFolder(folderURL: tempDir)
 
-        // Both at depth 1 — alphabetically "alpha" comes first
-        assertEqualPaths(folder.folderURL, alpha)
+        XCTAssertEqual(relativePaths(folder), ["real/a.png"])
+    }
+
+    func testSameFileNameInDifferentSubfolders_bothKept() {
+        writePNG(in: createSubdir("subA"), name: "page.png")
+        writePNG(in: createSubdir("subB"), name: "page.png")
+
+        let folder = ImageFolder(folderURL: tempDir)
+
+        XCTAssertEqual(relativePaths(folder), ["subA/page.png", "subB/page.png"])
     }
 
     func testHiddenSubfoldersSkipped() {
         // tempDir/
-        //   .hidden/
-        //     photo.png     ← should be skipped
-        //   visible/
-        //     photo.png
-        let hidden = createSubdir(".hidden")
-        writePNG(in: hidden)
-        let visible = createSubdir("visible")
-        writePNG(in: visible)
+        //   .hidden/ photo.png   ← skipped
+        //   visible/ photo.png
+        writePNG(in: createSubdir(".hidden"))
+        writePNG(in: createSubdir("visible"), name: "photo.png")
 
         let folder = ImageFolder(folderURL: tempDir)
 
-        assertEqualPaths(folder.folderURL, visible)
+        XCTAssertEqual(relativePaths(folder), ["visible/photo.png"])
     }
 
-    func testFindFirstSubfolderWithImages_staticMethod() {
-        // Direct test of the static method
-        let sub = createSubdir("photos")
-        writePNG(in: sub)
+    func testRelativePath_outsideRoot_fallsBackToFileName() {
+        let folder = ImageFolder(folderURL: tempDir)
+        let outside = ImageItem(url: URL(fileURLWithPath: "/elsewhere/photo.png"))
 
-        let result = ImageFolder.findFirstSubfolderWithImages(in: tempDir, maxDepth: 2)
-
-        assertEqualPaths(result!, sub)
-    }
-
-    func testFindFirstSubfolderWithImages_returnsNil_whenNoImages() {
-        // Only empty subdirectories
-        _ = createSubdir("empty1")
-        _ = createSubdir("empty2")
-
-        let result = ImageFolder.findFirstSubfolderWithImages(in: tempDir, maxDepth: 2)
-
-        XCTAssertNil(result)
+        XCTAssertEqual(folder.relativePath(of: outside), "photo.png")
     }
 }
